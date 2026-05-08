@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    /* Paleta DentAlerta (azuis + verde clínico) */
+    --primary: 209 67% 38%; /* #2064a3 */
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 85 47% 53%; /* #92c24c - verde WhatsApp/saúde oral */
+    --secondary-foreground: 0 0% 100%;
+
+    /* Superfícies suaves em cinza-azulado */
+    --muted: 210 40% 97%;
+    --muted-foreground: 215 18% 38%;
+
+    --accent: 204 60% 48%; /* #2f88c4 - azul claro de destaque */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 209 67% 38%;
+
+    --radius: 0.5rem;
+
+    /* Destaque específico do hero (verde #79c037) */
+    --hero-highlight: 88 49% 51%;
+
+    /* Cor específica do botão "Entrar" na tela de login (#6BEE78) */
+    --login-primary: 126 79% 68%;
+
+    /* Sidebar em tons de azul profissional, mais escuro e tecnológico */
+    --sidebar-background: 216 64% 16%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 209 67% 46%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 214 32% 24%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 216 40% 22%;
+    --sidebar-ring: 204 70% 56%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --sidebar-background: 220 40% 10%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 210 50% 60%;
+    --sidebar-primary-foreground: 222.2 47.4% 11.2%;
+    --sidebar-accent: 220 35% 18%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 220 30% 18%;
+    --sidebar-ring: 210 60% 70%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}

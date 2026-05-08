@@ -1,0 +1,8 @@
+project_id = "dzbeorfkualalocrvobe"
+
+[functions.importar-excel]
+verify_jwt = false
+
+[functions.importar-procedimentos]
+verify_jwt = false
+
