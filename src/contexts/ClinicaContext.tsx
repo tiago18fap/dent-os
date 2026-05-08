@@ -8,6 +8,7 @@ interface Clinica {
   status_pagamento: "ativo" | "inadimplente" | "teste_gratis" | "cancelado";
   limite_mensagens: number;
   limite_procedimentos: number;
+  data_fim_teste?: string;
 }
 
 interface Perfil {
@@ -68,7 +69,14 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
         .single();
 
       if (!clinicaError && clinicaData) {
-        setClinica(clinicaData as Clinica);
+        const c = clinicaData as Clinica;
+        if (c.status_pagamento === "teste_gratis" && c.data_fim_teste) {
+          const fim = new Date(c.data_fim_teste).getTime();
+          if (Date.now() > fim) {
+            c.status_pagamento = "inadimplente";
+          }
+        }
+        setClinica(c);
       }
     } catch (error) {
       console.error("Erro ao carregar contexto da clínica:", error);

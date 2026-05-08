@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useClinica } from "@/contexts/ClinicaContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Check, CreditCard, ShieldAlert } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -40,11 +41,30 @@ const Assinatura = () => {
   const { clinica, loading } = useClinica();
   const { toast } = useToast();
 
-  const handleMudarPlano = (planoId: string) => {
-    toast({
-      title: "Integração de Pagamento em Breve",
-      description: `A assinatura do plano ${planoId.toUpperCase()} será ativada na próxima atualização com a integração do gateway de pagamento.`,
-    });
+  const handleMudarPlano = async (planoId: string) => {
+    try {
+      toast({
+        title: "Aguarde...",
+        description: "Redirecionando para a página de pagamento seguro.",
+      });
+
+      const { data, error } = await supabase.functions.invoke("create-checkout", {
+        body: { planoId },
+      });
+
+      if (error) throw error;
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error("URL de checkout não retornada.");
+      }
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao iniciar checkout",
+        description: error.message || "Não foi possível conectar ao gateway de pagamento.",
+      });
+    }
   };
 
   const getStatusBadge = (status?: string) => {
