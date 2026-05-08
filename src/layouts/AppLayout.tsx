@@ -38,7 +38,6 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [loadingLogout, setLoadingLogout] = useState(false);
   const whatsappStatusQuery = useWhatsappStatus();
 
   const searchParams = new URLSearchParams(location.search);
@@ -55,25 +54,6 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
   };
 
   const currentTitle = titleMap[location.pathname] ?? "DentAlerta";
-
-  const handleLogout = async () => {
-    setLoadingLogout(true);
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "Erro ao sair",
-        description: error.message,
-      });
-      setLoadingLogout(false);
-    } else {
-      toast({
-        title: "Logout realizado",
-        description: "Até logo!",
-      });
-      navigate("/auth");
-    }
-  };
 
   return (
     <SidebarProvider>
@@ -237,17 +217,6 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
               <Settings className="h-4 w-4" />
               <span className="group-data-[collapsible=icon]:hidden">Configurações</span>
             </NavLink>
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={loadingLogout}
-              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:border hover:border-secondary/60 hover:bg-secondary/10 hover:text-secondary-foreground/90 disabled:opacity-50"
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="group-data-[collapsible=icon]:hidden">
-                {loadingLogout ? "Saindo..." : "Sair"}
-              </span>
-            </button>
             <p className="px-1 text-[10px] text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden">
               © {new Date().getFullYear()} DentOS v{__APP_VERSION__}
             </p>

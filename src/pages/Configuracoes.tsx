@@ -12,10 +12,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { useWhatsappStatus } from "@/hooks/use-whatsapp-status";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { QrCode, CheckCircle2, Clock, RefreshCcw } from "lucide-react";
+import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut } from "lucide-react";
 
 interface ImportLogItem {
   id: string;
@@ -37,9 +37,30 @@ const Configuracoes = () => {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const whatsappStatus = useWhatsappStatus();
   const location = useLocation();
+  const navigate = useNavigate();
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [connectLoading, setConnectLoading] = useState(false);
   const [qrImage, setQrImage] = useState<string | null>(null);
+  const [loadingLogout, setLoadingLogout] = useState(false);
+
+  const handleLogout = async () => {
+    setLoadingLogout(true);
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao sair",
+        description: error.message,
+      });
+      setLoadingLogout(false);
+    } else {
+      toast({
+        title: "Logout realizado",
+        description: "Até logo!",
+      });
+      navigate("/auth");
+    }
+  };
 
   useEffect(() => {
     document.title = "Configurações | DentAlerta";
@@ -374,16 +395,30 @@ const Configuracoes = () => {
                 <CardHeader>
                   <CardTitle className="text-sm">Conta e segurança</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>
-                    Nesta área você poderá, no futuro, gerenciar usuários, permissões e dados da clínica. Por enquanto,
-                    as opções são apenas ilustrativas para o layout.
-                  </p>
-                  <ul className="list-disc space-y-1 pl-5 text-xs">
-                    <li>Atualizar dados da clínica.</li>
-                    <li>Configurar integrações com ERP.</li>
-                    <li>Gerenciar equipe da recepção.</li>
-                  </ul>
+                <CardContent className="space-y-4 text-sm text-muted-foreground">
+                  <div className="space-y-3">
+                    <p>
+                      Nesta área você poderá, no futuro, gerenciar usuários, permissões e dados da clínica. Por enquanto,
+                      as opções são apenas ilustrativas para o layout.
+                    </p>
+                    <ul className="list-disc space-y-1 pl-5 text-xs">
+                      <li>Atualizar dados da clínica.</li>
+                      <li>Configurar integrações com ERP.</li>
+                      <li>Gerenciar equipe da recepção.</li>
+                    </ul>
+                  </div>
+                  
+                  <div className="pt-4 border-t border-border">
+                    <Button 
+                      variant="destructive" 
+                      className="w-full sm:w-auto"
+                      onClick={handleLogout}
+                      disabled={loadingLogout}
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      {loadingLogout ? "Saindo..." : "Sair da plataforma"}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </div>
