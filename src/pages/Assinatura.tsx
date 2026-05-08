@@ -43,7 +43,7 @@ const Assinatura = () => {
   const handleMudarPlano = (planoId: string) => {
     toast({
       title: "Integração de Pagamento em Breve",
-      description: \`A assinatura do plano \${planoId.toUpperCase()} será ativada na próxima atualização com a integração do gateway de pagamento.\`,
+      description: `A assinatura do plano ${planoId.toUpperCase()} será ativada na próxima atualização com a integração do gateway de pagamento.`,
     });
   };
 
@@ -122,7 +122,7 @@ const Assinatura = () => {
             {PLANOS.map((plano) => (
               <Card 
                 key={plano.id} 
-                className={\`relative flex flex-col \${plano.destaque ? 'border-primary shadow-lg scale-105 z-10' : ''}\`}
+                className={`relative flex flex-col ${plano.destaque ? 'border-primary shadow-lg scale-105 z-10' : ''}`}
               >
                 {plano.destaque && (
                   <div className="absolute -top-3 left-0 right-0 flex justify-center">
