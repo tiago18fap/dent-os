@@ -249,7 +249,7 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
               </span>
             </button>
             <p className="px-1 text-[10px] text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden">
-              © {new Date().getFullYear()} DentAlerta
+              © {new Date().getFullYear()} DentOS v{__APP_VERSION__}
             </p>
           </div>
         </SidebarFooter>

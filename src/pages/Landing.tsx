@@ -480,7 +480,7 @@ const Landing = () => {
 
           <div className="mt-8 border-t border-border/60 pt-4">
             <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 md:flex-row">
-              <p>© {new Date().getFullYear()} DentAlerta. Todos os direitos reservados.</p>
+              <p>© {new Date().getFullYear()} DentOS v{__APP_VERSION__}. Todos os direitos reservados.</p>
               <p>Teste gratuito de 7 dias · Cancelamento a qualquer momento.</p>
             </div>
           </div>
