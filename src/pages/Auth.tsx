@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { User, Session } from "@supabase/supabase-js";
-import logoFull from "@/assets/logo-dentalerta-login.png";
+import logoFull from "@/assets/logo-dentos.png";
 import { z } from "zod";
 
 const emailSchema = z
@@ -199,7 +199,7 @@ const Auth = () => {
     <div className="flex min-h-screen w-full items-center justify-center bg-gradient-to-br from-background via-background to-muted/20 px-4">
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="space-y-4 text-center">
-          <img src={logoFull} alt="DentAlerta" className="mx-auto h-12 w-auto" />
+          <img src={logoFull} alt="DentOS" className="mx-auto h-12 w-auto" />
           <CardTitle className="text-2xl">{isSignUp ? "Criar conta" : "Entrar no DentAlerta"}</CardTitle>
           <CardDescription>
             {isSignUp

@@ -1,4 +1,4 @@
-import logoDentalertaNew from "@/assets/logo-dentalerta-new.png";
+import logoDentos from "@/assets/logo-dentos.png";
 import heroDentalBanner from "@/assets/hero-dental-banner-3.png";
 import headerTopo from "@/assets/header-topo-2.png";
 import { Button } from "@/components/ui/button";
@@ -36,8 +36,8 @@ const Landing = () => {
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 md:py-4">
           <div className="flex items-center gap-3">
             <img
-              src={logoDentalertaNew}
-              alt="Logo DentAlerta completo"
+              src={logoDentos}
+              alt="Logo DentOS completo"
               className="h-12 w-auto object-contain"
             />
           </div>
@@ -390,7 +390,7 @@ const Landing = () => {
             {/* Brand + Social */}
             <div className="space-y-3 md:max-w-xs">
               <div className="flex items-center gap-2">
-                <img src={logoDentalertaNew} alt="Logo DentAlerta" className="h-8 w-auto object-contain" />
+                <img src={logoDentos} alt="Logo DentOS" className="h-8 w-auto object-contain" />
                 <span className="text-sm font-semibold text-foreground">DentAlerta</span>
               </div>
               <p className="text-[11px] leading-relaxed">

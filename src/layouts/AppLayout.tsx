@@ -21,8 +21,8 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import logoDentalerta from "@/assets/logo-dentalerta-new.png";
-import logoDentalertaFull from "@/assets/logo-dentalerta-menu.png";
+import logoDentalerta from "@/assets/logo-dentos.png";
+import logoDentalertaFull from "@/assets/logo-dentos.png";
 import type { ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -65,7 +65,7 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
           <NavLink to="/" className="flex items-center gap-2 px-1" aria-label="Ir para a home">
             <img
               src={logoDentalertaFull}
-              alt="Logo completo DentAlerta"
+              alt="Logo completo DentOS"
               className="h-8 w-auto max-w-[160px] object-contain"
             />
           </NavLink>
