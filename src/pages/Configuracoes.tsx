@@ -28,9 +28,20 @@ interface ImportLogItem {
   n8nPreview: string | null;
 }
 
+interface ClinicaAdminItem {
+  id: string;
+  nome: string;
+  plano: string;
+  status_pagamento: string;
+  limite_mensagens: number;
+  limite_procedimentos: number;
+  data_fim_teste: string | null;
+  created_at: string;
+  dias_restantes?: number;
+}
+
 // Lista simples de e-mails de super admin.
-// Para máxima segurança, o ideal é combinar isso com RLS usando tabela de roles no banco.
-const SUPER_ADMIN_EMAILS: string[] = [];
+const SUPER_ADMIN_EMAILS: string[] = ["tiago@dentos.com.br", "admin@dentos.com.br", "tiago18fap@gmail.com", "contato@dentos.com.br"];
 
 const Configuracoes = () => {
   const { toast } = useToast();
@@ -181,6 +192,43 @@ const Configuracoes = () => {
   const loadingLogs = logsQuery.isLoading;
   const logsError = logsQuery.error as Error | null;
 
+  const clientesQuery = useQuery({
+    queryKey: ["admin_clientes"],
+    enabled: isSuperAdmin,
+    queryFn: async (): Promise<ClinicaAdminItem[]> => {
+      const { data, error } = await supabase
+        .from("clinicas")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      return (data || []).map((c: any) => {
+        let dias_restantes = 0;
+        if (c.data_fim_teste) {
+          const fim = new Date(c.data_fim_teste);
+          const diff = Math.ceil((fim.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          dias_restantes = diff > 0 ? diff : 0;
+        }
+        return {
+          id: c.id,
+          nome: c.nome,
+          plano: c.plano,
+          status_pagamento: c.status_pagamento,
+          limite_mensagens: c.limite_mensagens,
+          limite_procedimentos: c.limite_procedimentos,
+          data_fim_teste: c.data_fim_teste,
+          created_at: c.created_at,
+          dias_restantes
+        };
+      });
+    },
+  });
+
+  const clientesData = (clientesQuery.data ?? []) as ClinicaAdminItem[];
+
   return (
     <AppLayout>
       <section className="space-y-4">
@@ -240,6 +288,9 @@ const Configuracoes = () => {
           <TabsList>
             <TabsTrigger value="perfil">Dados de perfil</TabsTrigger>
             <TabsTrigger value="geral">Geral</TabsTrigger>
+            <TabsTrigger value="clientes" disabled={!isSuperAdmin}>
+              Gerenciar Clientes
+            </TabsTrigger>
             <TabsTrigger value="logs" disabled={!isSuperAdmin}>
               Logs de importação (admin)
             </TabsTrigger>
@@ -422,6 +473,111 @@ const Configuracoes = () => {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="clientes" className="mt-4">
+            {!isSuperAdmin ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Acesso restrito</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">Acesso exclusivo para Super Admins.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total de Clínicas</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{clientesData.length}</div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Planos Pagos Ativos</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-primary">{clientesData.filter(c => c.status_pagamento === 'ativo').length}</div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Em Período de Teste</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-secondary">{clientesData.filter(c => c.status_pagamento === 'teste_gratis').length}</div>
+                    </CardContent>
+                  </Card>
+                </div>
+                
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Todas as Clínicas (Dashboard Admin)</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-hidden rounded-md border bg-card">
+                      <ScrollArea className="h-[500px]">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Clínica</TableHead>
+                              <TableHead>Cadastro</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>Plano</TableHead>
+                              <TableHead>Fim do Trial</TableHead>
+                              <TableHead>Mensagens / Proc.</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {clientesQuery.isLoading && (
+                              <TableRow>
+                                <TableCell colSpan={6} className="text-center text-xs text-muted-foreground">Carregando clientes...</TableCell>
+                              </TableRow>
+                            )}
+                            {!clientesQuery.isLoading && clientesData.map((cliente) => (
+                              <TableRow key={cliente.id}>
+                                <TableCell className="font-medium text-xs">{cliente.nome}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground">
+                                  {new Date(cliente.created_at).toLocaleDateString("pt-BR")}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge 
+                                    variant={cliente.status_pagamento === 'ativo' ? 'default' : cliente.status_pagamento === 'inadimplente' ? 'destructive' : 'secondary'}
+                                    className="text-[10px] font-normal"
+                                  >
+                                    {cliente.status_pagamento.replace('_', ' ').toUpperCase()}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-xs uppercase font-medium">{cliente.plano}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground">
+                                  {cliente.data_fim_teste ? (
+                                    <>
+                                      {new Date(cliente.data_fim_teste).toLocaleDateString("pt-BR")}
+                                      {cliente.status_pagamento === 'teste_gratis' && (
+                                        <span className={`ml-2 font-medium text-[10px] ${cliente.dias_restantes! > 0 ? 'text-secondary' : 'text-destructive'}`}>
+                                          ({cliente.dias_restantes} dias)
+                                        </span>
+                                      )}
+                                    </>
+                                  ) : '-'}
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground">
+                                  {cliente.limite_mensagens} / {cliente.limite_procedimentos}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </ScrollArea>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="logs" className="mt-4">
