@@ -197,7 +197,7 @@ const FilaEnvios = () => {
                     <TableBody>
                       {paginatedData.map((item: any) => {
                         const dataProg = new Date(item.data_programada);
-                        const dataFormatada = \`\${dataProg.toLocaleDateString("pt-BR")} \${dataProg.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}\`;
+                        const dataFormatada = `${dataProg.toLocaleDateString("pt-BR")} ${dataProg.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
                         
                         return (
                           <TableRow key={item.id}>
@@ -206,7 +206,7 @@ const FilaEnvios = () => {
                             <TableCell>{item.telefone ?? "-"}</TableCell>
                             <TableCell className="capitalize">{item.origem ?? "Massa"}</TableCell>
                             <TableCell>{getStatusBadge(item.status)}</TableCell>
-                            <TableCell className="text-right text-destructive font-medium">-\${item.custo}</TableCell>
+                            <TableCell className="text-right text-destructive font-medium">-${item.custo}</TableCell>
                           </TableRow>
                         );
                       })}
@@ -233,7 +233,7 @@ const FilaEnvios = () => {
                           />
                         </PaginationItem>
                         {pagesToShow.map((pageNumber, index) => (
-                          <PaginationItem key={\`\${pageNumber}-\${index}\`}>
+                          <PaginationItem key={`${pageNumber}-${index}`}>
                             {pageNumber === "ellipsis" ? (
                               <PaginationEllipsis />
                             ) : (
