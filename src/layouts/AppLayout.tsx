@@ -178,6 +178,18 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location.pathname === "/assinatura"}
+                    className="group rounded-md border border-transparent px-2 py-1.5 transition-colors hover:bg-secondary/10 hover:text-secondary-foreground/90 data-[active=true]:border-secondary/60 data-[active=true]:bg-secondary/20 data-[active=true]:text-secondary-foreground"
+                  >
+                    <NavLink to="/assinatura" aria-label="Meu Plano" className="flex items-center gap-2">
+                      <CreditCard className="shrink-0" />
+                      <span>Meu Plano</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -218,13 +230,6 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
         </SidebarContent>
         <SidebarFooter className="border-t border-sidebar-border px-2 py-2">
           <div className="flex flex-col gap-1 group-data-[collapsible=icon]:items-center">
-            <NavLink
-              to="/assinatura"
-              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:border hover:border-secondary/60 hover:bg-secondary/10 hover:text-secondary-foreground/90"
-            >
-              <CreditCard className="h-4 w-4" />
-              <span className="group-data-[collapsible=icon]:hidden">Meu Plano</span>
-            </NavLink>
             <NavLink
               to="/configuracoes"
               className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:border hover:border-secondary/60 hover:bg-secondary/10 hover:text-secondary-foreground/90"
