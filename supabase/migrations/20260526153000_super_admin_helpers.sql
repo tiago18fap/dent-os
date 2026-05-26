@@ -8,6 +8,10 @@ ALTER TABLE public.clinicas ADD COLUMN IF NOT EXISTS limite_procedimentos INTEGE
 ALTER TABLE public.clinicas ADD COLUMN IF NOT EXISTS data_fim_teste TIMESTAMP WITH TIME ZONE DEFAULT (now() + interval '7 days');
 ALTER TABLE public.clinicas ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
 
+ALTER TABLE public.perfis ADD COLUMN IF NOT EXISTS clinica_id UUID REFERENCES public.clinicas(id) ON DELETE CASCADE;
+ALTER TABLE public.perfis ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'admin';
+ALTER TABLE public.perfis ADD COLUMN IF NOT EXISTS full_name TEXT;
+
 -- 2. Atualizar o trigger de novo usuário para suportar clinica_id pré-definido e role customizada
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
