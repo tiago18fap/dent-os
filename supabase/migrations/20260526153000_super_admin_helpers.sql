@@ -61,10 +61,10 @@ DROP POLICY IF EXISTS "Super admins gerenciam clinicas" ON public.clinicas;
 CREATE POLICY "Super admins gerenciam clinicas" ON public.clinicas
 FOR ALL TO authenticated
 USING (
-  (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br')
+  (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br', 'victorpconti@gmail.com')
 )
 WITH CHECK (
-  (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br')
+  (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br', 'victorpconti@gmail.com')
 );
 
 -- Habilitar super admins a ler, inserir, atualizar e excluir perfis diretamente
@@ -72,10 +72,10 @@ DROP POLICY IF EXISTS "Super admins gerenciam perfis" ON public.perfis;
 CREATE POLICY "Super admins gerenciam perfis" ON public.perfis
 FOR ALL TO authenticated
 USING (
-  (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br')
+  (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br', 'victorpconti@gmail.com')
 )
 WITH CHECK (
-  (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br')
+  (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br', 'victorpconti@gmail.com')
 );
 
 -- Habilitar super admins a ler, inserir, atualizar e excluir user_roles diretamente
@@ -83,10 +83,10 @@ DROP POLICY IF EXISTS "Super admins gerenciam user_roles" ON public.user_roles;
 CREATE POLICY "Super admins gerenciam user_roles" ON public.user_roles
 FOR ALL TO authenticated
 USING (
-  (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br')
+  (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br', 'victorpconti@gmail.com')
 )
 WITH CHECK (
-  (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br')
+  (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br', 'victorpconti@gmail.com')
 );
 
 
@@ -110,7 +110,7 @@ DECLARE
 BEGIN
   -- Verificação de segurança de e-mail de administrador
   IF NOT (
-    (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br')
+    (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br', 'victorpconti@gmail.com')
   ) THEN
     RAISE EXCEPTION 'Acesso negado: apenas super admins podem criar usuários.';
   END IF;
@@ -183,7 +183,7 @@ DECLARE
 BEGIN
   -- Verificação de segurança de e-mail de administrador
   IF NOT (
-    (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br')
+    (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br', 'victorpconti@gmail.com')
   ) THEN
     RAISE EXCEPTION 'Acesso negado: apenas super admins podem criar clínicas.';
   END IF;
@@ -232,7 +232,7 @@ AS $$
 BEGIN
   -- Verificação de segurança de e-mail de administrador
   IF NOT (
-    (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br')
+    (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br', 'victorpconti@gmail.com')
   ) THEN
     RAISE EXCEPTION 'Acesso negado: apenas super admins podem redefinir senhas.';
   END IF;
@@ -257,7 +257,7 @@ AS $$
 BEGIN
   -- Verificação de segurança de e-mail de administrador
   IF NOT (
-    (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br')
+    (auth.jwt() ->> 'email') IN ('tiago@dentos.com.br', 'admin@dentos.com.br', 'tiago18fap@gmail.com', 'contato@dentos.com.br', 'victorpconti@gmail.com')
   ) THEN
     RAISE EXCEPTION 'Acesso negado: apenas super admins podem excluir usuários.';
   END IF;

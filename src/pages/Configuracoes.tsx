@@ -41,7 +41,7 @@ interface ClinicaAdminItem {
 }
 
 // Lista simples de e-mails de super admin.
-const SUPER_ADMIN_EMAILS: string[] = ["tiago@dentos.com.br", "admin@dentos.com.br", "tiago18fap@gmail.com", "contato@dentos.com.br"];
+const SUPER_ADMIN_EMAILS: string[] = ["tiago@dentos.com.br", "admin@dentos.com.br", "tiago18fap@gmail.com", "contato@dentos.com.br", "victorpconti@gmail.com"];
 
 const Configuracoes = () => {
   const { toast } = useToast();
