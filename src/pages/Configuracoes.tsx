@@ -15,7 +15,7 @@ import { useWhatsappStatus } from "@/hooks/use-whatsapp-status";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut } from "lucide-react";
+import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key } from "lucide-react";
 
 interface ImportLogItem {
   id: string;
@@ -54,35 +54,106 @@ const Configuracoes = () => {
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [loadingLogout, setLoadingLogout] = useState(false);
 
+  // Estados de dados do usuário ativo
+  const [currentUserEmail, setCurrentUserEmail] = useState("");
+  const [currentUserName, setCurrentUserName] = useState("");
+  const [clinicaNome, setClinicaNome] = useState("");
+
+  // Estados de criação de clínica
+  const [createClinicaOpen, setCreateClinicaOpen] = useState(false);
+  const [newClinicaNome, setNewClinicaNome] = useState("");
+  const [newClinicaPlano, setNewClinicaPlano] = useState<"bronze" | "prata" | "ouro">("bronze");
+  const [newClinicaStatus, setNewClinicaStatus] = useState<"ativo" | "inadimplente" | "teste_gratis" | "cancelado">("teste_gratis");
+  const [newClinicaLimiteMsg, setNewClinicaLimiteMsg] = useState(100);
+  const [newClinicaLimiteProc, setNewClinicaLimiteProc] = useState(5);
+  const [newAdminEmail, setNewAdminEmail] = useState("");
+  const [newAdminPassword, setNewAdminPassword] = useState("");
+  const [newAdminName, setNewAdminName] = useState("");
+  const [createClinicaLoading, setCreateClinicaLoading] = useState(false);
+
+  // Estados de edição de clínica
+  const [editClinicaOpen, setEditClinicaOpen] = useState(false);
+  const [selectedClinica, setSelectedClinica] = useState<ClinicaAdminItem | null>(null);
+  const [editClinicaNome, setEditClinicaNome] = useState("");
+  const [editClinicaPlano, setEditClinicaPlano] = useState("bronze");
+  const [editClinicaStatus, setEditClinicaStatus] = useState("teste_gratis");
+  const [editClinicaLimiteMsg, setEditClinicaLimiteMsg] = useState(100);
+  const [editClinicaLimiteProc, setEditClinicaLimiteProc] = useState(5);
+  const [editClinicaDataFimTeste, setEditClinicaDataFimTeste] = useState("");
+  const [editClinicaLoading, setEditClinicaLoading] = useState(false);
+
+  // Estados de gestão de usuários da clínica selecionada
+  const [clinicaUsers, setClinicaUsers] = useState<any[]>([]);
+  const [loadingClinicaUsers, setLoadingClinicaUsers] = useState(false);
+  const [newClinicaUserEmail, setNewClinicaUserEmail] = useState("");
+  const [newClinicaUserPassword, setNewClinicaUserPassword] = useState("");
+  const [newClinicaUserFullName, setNewClinicaUserFullName] = useState("");
+  const [newClinicaUserRole, setNewClinicaUserRole] = useState("user");
+  const [addingClinicaUser, setAddingClinicaUser] = useState(false);
+  const [editingUserPasswordId, setEditingUserPasswordId] = useState<string | null>(null);
+  const [newPasswordForUser, setNewPasswordForUser] = useState("");
+  const [changingUserPassword, setChangingUserPassword] = useState(false);
+
   const handleLogout = async () => {
     setLoadingLogout(true);
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "Erro ao sair",
-        description: error.message,
-      });
-      setLoadingLogout(false);
-    } else {
+    try {
+      await supabase.auth.signOut();
       toast({
         title: "Logout realizado",
         description: "Até logo!",
       });
       navigate("/auth");
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao sair",
+        description: err.message ?? "Não foi possível desconectar.",
+      });
+      navigate("/auth");
+    } finally {
+      setLoadingLogout(false);
     }
   };
 
   useEffect(() => {
     document.title = "Configurações | DentAlerta";
 
-    // Verifica usuário atual para habilitar aba de logs apenas para super admin
     supabase.auth
       .getUser()
-      .then(({ data }) => {
-        const email = data.user?.email?.toLowerCase() ?? "";
-        if (email && SUPER_ADMIN_EMAILS.map((e) => e.toLowerCase()).includes(email)) {
+      .then(async ({ data }) => {
+        const email = data.user?.email ?? "";
+        setCurrentUserEmail(email);
+
+        const lowerEmail = email.toLowerCase().trim();
+        if (lowerEmail && SUPER_ADMIN_EMAILS.map((e) => e.toLowerCase().trim()).includes(lowerEmail)) {
           setIsSuperAdmin(true);
+        }
+
+        if (data.user) {
+          const { data: perfilData } = await supabase
+            .from("perfis")
+            .select("full_name, clinica_id, role")
+            .eq("id", data.user.id)
+            .maybeSingle();
+
+          if (perfilData) {
+            setCurrentUserName(perfilData.full_name ?? "");
+            if (perfilData.role === "super_admin" || perfilData.role === "admin_master") {
+              setIsSuperAdmin(true);
+            }
+
+            if (perfilData.clinica_id) {
+              const { data: clinicaData } = await supabase
+                .from("clinicas")
+                .select("nome")
+                .eq("id", perfilData.clinica_id)
+                .maybeSingle();
+
+              if (clinicaData) {
+                setClinicaNome(clinicaData.nome ?? "");
+              }
+            }
+          }
         }
       })
       .catch(() => {
@@ -100,6 +171,256 @@ const Configuracoes = () => {
       }
     }
   }, [location.hash]);
+
+  const fetchClinicaUsers = async (clinicaId: string) => {
+    try {
+      setLoadingClinicaUsers(true);
+      const { data, error } = await supabase
+        .from("perfis")
+        .select("id, full_name, role")
+        .eq("clinica_id", clinicaId);
+      if (error) throw error;
+      setClinicaUsers(data || []);
+    } catch (error: any) {
+      console.error("Erro ao carregar usuários da clínica:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao buscar usuários",
+        description: error.message
+      });
+    } finally {
+      setLoadingClinicaUsers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedClinica) {
+      fetchClinicaUsers(selectedClinica.id);
+    } else {
+      setClinicaUsers([]);
+    }
+  }, [selectedClinica]);
+
+  // Handlers para ações de Super Admin
+  const handleCreateClinica = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newClinicaNome || !newAdminEmail || !newAdminPassword || !newAdminName) {
+      toast({
+        variant: "destructive",
+        title: "Campos obrigatórios",
+        description: "Preencha o nome da clínica e os dados do usuário administrador."
+      });
+      return;
+    }
+
+    try {
+      setCreateClinicaLoading(true);
+      const { error } = await supabase.rpc("create_clinica_with_admin", {
+        _clinica_nome: newClinicaNome.trim(),
+        _plano: newClinicaPlano,
+        _status_pagamento: newClinicaStatus,
+        _limite_mensagens: Number(newClinicaLimiteMsg),
+        _limite_procedimentos: Number(newClinicaLimiteProc),
+        _admin_email: newAdminEmail.trim(),
+        _admin_password: newAdminPassword,
+        _admin_name: newAdminName.trim()
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Clínica criada",
+        description: "Clínica e usuário administrador criados com sucesso!"
+      });
+
+      setNewClinicaNome("");
+      setNewClinicaPlano("bronze");
+      setNewClinicaStatus("teste_gratis");
+      setNewClinicaLimiteMsg(100);
+      setNewClinicaLimiteProc(5);
+      setNewAdminEmail("");
+      setNewAdminPassword("");
+      setNewAdminName("");
+      setCreateClinicaOpen(false);
+
+      clientesQuery.refetch();
+    } catch (error: any) {
+      console.error("Erro ao criar clínica:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao criar clínica",
+        description: error.message ?? "Não foi possível criar a clínica."
+      });
+    } finally {
+      setCreateClinicaLoading(false);
+    }
+  };
+
+  const handleSaveClinica = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedClinica) return;
+
+    try {
+      setEditClinicaLoading(true);
+      const { error } = await supabase
+        .from("clinicas")
+        .update({
+          nome: editClinicaNome.trim(),
+          plano: editClinicaPlano,
+          status_pagamento: editClinicaStatus,
+          limite_mensagens: Number(editClinicaLimiteMsg),
+          limite_procedimentos: Number(editClinicaLimiteProc),
+          data_fim_teste: editClinicaDataFimTeste ? new Date(editClinicaDataFimTeste).toISOString() : null
+        })
+        .eq("id", selectedClinica.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Clínica atualizada",
+        description: "Os dados da clínica foram salvos com sucesso!"
+      });
+
+      setEditClinicaOpen(false);
+      clientesQuery.refetch();
+    } catch (error: any) {
+      console.error("Erro ao atualizar clínica:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao salvar alterações",
+        description: error.message ?? "Não foi possível atualizar a clínica."
+      });
+    } finally {
+      setEditClinicaLoading(false);
+    }
+  };
+
+  const handleAddClinicaUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedClinica) return;
+    if (!newClinicaUserEmail || !newClinicaUserPassword || !newClinicaUserFullName) {
+      toast({
+        variant: "destructive",
+        title: "Campos obrigatórios",
+        description: "Preencha todos os campos do novo usuário."
+      });
+      return;
+    }
+
+    try {
+      setAddingClinicaUser(true);
+      const { error } = await supabase.rpc("create_auth_user", {
+        _email: newClinicaUserEmail.trim(),
+        _password: newClinicaUserPassword,
+        _full_name: newClinicaUserFullName.trim(),
+        _clinica_id: selectedClinica.id,
+        _role: newClinicaUserRole
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Usuário criado",
+        description: "Novo usuário cadastrado e vinculado com sucesso!"
+      });
+
+      setNewClinicaUserEmail("");
+      setNewClinicaUserPassword("");
+      setNewClinicaUserFullName("");
+      setNewClinicaUserRole("user");
+
+      fetchClinicaUsers(selectedClinica.id);
+    } catch (error: any) {
+      console.error("Erro ao criar usuário:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao criar usuário",
+        description: error.message ?? "Não foi possível criar o usuário."
+      });
+    } finally {
+      setAddingClinicaUser(false);
+    }
+  };
+
+  const handleChangeUserPassword = async (userId: string) => {
+    if (!newPasswordForUser || newPasswordForUser.length < 6) {
+      toast({
+        variant: "destructive",
+        title: "Senha inválida",
+        description: "A senha deve ter no mínimo 6 caracteres."
+      });
+      return;
+    }
+
+    try {
+      setChangingUserPassword(true);
+      const { error } = await supabase.rpc("change_user_password", {
+        _user_id: userId,
+        _new_password: newPasswordForUser
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Senha alterada",
+        description: "A senha do usuário foi atualizada com sucesso!"
+      });
+
+      setEditingUserPasswordId(null);
+      setNewPasswordForUser("");
+    } catch (error: any) {
+      console.error("Erro ao alterar senha:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao alterar senha",
+        description: error.message ?? "Não foi possível alterar a senha."
+      });
+    } finally {
+      setChangingUserPassword(false);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (userId === userData.user?.id) {
+        toast({
+          variant: "destructive",
+          title: "Ação não permitida",
+          description: "Você não pode excluir o seu próprio usuário logado."
+        });
+        return;
+      }
+    } catch {}
+
+    if (!confirm("Tem certeza que deseja excluir permanentemente este usuário?")) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase.rpc("delete_auth_user", {
+        _user_id: userId
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Usuário excluído",
+        description: "O usuário foi excluído do sistema."
+      });
+
+      if (selectedClinica) {
+        fetchClinicaUsers(selectedClinica.id);
+      }
+    } catch (error: any) {
+      console.error("Erro ao excluir usuário:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao excluir usuário",
+        description: error.message ?? "Não foi possível excluir o usuário."
+      });
+    }
+  };
 
   const handleConnectClick = async () => {
     try {
@@ -232,12 +553,27 @@ const Configuracoes = () => {
   return (
     <AppLayout>
       <section className="space-y-4">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Configurações</h1>
-          <p className="text-sm text-muted-foreground">
-            Ajuste preferências da plataforma e, se for super admin, acompanhe os logs de importação e chamadas ao
-            webhook.
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border pb-4">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">Configurações</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Ajuste preferências da plataforma. {currentUserEmail && (
+                <span className="font-semibold text-primary block sm:inline sm:ml-1">
+                  Conectado como: {currentUserEmail}
+                </span>
+              )}
+            </p>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm"
+            className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive self-start sm:self-center"
+            onClick={handleLogout}
+            disabled={loadingLogout}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            {loadingLogout ? "Saindo..." : "Sair da plataforma"}
+          </Button>
         </div>
 
         <Dialog open={connectDialogOpen} onOpenChange={setConnectDialogOpen}>
@@ -281,6 +617,413 @@ const Configuracoes = () => {
           </DialogContent>
         </Dialog>
 
+        {/* Modais de Gerenciamento de Clínicas / Usuários por Super Admin */}
+        {createClinicaOpen && (
+          <Dialog open={createClinicaOpen} onOpenChange={setCreateClinicaOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Criar Nova Clínica / Cliente</DialogTitle>
+                <DialogDescription>
+                  Cadastre uma nova clínica e crie a conta do usuário administrador inicial.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleCreateClinica} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="newClinicaNome">Nome da Clínica</Label>
+                  <Input
+                    id="newClinicaNome"
+                    value={newClinicaNome}
+                    onChange={(e) => setNewClinicaNome(e.target.value)}
+                    placeholder="Ex: Clínica Sorriso"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="newClinicaPlano">Plano</Label>
+                    <select
+                      id="newClinicaPlano"
+                      value={newClinicaPlano}
+                      onChange={(e: any) => setNewClinicaPlano(e.target.value)}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      <option value="bronze">Bronze</option>
+                      <option value="prata">Prata</option>
+                      <option value="ouro">Ouro</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="newClinicaStatus">Status do Pagamento</Label>
+                    <select
+                      id="newClinicaStatus"
+                      value={newClinicaStatus}
+                      onChange={(e: any) => setNewClinicaStatus(e.target.value)}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    >
+                      <option value="teste_gratis">Teste Grátis</option>
+                      <option value="ativo">Ativo</option>
+                      <option value="inadimplente">Inadimplente</option>
+                      <option value="cancelado">Cancelado</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="newClinicaLimiteMsg">Limite Mensagens</Label>
+                    <Input
+                      id="newClinicaLimiteMsg"
+                      type="number"
+                      value={newClinicaLimiteMsg}
+                      onChange={(e) => setNewClinicaLimiteMsg(Number(e.target.value))}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="newClinicaLimiteProc">Limite Procedimentos</Label>
+                    <Input
+                      id="newClinicaLimiteProc"
+                      type="number"
+                      value={newClinicaLimiteProc}
+                      onChange={(e) => setNewClinicaLimiteProc(Number(e.target.value))}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t pt-4 space-y-3">
+                  <h4 className="font-semibold text-sm">Dados do Administrador</h4>
+                  <div className="space-y-2">
+                    <Label htmlFor="newAdminName">Nome Completo</Label>
+                    <Input
+                      id="newAdminName"
+                      value={newAdminName}
+                      onChange={(e) => setNewAdminName(e.target.value)}
+                      placeholder="Nome do dentista / admin"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="newAdminEmail">E-mail de Acesso</Label>
+                    <Input
+                      id="newAdminEmail"
+                      type="email"
+                      value={newAdminEmail}
+                      onChange={(e) => setNewAdminEmail(e.target.value)}
+                      placeholder="email@acesso.com"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="newAdminPassword">Senha Inicial</Label>
+                    <Input
+                      id="newAdminPassword"
+                      type="password"
+                      value={newAdminPassword}
+                      onChange={(e) => setNewAdminPassword(e.target.value)}
+                      placeholder="Mínimo 6 caracteres"
+                      minLength={6}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setCreateClinicaOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={createClinicaLoading}>
+                    {createClinicaLoading ? "Criando..." : "Criar Clínica"}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {editClinicaOpen && (
+          <Dialog open={editClinicaOpen} onOpenChange={setEditClinicaOpen}>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Editar Clínica: {selectedClinica?.nome}</DialogTitle>
+                <DialogDescription>
+                  Ajuste os dados da clínica, planos, limites e gerencie as contas de acesso (usuários).
+                </DialogDescription>
+              </DialogHeader>
+
+              <Tabs defaultValue="dados-clinica" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="dados-clinica">Dados da Clínica</TabsTrigger>
+                  <TabsTrigger value="usuarios-clinica">Usuários / Acessos</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="dados-clinica" className="mt-4">
+                  <form onSubmit={handleSaveClinica} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="editClinicaNome">Nome da Clínica</Label>
+                      <Input
+                        id="editClinicaNome"
+                        value={editClinicaNome}
+                        onChange={(e) => setEditClinicaNome(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="editClinicaPlano">Plano</Label>
+                        <select
+                          id="editClinicaPlano"
+                          value={editClinicaPlano}
+                          onChange={(e: any) => setEditClinicaPlano(e.target.value)}
+                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        >
+                          <option value="bronze">Bronze</option>
+                          <option value="prata">Prata</option>
+                          <option value="ouro">Ouro</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="editClinicaStatus">Status do Pagamento</Label>
+                        <select
+                          id="editClinicaStatus"
+                          value={editClinicaStatus}
+                          onChange={(e: any) => setEditClinicaStatus(e.target.value)}
+                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        >
+                          <option value="teste_gratis">Teste Grátis</option>
+                          <option value="ativo">Ativo</option>
+                          <option value="inadimplente">Inadimplente</option>
+                          <option value="cancelado">Cancelado</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="editClinicaLimiteMsg">Limite Mensagens</Label>
+                        <Input
+                          id="editClinicaLimiteMsg"
+                          type="number"
+                          value={editClinicaLimiteMsg}
+                          onChange={(e) => setEditClinicaLimiteMsg(Number(e.target.value))}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="editClinicaLimiteProc">Limite Procedimentos</Label>
+                        <Input
+                          id="editClinicaLimiteProc"
+                          type="number"
+                          value={editClinicaLimiteProc}
+                          onChange={(e) => setEditClinicaLimiteProc(Number(e.target.value))}
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="editClinicaDataFimTeste">Data Fim do Teste (se aplicável)</Label>
+                      <Input
+                        id="editClinicaDataFimTeste"
+                        type="date"
+                        value={editClinicaDataFimTeste}
+                        onChange={(e) => setEditClinicaDataFimTeste(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                      <Button type="button" variant="outline" onClick={() => setEditClinicaOpen(false)}>
+                        Cancelar
+                      </Button>
+                      <Button type="submit" disabled={editClinicaLoading}>
+                        {editClinicaLoading ? "Salvando..." : "Salvar Alterações"}
+                      </Button>
+                    </div>
+                  </form>
+                </TabsContent>
+
+                <TabsContent value="usuarios-clinica" className="mt-4 space-y-6">
+                  {/* Listagem de Usuários da Clínica */}
+                  <div className="space-y-2">
+                    <h4 className="font-semibold text-sm">Usuários Cadastrados</h4>
+                    <div className="rounded-md border bg-card overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Nome</TableHead>
+                            <TableHead>Função (DB)</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {loadingClinicaUsers && (
+                            <TableRow>
+                              <TableCell colSpan={3} className="text-center text-xs text-muted-foreground">
+                                Carregando usuários...
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          {!loadingClinicaUsers && clinicaUsers.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={3} className="text-center text-xs text-muted-foreground">
+                                Nenhum usuário cadastrado para esta clínica.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          {!loadingClinicaUsers &&
+                            clinicaUsers.map((user) => (
+                              <TableRow key={user.id}>
+                                <TableCell className="text-xs">
+                                  <p className="font-medium text-foreground">{user.full_name || "(Sem nome)"}</p>
+                                  <span className="text-[10px] text-muted-foreground block font-mono mt-0.5">ID: {user.id}</span>
+                                </TableCell>
+                                <TableCell className="text-xs uppercase font-medium">
+                                  <Badge variant="outline" className="text-[10px] font-normal">
+                                    {user.role}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right whitespace-nowrap">
+                                  {editingUserPasswordId === user.id ? (
+                                    <div className="inline-flex gap-1.5 items-center justify-end">
+                                      <Input
+                                        type="password"
+                                        placeholder="Nova senha"
+                                        value={newPasswordForUser}
+                                        onChange={(e) => setNewPasswordForUser(e.target.value)}
+                                        className="h-7 w-28 text-xs bg-background"
+                                        minLength={6}
+                                      />
+                                      <Button
+                                        size="sm"
+                                        className="h-7 px-2 text-[10px] bg-primary text-primary-foreground"
+                                        onClick={() => handleChangeUserPassword(user.id)}
+                                        disabled={changingUserPassword}
+                                      >
+                                        Salvar
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 px-2 text-[10px]"
+                                        onClick={() => {
+                                          setEditingUserPasswordId(null);
+                                          setNewPasswordForUser("");
+                                        }}
+                                      >
+                                        Cancelar
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex gap-1 justify-end">
+                                      <Button
+                                        size="icon"
+                                        variant="outline"
+                                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                        title="Alterar Senha"
+                                        onClick={() => {
+                                          setEditingUserPasswordId(user.id);
+                                          setNewPasswordForUser("");
+                                        }}
+                                      >
+                                        <Key className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <Button
+                                        size="icon"
+                                        variant="destructive"
+                                        className="h-7 w-7"
+                                        title="Excluir Usuário"
+                                        onClick={() => handleDeleteUser(user.id)}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+
+                  {/* Formulário para Adicionar Usuário à Clínica */}
+                  <Card className="bg-muted/30">
+                    <CardHeader className="py-3">
+                      <CardTitle className="text-xs font-semibold">Adicionar Novo Usuário à Clínica</CardTitle>
+                    </CardHeader>
+                    <CardContent className="py-2">
+                      <form onSubmit={handleAddClinicaUser} className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label htmlFor="newUserFullName" className="text-xs">Nome Completo</Label>
+                            <Input
+                              id="newUserFullName"
+                              placeholder="Ex: Maria Souza"
+                              value={newClinicaUserFullName}
+                              onChange={(e) => setNewClinicaUserFullName(e.target.value)}
+                              className="h-8 text-xs bg-background"
+                              required
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="newUserRole" className="text-xs">Função (Role)</Label>
+                            <select
+                              id="newUserRole"
+                              value={newClinicaUserRole}
+                              onChange={(e: any) => setNewClinicaUserRole(e.target.value)}
+                              className="flex h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                            >
+                              <option value="admin">Administrador (Clínica)</option>
+                              <option value="user">Colaborador / Recepção</option>
+                              <option value="super_admin">Super Administrador (Geral)</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label htmlFor="newUserEmail" className="text-xs">E-mail</Label>
+                            <Input
+                              id="newUserEmail"
+                              type="email"
+                              placeholder="email@acesso.com"
+                              value={newClinicaUserEmail}
+                              onChange={(e) => setNewClinicaUserEmail(e.target.value)}
+                              className="h-8 text-xs bg-background"
+                              required
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="newUserPassword" className="text-xs">Senha</Label>
+                            <Input
+                              id="newUserPassword"
+                              type="password"
+                              placeholder="Mínimo 6 chars"
+                              value={newClinicaUserPassword}
+                              onChange={(e) => setNewClinicaUserPassword(e.target.value)}
+                              className="h-8 text-xs bg-background"
+                              minLength={6}
+                              required
+                            />
+                          </div>
+                        </div>
+                        <div className="flex justify-end pt-1 pb-1">
+                          <Button type="submit" size="sm" className="text-xs flex items-center gap-1" disabled={addingClinicaUser}>
+                            <Plus className="h-3.5 w-3.5" />
+                            {addingClinicaUser ? "Adicionando..." : "Adicionar Usuário"}
+                          </Button>
+                        </div>
+                      </form>
+                    </CardContent>
+                  </Card>
+
+                  <div className="flex justify-end pt-2">
+                    <Button type="button" variant="outline" className="h-8 text-xs" onClick={() => setEditClinicaOpen(false)}>
+                      Fechar
+                    </Button>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </DialogContent>
+          </Dialog>
+        )}
+
         <Tabs
           defaultValue={(new URLSearchParams(location.search).get("tab") as "perfil" | "geral" | "logs") ?? "perfil"}
           className="w-full"
@@ -305,26 +1048,26 @@ const Configuracoes = () => {
                 <form className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="nome">Nome completo</Label>
-                    <Input id="nome" name="nome" placeholder="Digite seu nome" />
+                    <Input id="nome" name="nome" placeholder="Digite seu nome" value={currentUserName} readOnly />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="email">E-mail</Label>
-                    <Input id="email" name="email" type="email" placeholder="seuemail@clinica.com" />
+                    <Input id="email" name="email" type="email" placeholder="seuemail@clinica.com" value={currentUserEmail} readOnly />
                   </div>
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="clinica">Nome da clínica</Label>
-                    <Input id="clinica" name="clinica" placeholder="Nome fantasia da clínica" />
+                    <Input id="clinica" name="clinica" placeholder="Nome fantasia da clínica" value={clinicaNome} readOnly />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="telefone">Telefone da clínica</Label>
-                    <Input id="telefone" name="telefone" type="tel" placeholder="(00) 0000-0000" />
+                    <Input id="telefone" name="telefone" type="tel" placeholder="(00) 0000-0000" disabled />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="whatsapp">WhatsApp de contato</Label>
-                    <Input id="whatsapp" name="whatsapp" type="tel" placeholder="(00) 00000-0000" />
+                    <Input id="whatsapp" name="whatsapp" type="tel" placeholder="(00) 00000-0000" disabled />
                   </div>
                   <p className="col-span-full text-xs text-muted-foreground">
-                    Em breve você poderá salvar e atualizar estes dados diretamente pela plataforma.
+                    Estes dados são carregados a partir da sua conta Supabase ativa.
                   </p>
                 </form>
               </CardContent>
@@ -449,26 +1192,13 @@ const Configuracoes = () => {
                 <CardContent className="space-y-4 text-sm text-muted-foreground">
                   <div className="space-y-3">
                     <p>
-                      Nesta área você poderá, no futuro, gerenciar usuários, permissões e dados da clínica. Por enquanto,
-                      as opções são apenas ilustrativas para o layout.
+                      Nesta área você poderá gerenciar usuários, permissões e dados da clínica.
                     </p>
-                    <ul className="list-disc space-y-1 pl-5 text-xs">
-                      <li>Atualizar dados da clínica.</li>
-                      <li>Configurar integrações com ERP.</li>
-                      <li>Gerenciar equipe da recepção.</li>
+                    <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground/80">
+                      <li>Atualização de dados de cadastro.</li>
+                      <li>Configuração de integrações de mensageria.</li>
+                      <li>Gerenciamento de equipe e controle de acesso.</li>
                     </ul>
-                  </div>
-                  
-                  <div className="pt-4 border-t border-border">
-                    <Button 
-                      variant="destructive" 
-                      className="w-full sm:w-auto"
-                      onClick={handleLogout}
-                      disabled={loadingLogout}
-                    >
-                      <LogOut className="mr-2 h-4 w-4" />
-                      {loadingLogout ? "Saindo..." : "Sair da plataforma"}
-                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -487,6 +1217,21 @@ const Configuracoes = () => {
               </Card>
             ) : (
               <div className="space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground font-sans">Gestão de Clientes</h2>
+                    <p className="text-xs text-muted-foreground">Crie e edite clínicas e seus respectivos usuários.</p>
+                  </div>
+                  <Button 
+                    size="sm" 
+                    className="flex items-center gap-1 text-xs px-3 h-8 bg-primary text-primary-foreground"
+                    onClick={() => setCreateClinicaOpen(true)}
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>Nova Clínica</span>
+                  </Button>
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-3">
                   <Card>
                     <CardHeader className="pb-2">
@@ -530,17 +1275,21 @@ const Configuracoes = () => {
                               <TableHead>Plano</TableHead>
                               <TableHead>Fim do Trial</TableHead>
                               <TableHead>Mensagens / Proc.</TableHead>
+                              <TableHead className="text-right">Ações</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {clientesQuery.isLoading && (
                               <TableRow>
-                                <TableCell colSpan={6} className="text-center text-xs text-muted-foreground">Carregando clientes...</TableCell>
+                                <TableCell colSpan={7} className="text-center text-xs text-muted-foreground">Carregando clientes...</TableCell>
                               </TableRow>
                             )}
                             {!clientesQuery.isLoading && clientesData.map((cliente) => (
                               <TableRow key={cliente.id}>
-                                <TableCell className="font-medium text-xs">{cliente.nome}</TableCell>
+                                <TableCell className="font-medium text-xs">
+                                  <p>{cliente.nome}</p>
+                                  <span className="text-[9px] text-muted-foreground font-mono block mt-0.5">{cliente.id}</span>
+                                </TableCell>
                                 <TableCell className="text-xs text-muted-foreground">
                                   {new Date(cliente.created_at).toLocaleDateString("pt-BR")}
                                 </TableCell>
@@ -567,6 +1316,25 @@ const Configuracoes = () => {
                                 </TableCell>
                                 <TableCell className="text-xs text-muted-foreground">
                                   {cliente.limite_mensagens} / {cliente.limite_procedimentos}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    variant="outline"
+                                    className="h-7 px-2.5 text-xs flex gap-1 items-center justify-center ml-auto"
+                                    onClick={() => {
+                                      setSelectedClinica(cliente);
+                                      setEditClinicaNome(cliente.nome);
+                                      setEditClinicaPlano(cliente.plano);
+                                      setEditClinicaStatus(cliente.status_pagamento);
+                                      setEditClinicaLimiteMsg(cliente.limite_mensagens);
+                                      setEditClinicaLimiteProc(cliente.limite_procedimentos);
+                                      setEditClinicaDataFimTeste(cliente.data_fim_teste ? cliente.data_fim_teste.split("T")[0] : "");
+                                      setEditClinicaOpen(true);
+                                    }}
+                                  >
+                                    <Edit className="h-3 w-3" />
+                                    Editar
+                                  </Button>
                                 </TableCell>
                               </TableRow>
                             ))}
