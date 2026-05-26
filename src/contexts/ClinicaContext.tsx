@@ -61,7 +61,7 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // Constante local de e-mails de super admin
-      const SUPER_ADMIN_EMAILS = ["tiago@dentos.com.br", "admin@dentos.com.br", "tiago18fap@gmail.com", "contato@dentos.com.br"];
+      const SUPER_ADMIN_EMAILS = ["tiago@dentos.com.br", "admin@dentos.com.br", "tiago18fap@gmail.com", "contato@dentos.com.br", "victorpconti@gmail.com"];
       const email = session.user?.email?.toLowerCase().trim() ?? "";
       const isSuper = SUPER_ADMIN_EMAILS.map(e => e.toLowerCase().trim()).includes(email) || 
                       perfilData.role === "super_admin" || 
