@@ -60,12 +60,34 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      setPerfil(perfilData as Perfil);
+      // Constante local de e-mails de super admin
+      const SUPER_ADMIN_EMAILS = ["tiago@dentos.com.br", "admin@dentos.com.br", "tiago18fap@gmail.com", "contato@dentos.com.br"];
+      const email = session.user?.email?.toLowerCase().trim() ?? "";
+      const isSuper = SUPER_ADMIN_EMAILS.map(e => e.toLowerCase().trim()).includes(email) || 
+                      perfilData.role === "super_admin" || 
+                      perfilData.role === "admin_master";
+
+      let targetClinicaId = perfilData.clinica_id;
+      let targetPerfil = perfilData;
+
+      if (isSuper) {
+        const impClinicaId = localStorage.getItem("impersonated_clinica_id");
+        if (impClinicaId && impClinicaId.trim() !== "") {
+          targetClinicaId = impClinicaId;
+          targetPerfil = {
+            ...perfilData,
+            clinica_id: impClinicaId,
+            role: "admin" // Simula o perfil administrativo da clínica visualizada
+          };
+        }
+      }
+
+      setPerfil(targetPerfil as Perfil);
 
       const { data: clinicaData, error: clinicaError } = await supabase
         .from("clinicas")
         .select("*")
-        .eq("id", perfilData.clinica_id)
+        .eq("id", targetClinicaId)
         .single();
 
       if (!clinicaError && clinicaData) {

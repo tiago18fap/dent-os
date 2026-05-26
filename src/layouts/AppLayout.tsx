@@ -27,7 +27,7 @@ import type { ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWhatsappStatus } from "@/hooks/use-whatsapp-status";
 
 interface AppLayoutProps {
@@ -39,6 +39,30 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const whatsappStatusQuery = useWhatsappStatus();
+  const [impersonatedClinicaName, setImpersonatedClinicaName] = useState<string | null>(null);
+
+  useEffect(() => {
+    const impId = localStorage.getItem("impersonated_clinica_id");
+    if (impId) {
+      supabase
+        .from("clinicas")
+        .select("nome")
+        .eq("id", impId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            setImpersonatedClinicaName(data.nome);
+          }
+        });
+    } else {
+      setImpersonatedClinicaName(null);
+    }
+  }, [location.pathname]);
+
+  const handleStopImpersonation = () => {
+    localStorage.removeItem("impersonated_clinica_id");
+    window.location.reload();
+  };
 
   const searchParams = new URLSearchParams(location.search);
   const currentCampanhasTab = searchParams.get("tab") ?? "massa";
@@ -258,7 +282,27 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
           </div>
         </header>
         <main className="flex-1 bg-background/80 p-4">
-          <div className="mx-auto max-w-6xl space-y-4">{children}</div>
+          <div className="mx-auto max-w-6xl space-y-4 font-sans">
+            {impersonatedClinicaName && (
+              <div className="bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-500 rounded-lg p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs sm:text-sm shadow-sm animate-pulse">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold uppercase tracking-wider bg-amber-500 text-white px-2 py-0.5 rounded text-[10px]">
+                    MODO VISUALIZAÇÃO
+                  </span>
+                  <span>Você está navegando como a clínica <strong>{impersonatedClinicaName}</strong>.</span>
+                </div>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="h-8 border-amber-500/50 hover:bg-amber-500/20 text-amber-700 dark:text-amber-500 font-medium"
+                  onClick={handleStopImpersonation}
+                >
+                  Sair da Visualização
+                </Button>
+              </div>
+            )}
+            {children}
+          </div>
         </main>
       </SidebarInset>
     </SidebarProvider>

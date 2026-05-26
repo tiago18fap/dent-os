@@ -15,7 +15,7 @@ import { useWhatsappStatus } from "@/hooks/use-whatsapp-status";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key } from "lucide-react";
+import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye } from "lucide-react";
 
 interface ImportLogItem {
   id: string;
@@ -1318,23 +1318,43 @@ const Configuracoes = () => {
                                   {cliente.limite_mensagens} / {cliente.limite_procedimentos}
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  <Button
-                                    variant="outline"
-                                    className="h-7 px-2.5 text-xs flex gap-1 items-center justify-center ml-auto"
-                                    onClick={() => {
-                                      setSelectedClinica(cliente);
-                                      setEditClinicaNome(cliente.nome);
-                                      setEditClinicaPlano(cliente.plano);
-                                      setEditClinicaStatus(cliente.status_pagamento);
-                                      setEditClinicaLimiteMsg(cliente.limite_mensagens);
-                                      setEditClinicaLimiteProc(cliente.limite_procedimentos);
-                                      setEditClinicaDataFimTeste(cliente.data_fim_teste ? cliente.data_fim_teste.split("T")[0] : "");
-                                      setEditClinicaOpen(true);
-                                    }}
-                                  >
-                                    <Edit className="h-3 w-3" />
-                                    Editar
-                                  </Button>
+                                  <div className="flex gap-2 justify-end">
+                                    <Button
+                                      variant="outline"
+                                      className="h-7 px-2.5 text-xs flex gap-1 items-center justify-center border-primary/50 text-primary hover:bg-primary/10"
+                                      onClick={() => {
+                                        localStorage.setItem("impersonated_clinica_id", cliente.id);
+                                        toast({
+                                          title: "Visualizando clínica",
+                                          description: `Você agora está visualizando o painel de ${cliente.nome}.`
+                                        });
+                                        setTimeout(() => {
+                                          navigate("/app");
+                                          window.location.reload();
+                                        }, 1000);
+                                      }}
+                                    >
+                                      <Eye className="h-3.5 w-3.5" />
+                                      Visualizar
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      className="h-7 px-2.5 text-xs flex gap-1 items-center justify-center"
+                                      onClick={() => {
+                                        setSelectedClinica(cliente);
+                                        setEditClinicaNome(cliente.nome);
+                                        setEditClinicaPlano(cliente.plano);
+                                        setEditClinicaStatus(cliente.status_pagamento);
+                                        setEditClinicaLimiteMsg(cliente.limite_mensagens);
+                                        setEditClinicaLimiteProc(cliente.limite_procedimentos);
+                                        setEditClinicaDataFimTeste(cliente.data_fim_teste ? cliente.data_fim_teste.split("T")[0] : "");
+                                        setEditClinicaOpen(true);
+                                      }}
+                                    >
+                                      <Edit className="h-3 w-3" />
+                                      Editar
+                                    </Button>
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             ))}

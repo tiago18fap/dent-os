@@ -19,10 +19,34 @@ export const useWhatsappStatus = () => {
         return null;
       }
 
+      let targetUserId = userData.user.id;
+
+      // Se for super admin, verifica se está impersonando alguma clínica
+      const SUPER_ADMIN_EMAILS = ["tiago@dentos.com.br", "admin@dentos.com.br", "tiago18fap@gmail.com", "contato@dentos.com.br"];
+      const lowerEmail = userData.user.email?.toLowerCase().trim() ?? "";
+      const isSuper = SUPER_ADMIN_EMAILS.map(e => e.toLowerCase().trim()).includes(lowerEmail);
+
+      if (isSuper) {
+        const impClinicaId = localStorage.getItem("impersonated_clinica_id");
+        if (impClinicaId && impClinicaId.trim() !== "") {
+          // Busca o primeiro perfil dessa clínica para obter o user_id correspondente
+          const { data: perfilData } = await supabase
+            .from("perfis")
+            .select("id")
+            .eq("clinica_id", impClinicaId)
+            .limit(1)
+            .maybeSingle();
+
+          if (perfilData) {
+            targetUserId = perfilData.id;
+          }
+        }
+      }
+
       const { data, error } = await (supabase as any)
         .from("whatsapp_config")
         .select("id, user_id, numero, conectado, updated_at")
-        .eq("user_id", userData.user.id)
+        .eq("user_id", targetUserId)
         .maybeSingle();
 
       if (error) {
