@@ -21,6 +21,8 @@ interface ClinicaContextType {
   clinica: Clinica | null;
   perfil: Perfil | null;
   loading: boolean;
+  isSuperAdmin: boolean;
+  isImpersonating: boolean;
   refreshClinica: () => Promise<void>;
 }
 
@@ -28,6 +30,8 @@ const ClinicaContext = createContext<ClinicaContextType>({
   clinica: null,
   perfil: null,
   loading: true,
+  isSuperAdmin: false,
+  isImpersonating: false,
   refreshClinica: async () => {},
 });
 
@@ -37,6 +41,8 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
   const [clinica, setClinica] = useState<Clinica | null>(null);
   const [perfil, setPerfil] = useState<Perfil | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isImpersonating, setIsImpersonating] = useState(false);
 
   const carregarDados = async () => {
     try {
@@ -45,6 +51,8 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
       if (!session) {
         setClinica(null);
         setPerfil(null);
+        setIsSuperAdmin(false);
+        setIsImpersonating(false);
         setLoading(false);
         return;
       }
@@ -67,8 +75,11 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
                       perfilData.role === "super_admin" || 
                       perfilData.role === "admin_master";
 
+      setIsSuperAdmin(isSuper);
+
       let targetClinicaId = perfilData.clinica_id;
       let targetPerfil = perfilData;
+      let impActive = false;
 
       if (isSuper) {
         const impClinicaId = localStorage.getItem("impersonated_clinica_id");
@@ -79,9 +90,11 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
             clinica_id: impClinicaId,
             role: "admin" // Simula o perfil administrativo da clínica visualizada
           };
+          impActive = true;
         }
       }
 
+      setIsImpersonating(impActive);
       setPerfil(targetPerfil as Perfil);
 
       const { data: clinicaData, error: clinicaError } = await supabase
@@ -122,7 +135,7 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   return (
-    <ClinicaContext.Provider value={{ clinica, perfil, loading, refreshClinica: carregarDados }}>
+    <ClinicaContext.Provider value={{ clinica, perfil, loading, isSuperAdmin, isImpersonating, refreshClinica: carregarDados }}>
       {children}
     </ClinicaContext.Provider>
   );

@@ -6,6 +6,8 @@ import { useClinica } from "@/contexts/ClinicaContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Check, CreditCard, ShieldAlert } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const PLANOS = [
   {
@@ -38,8 +40,22 @@ const PLANOS = [
 ];
 
 const Assinatura = () => {
-  const { clinica, loading } = useClinica();
+  const { clinica, loading, isSuperAdmin, isImpersonating } = useClinica();
   const { toast } = useToast();
+
+  const adminClinicasQuery = useQuery({
+    queryKey: ["admin_assinaturas_clinicas"],
+    enabled: isSuperAdmin && !isImpersonating && !loading,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("clinicas")
+        .select("id, nome, plano, status_pagamento, data_fim_teste, created_at")
+        .order("nome", { ascending: true });
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
 
   const handleMudarPlano = async (planoId: string) => {
     try {
@@ -86,6 +102,136 @@ const Assinatura = () => {
     return (
       <AppLayout>
         <div className="flex h-64 items-center justify-center">Carregando dados da assinatura...</div>
+      </AppLayout>
+    );
+  }
+
+  if (isSuperAdmin && !isImpersonating) {
+    const clinicasList = adminClinicasQuery.data ?? [];
+    const totalClinicas = clinicasList.length;
+    const bronzeCount = clinicasList.filter(c => c.plano === 'bronze').length;
+    const prataCount = clinicasList.filter(c => c.plano === 'prata').length;
+    const ouroCount = clinicasList.filter(c => c.plano === 'ouro').length;
+    const premiumCount = clinicasList.filter(c => c.plano === 'ilimitado_premium').length;
+
+    const activeCount = clinicasList.filter(c => c.status_pagamento === 'ativo').length;
+    const trialCount = clinicasList.filter(c => c.status_pagamento === 'teste_gratis').length;
+    const unpaidCount = clinicasList.filter(c => c.status_pagamento === 'inadimplente').length;
+
+    return (
+      <AppLayout>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Painel de Assinaturas (Admin)</h1>
+            <p className="text-muted-foreground mt-2">
+              Visão geral de faturamento e planos de todas as clínicas cadastradas no DentAlerta.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase text-foreground/70">Total de Clínicas</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{totalClinicas}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase text-green-600">Assinaturas Ativas</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">{activeCount}</div>
+                <p className="text-[9px] text-muted-foreground mt-1">
+                  Bronze: {bronzeCount} | Prata: {prataCount} | Ouro: {ouroCount} | Premium: {premiumCount}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase text-blue-600">Período de Teste</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-blue-600">{trialCount}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase text-destructive">Inadimplentes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-destructive">{unpaidCount}</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Lista de Faturamento por Clínica</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {adminClinicasQuery.isLoading ? (
+                <p className="text-xs text-muted-foreground">Carregando dados das clínicas...</p>
+              ) : (
+                <div className="overflow-hidden rounded-md border bg-card">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Clínica</TableHead>
+                        <TableHead>Plano</TableHead>
+                        <TableHead>Status Financeiro</TableHead>
+                        <TableHead>Fim do Período de Teste</TableHead>
+                        <TableHead className="text-right">Ação</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {clinicasList.map((c) => (
+                        <TableRow key={c.id}>
+                          <TableCell className="font-medium text-xs">
+                            {c.nome}
+                            <span className="block text-[9px] text-muted-foreground font-mono">{c.id}</span>
+                          </TableCell>
+                          <TableCell className="text-xs capitalize">{c.plano.replace('_', ' ')}</TableCell>
+                          <TableCell>
+                            <Badge 
+                              variant={c.status_pagamento === 'ativo' ? 'default' : c.status_pagamento === 'teste_gratis' ? 'secondary' : 'destructive'}
+                              className="text-[10px] font-normal"
+                            >
+                              {c.status_pagamento.toUpperCase()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {c.data_fim_teste ? new Date(c.data_fim_teste).toLocaleDateString("pt-BR") : '—'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs border-primary/50 text-primary hover:bg-primary/10"
+                              onClick={() => {
+                                localStorage.setItem("impersonated_clinica_id", c.id);
+                                toast({
+                                  title: "Visualizando clínica",
+                                  description: `Você agora está visualizando o painel de ${c.nome}.`
+                                });
+                                setTimeout(() => {
+                                  window.location.reload();
+                                }, 800);
+                              }}
+                            >
+                              Visualizar
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </AppLayout>
     );
   }

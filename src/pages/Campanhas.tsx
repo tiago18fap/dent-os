@@ -110,7 +110,7 @@ const TABELA_CAMPANHAS_PROCEDIMENTO = "campanhas_procedimento" as const;
 
 export function Campanhas() {
   const { toast } = useToast();
-  const { clinica } = useClinica();
+  const { clinica, loading, isSuperAdmin, isImpersonating } = useClinica();
 
   // Disparo em massa
   const [mensagemMassa, setMensagemMassa] = useState("");
@@ -163,6 +163,7 @@ export function Campanhas() {
 
   useEffect(() => {
     if (!selecaoPacientesAberta) return;
+    if (loading) return;
 
     const carregarPacientes = async () => {
       try {
@@ -174,14 +175,36 @@ export function Campanhas() {
           .ilike("situacao", "Ativo")
           .order("paciente", { ascending: true });
 
+        if (!isSuperAdmin || isImpersonating) {
+          if (clinica?.id) {
+            clientesQuery = clientesQuery.eq("clinica_id", clinica.id);
+          } else {
+            setPacientes([]);
+            setPacientesCarregando(false);
+            return;
+          }
+        }
+
         const termoPaciente = buscaPaciente.trim();
         const termoProcedimento = filtroProcedimento.trim();
 
         if (termoProcedimento.length > 0) {
-          const { data: procedimentosFiltrados, error: erroProc } = await (supabase as any)
+          let procQuery = (supabase as any)
             .from("procedimentos")
             .select("nome_paciente, procedimento")
             .ilike("procedimento", `%${termoProcedimento}%`);
+
+          if (!isSuperAdmin || isImpersonating) {
+            if (clinica?.id) {
+              procQuery = procQuery.eq("clinica_id", clinica.id);
+            } else {
+              setPacientes([]);
+              setPacientesCarregando(false);
+              return;
+            }
+          }
+
+          const { data: procedimentosFiltrados, error: erroProc } = await procQuery;
 
           if (erroProc) throw erroProc;
 
@@ -219,18 +242,30 @@ export function Campanhas() {
     };
 
     void carregarPacientes();
-  }, [selecaoPacientesAberta, buscaPaciente, filtroProcedimento]);
+  }, [selecaoPacientesAberta, buscaPaciente, filtroProcedimento, loading, clinica?.id, isSuperAdmin, isImpersonating]);
 
   useEffect(() => {
+    if (loading) return;
     document.title = "Campanhas DentAlerta";
 
     const carregarProcedimentos = async () => {
       try {
         setProcedimentosCarregando(true);
-        const { data, error } = await (supabase as any)
+        let procQuery = (supabase as any)
           .from("procedimentos")
-          .select("*")
-          .order("procedimento", { ascending: true });
+          .select("*");
+
+        if (!isSuperAdmin || isImpersonating) {
+          if (clinica?.id) {
+            procQuery = procQuery.eq("clinica_id", clinica.id);
+          } else {
+            setProcedimentos([]);
+            setProcedimentosCarregando(false);
+            return;
+          }
+        }
+
+        const { data, error } = await procQuery.order("procedimento", { ascending: true });
 
         console.log("Procedimentos carregados:", { data, error });
 
@@ -263,9 +298,19 @@ export function Campanhas() {
     };
     const carregarConfiguracoes = async () => {
       try {
-        const { data, error } = await (supabase as any)
+        let configQuery = (supabase as any)
           .from("campanhas_config")
           .select("chave, mensagem, ativo");
+
+        if (!isSuperAdmin || isImpersonating) {
+          if (clinica?.id) {
+            configQuery = configQuery.eq("clinica_id", clinica.id);
+          } else {
+            return;
+          }
+        }
+
+        const { data, error } = await configQuery;
 
         if (error) throw error;
         const rows = (data ?? []) as CampanhaConfigRow[];
@@ -304,17 +349,25 @@ export function Campanhas() {
         });
       } catch (error) {
         console.error("Erro ao carregar configurações de campanhas", error);
-        // Se a tabela ainda não existir ou houver problema de permissão,
-        // apenas registramos no console para não exibir erro visual ao abrir a página.
       }
     };
 
     const carregarHistoricoMassa = async () => {
       try {
-        const { data, error } = await (supabase as any)
+        let massQuery = (supabase as any)
           .from("disparos_massa_historico")
-          .select("*")
-          .order("created_at", { ascending: false });
+          .select("*");
+
+        if (!isSuperAdmin || isImpersonating) {
+          if (clinica?.id) {
+            massQuery = massQuery.eq("clinica_id", clinica.id);
+          } else {
+            setHistoricoDisparosMassa([]);
+            return;
+          }
+        }
+
+        const { data, error } = await massQuery.order("created_at", { ascending: false });
 
         if (error) throw error;
 
@@ -340,7 +393,7 @@ export function Campanhas() {
             previewMensagem:
               row.mensagem && row.mensagem.trim().length > 0
                 ? row.mensagem
-                : "-",
+                 : "-",
             quantidadeEnvios: qtd,
             totalEnviado: qtd,
           };
@@ -355,7 +408,7 @@ export function Campanhas() {
     void carregarProcedimentos();
     void carregarConfiguracoes();
     void carregarHistoricoMassa();
-  }, [toast]);
+  }, [toast, loading, clinica?.id, isSuperAdmin, isImpersonating]);
 
   const requireMensagem = (mensagem: string) => {
     if (!mensagem.trim()) {
@@ -376,6 +429,7 @@ export function Campanhas() {
       const { data: carteira, error: erroCarteira } = await (supabase as any)
         .from("carteira_envios")
         .select("*")
+        .eq("clinica_id", clinica?.id)
         .limit(1)
         .single();
         
@@ -394,6 +448,7 @@ export function Campanhas() {
       const { data: clientes, error: erroClientes } = await (supabase as any)
         .from("clientes")
         .select("id, paciente, telefone")
+        .eq("clinica_id", clinica?.id)
         .in("id", idsPacientes);
       
       if (erroClientes) throw erroClientes;
@@ -406,7 +461,8 @@ export function Campanhas() {
         data_programada: dataAgendada.toISOString(),
         status: "pendente",
         custo: 1,
-        origem: "massa"
+        origem: "massa",
+        clinica_id: clinica?.id,
       }));
 
       const { error: erroFila } = await (supabase as any).from("fila_envios").insert(insertsFila);
@@ -415,7 +471,8 @@ export function Campanhas() {
       const { error: erroUpdate } = await (supabase as any)
         .from("carteira_envios")
         .update({ saldo: saldoAtual - quantidade })
-        .eq("id", carteira.id);
+        .eq("id", carteira.id)
+        .eq("clinica_id", clinica?.id);
         
       if (erroUpdate) throw erroUpdate;
 
@@ -426,6 +483,7 @@ export function Campanhas() {
           quantidade_destinatarios: quantidade,
           mensagem: mensagem,
           data_agendada: dataAgendada.toISOString(),
+          clinica_id: clinica?.id,
         });
 
       return true;
@@ -516,9 +574,10 @@ export function Campanhas() {
             chave,
             mensagem: mensagemLimpa,
             ativo,
+            clinica_id: clinica?.id,
           },
           {
-            onConflict: "chave",
+            onConflict: "clinica_id,chave",
           },
         );
 
@@ -566,8 +625,9 @@ export function Campanhas() {
             mensagem: config.mensagem,
             procedimentos_ids: procedimentoIds,
             procedimentos_nomes: nomesProcedimentos,
+            clinica_id: clinica?.id,
           },
-          { onConflict: "group_id" },
+          { onConflict: "clinica_id,group_id" },
         );
 
       if (error) throw error;

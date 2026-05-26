@@ -17,36 +17,59 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Wallet, Clock, CheckCircle2, XCircle } from "lucide-react";
 
+import { useClinica } from "@/contexts/ClinicaContext";
+
 const FilaEnvios = () => {
+  const { clinica, loading, isSuperAdmin, isImpersonating } = useClinica();
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
   const pageSize = 20;
 
   const { data: carteira } = useQuery({
-    queryKey: ["carteira_envios"],
+    queryKey: ["carteira_envios", clinica?.id, isSuperAdmin, isImpersonating],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("carteira_envios")
-        .select("saldo")
-        .limit(1)
-        .single();
+        .select("saldo");
       
-      if (error && error.code !== 'PGRST116') throw error;
-      return data ?? { saldo: 0 };
+      if (!isSuperAdmin || isImpersonating) {
+        if (clinica?.id) {
+          query = query.eq("clinica_id", clinica.id);
+        } else {
+          return { saldo: 0 };
+        }
+      }
+
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      const totalSaldo = data ? data.reduce((acc, curr) => acc + (curr.saldo ?? 0), 0) : 0;
+      return { saldo: totalSaldo };
     },
+    enabled: !loading,
   });
 
   const { data: fila, isLoading, error } = useQuery({
-    queryKey: ["fila_envios"],
+    queryKey: ["fila_envios", clinica?.id, isSuperAdmin, isImpersonating],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("fila_envios")
-        .select("*")
-        .order("data_programada", { ascending: true });
+        .select("*");
+
+      if (!isSuperAdmin || isImpersonating) {
+        if (clinica?.id) {
+          query = query.eq("clinica_id", clinica.id);
+        } else {
+          return [];
+        }
+      }
+
+      const { data, error } = await query.order("data_programada", { ascending: true });
 
       if (error) throw error;
       return data ?? [];
     },
+    enabled: !loading,
     refetchInterval: 30000, // refresh every 30s
   });
 

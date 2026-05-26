@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
+import { useClinica } from "@/contexts/ClinicaContext";
 import * as xlsx from "xlsx";
 
 interface HistoricoItem {
@@ -21,6 +22,7 @@ interface HistoricoItem {
 
 const Importacoes = () => {
   const { toast } = useToast();
+  const { clinica, loading, isSuperAdmin, isImpersonating } = useClinica();
   const [clientesFile, setClientesFile] = useState<File | null>(null);
   const [procedimentosFile, setProcedimentosFile] = useState<File | null>(null);
   const [loadingClientes, setLoadingClientes] = useState(false);
@@ -32,12 +34,21 @@ const Importacoes = () => {
     error: historicoError,
     refetch: refetchHistorico,
   } = useQuery<HistoricoItem[]>({
-    queryKey: ["importacoes_historico"],
+    queryKey: ["importacoes_historico", clinica?.id, isSuperAdmin, isImpersonating],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("importacoes_historico")
-        .select("created_at, tipo, status, file_name")
-        .order("created_at", { ascending: false });
+        .select("created_at, tipo, status, file_name");
+
+      if (!isSuperAdmin || isImpersonating) {
+        if (clinica?.id) {
+          query = query.eq("clinica_id", clinica.id);
+        } else {
+          return [];
+        }
+      }
+
+      const { data, error } = await query.order("created_at", { ascending: false });
 
       if (error) throw error;
       const rows = (data ?? []) as any[];
@@ -63,6 +74,7 @@ const Importacoes = () => {
         };
       });
     },
+    enabled: !loading,
   });
 
   useEffect(() => {
@@ -120,6 +132,7 @@ const Importacoes = () => {
           nascimento: nascimentoStr,
           situacao: row["Situação"] ? String(row["Situação"]).trim() : null,
           prestador: row["Prestador"] ? String(row["Prestador"]).trim() : null,
+          clinica_id: clinica?.id,
         };
       }).filter((p) => p.paciente !== "");
 
@@ -139,7 +152,7 @@ const Importacoes = () => {
         const chunk = patientsToUpsert.slice(i, i + chunkSize);
         const { error } = await supabase
           .from("clientes")
-          .upsert(chunk, { onConflict: "paciente", ignoreDuplicates: false });
+          .upsert(chunk, { onConflict: "clinica_id,paciente", ignoreDuplicates: false });
         if (error) throw error;
         insertedCount += chunk.length;
       }
@@ -162,6 +175,7 @@ const Importacoes = () => {
         tipo: "Clientes",
         status: sucesso ? "Concluido" : `Erro: ${mensagemErro.substring(0, 50)}`,
         file_name: file.name,
+        clinica_id: clinica?.id,
       }]);
       refetchHistorico();
       setLoadingClientes(false);
@@ -228,7 +242,8 @@ const Importacoes = () => {
              regiao: region,
              face: face,
              prestador: currentProfessionalName,
-             idchave: `${treatmentId}-${procCode}-${cleanName(pName)}`.substring(0, 50)
+             idchave: `${treatmentId}-${procCode}-${cleanName(pName)}`.substring(0, 50),
+             clinica_id: clinica?.id,
            });
         }
       }
@@ -264,6 +279,7 @@ const Importacoes = () => {
         tipo: "Procedimentos",
         status: sucesso ? "Concluido" : `Erro: ${mensagemErro.substring(0, 50)}`,
         file_name: file.name,
+        clinica_id: clinica?.id,
       }]);
       refetchHistorico();
       setLoadingProcedimentos(false);

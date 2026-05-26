@@ -35,18 +35,32 @@ import { DateRange } from "react-day-picker";
 import { format, parse } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
+import { useClinica } from "@/contexts/ClinicaContext";
+
 const Procedimentos = () => {
+  const { clinica, loading, isSuperAdmin, isImpersonating } = useClinica();
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ["procedimentos"],
+    queryKey: ["procedimentos", clinica?.id, isSuperAdmin, isImpersonating],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("procedimentos")
-        .select("*")
-        .order("procedimento", { ascending: true });
+        .select("*");
+
+      if (!isSuperAdmin || isImpersonating) {
+        if (clinica?.id) {
+          query = query.eq("clinica_id", clinica.id);
+        } else {
+          return [];
+        }
+      }
+
+      const { data, error } = await query.order("procedimento", { ascending: true });
 
       if (error) throw error;
       return data ?? [];
     },
+    enabled: !loading,
     retry: 1,
   });
 

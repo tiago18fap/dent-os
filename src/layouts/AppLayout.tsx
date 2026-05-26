@@ -29,6 +29,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect } from "react";
 import { useWhatsappStatus } from "@/hooks/use-whatsapp-status";
+import { useClinica } from "@/contexts/ClinicaContext";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -39,6 +40,7 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const whatsappStatusQuery = useWhatsappStatus();
+  const { isSuperAdmin, isImpersonating } = useClinica();
   const [impersonatedClinicaName, setImpersonatedClinicaName] = useState<string | null>(null);
 
   useEffect(() => {
@@ -283,6 +285,22 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
         </header>
         <main className="flex-1 bg-background/80 p-4">
           <div className="mx-auto max-w-6xl space-y-4 font-sans">
+            {isSuperAdmin && !isImpersonating && (
+              <div className="bg-destructive/10 border border-destructive/30 text-destructive rounded-lg p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs sm:text-sm shadow-sm">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold uppercase tracking-wider bg-destructive text-destructive-foreground px-2 py-0.5 rounded text-[10px]">
+                    ADMINISTRADOR MASTER
+                  </span>
+                  <span>
+                    Você está visualizando os dados consolidados de todas as clínicas. Para gerenciar uma clínica específica, acesse{" "}
+                    <NavLink to="/configuracoes?tab=clientes" className="underline font-semibold hover:text-destructive/80">
+                      Configurações &gt; Gerenciar Clínicas
+                    </NavLink>{" "}
+                    e clique em "Visualizar".
+                  </span>
+                </div>
+              </div>
+            )}
             {impersonatedClinicaName && (
               <div className="bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-500 rounded-lg p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs sm:text-sm shadow-sm animate-pulse">
                 <div className="flex items-center gap-2">

@@ -7,18 +7,32 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
+import { useClinica } from "@/contexts/ClinicaContext";
+
 const Clientes = () => {
+  const { clinica, loading, isSuperAdmin, isImpersonating } = useClinica();
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ["clientes"],
+    queryKey: ["clientes", clinica?.id, isSuperAdmin, isImpersonating],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from("clientes")
-        .select("id, paciente, telefone, codigo, nascimento, situacao, prestador")
-        .order("paciente", { ascending: true });
+        .select("id, paciente, telefone, codigo, nascimento, situacao, prestador");
+
+      if (!isSuperAdmin || isImpersonating) {
+        if (clinica?.id) {
+          query = query.eq("clinica_id", clinica.id);
+        } else {
+          return [];
+        }
+      }
+
+      const { data, error } = await query.order("paciente", { ascending: true });
 
       if (error) throw error;
       return data ?? [];
     },
+    enabled: !loading,
   });
 
   const [searchTerm, setSearchTerm] = useState("");

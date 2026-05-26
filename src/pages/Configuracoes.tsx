@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { useWhatsappStatus } from "@/hooks/use-whatsapp-status";
+import { useClinica } from "@/contexts/ClinicaContext";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -45,6 +46,7 @@ const SUPER_ADMIN_EMAILS: string[] = ["tiago@dentos.com.br", "admin@dentos.com.b
 
 const Configuracoes = () => {
   const { toast } = useToast();
+  const { clinica } = useClinica();
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const whatsappStatus = useWhatsappStatus();
   const location = useLocation();
@@ -81,6 +83,12 @@ const Configuracoes = () => {
   const [editClinicaLimiteProc, setEditClinicaLimiteProc] = useState(5);
   const [editClinicaDataFimTeste, setEditClinicaDataFimTeste] = useState("");
   const [editClinicaLoading, setEditClinicaLoading] = useState(false);
+
+  // Estados de exclusão de clínica
+  const [deleteClinicaOpen, setDeleteClinicaOpen] = useState(false);
+  const [deleteClinicaTarget, setDeleteClinicaTarget] = useState<ClinicaAdminItem | null>(null);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
+  const [deleteClinicaLoading, setDeleteClinicaLoading] = useState(false);
 
   // Estados de gestão de usuários da clínica selecionada
   const [clinicaUsers, setClinicaUsers] = useState<any[]>([]);
@@ -295,6 +303,49 @@ const Configuracoes = () => {
     }
   };
 
+  const handleDeleteClinica = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deleteClinicaTarget) return;
+
+    if (deleteConfirmInput.trim().toLowerCase() !== deleteClinicaTarget.nome.trim().toLowerCase()) {
+      toast({
+        variant: "destructive",
+        title: "Nome incorreto",
+        description: "O nome digitado não confere com o nome da clínica para confirmação."
+      });
+      return;
+    }
+
+    try {
+      setDeleteClinicaLoading(true);
+      const { error } = await supabase
+        .from("clinicas")
+        .delete()
+        .eq("id", deleteClinicaTarget.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Clínica excluída",
+        description: "A clínica e todos os seus dados associados foram excluídos com sucesso."
+      });
+
+      setDeleteClinicaOpen(false);
+      setDeleteClinicaTarget(null);
+      setDeleteConfirmInput("");
+      clientesQuery.refetch();
+    } catch (error: any) {
+      console.error("Erro ao excluir clínica:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao excluir clínica",
+        description: error.message ?? "Não foi possível excluir a clínica."
+      });
+    } finally {
+      setDeleteClinicaLoading(false);
+    }
+  };
+
   const handleAddClinicaUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClinica) return;
@@ -427,7 +478,7 @@ const Configuracoes = () => {
       setConnectLoading(true);
       setQrImage(null);
 
-      const response = await fetch("https://n8n.vendii.com.br/webhook/qrcode");
+      const response = await fetch(`https://n8n.vendii.com.br/webhook/qrcode?clinica_id=${clinica?.id || ""}`);
       if (!response.ok) {
         throw new Error(`Erro ao buscar QR Code (status ${response.status})`);
       }
@@ -1026,6 +1077,60 @@ const Configuracoes = () => {
           </Dialog>
         )}
 
+        {deleteClinicaOpen && deleteClinicaTarget && (
+          <Dialog open={deleteClinicaOpen} onOpenChange={setDeleteClinicaOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-destructive flex items-center gap-2">
+                  <Trash2 className="h-5 w-5" />
+                  Excluir Clínica
+                </DialogTitle>
+                <DialogDescription>
+                  Esta ação é irreversível e excluirá permanentemente a clínica <strong>{deleteClinicaTarget.nome}</strong>, todos os seus pacientes, procedimentos, configurações de WhatsApp e usuários de acesso.
+                </DialogDescription>
+              </DialogHeader>
+
+              <form onSubmit={handleDeleteClinica} className="space-y-4 pt-2">
+                <div className="space-y-2 text-sm">
+                  <p>Para confirmar, digite o nome completo da clínica abaixo:</p>
+                  <p className="font-mono bg-muted p-2 rounded text-center select-none text-foreground font-semibold">
+                    {deleteClinicaTarget.nome}
+                  </p>
+                  <Input
+                    placeholder="Digite o nome da clínica exatamente como acima"
+                    value={deleteConfirmInput}
+                    onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                    required
+                    className="bg-background"
+                  />
+                </div>
+
+                <div className="flex gap-2 justify-end pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setDeleteClinicaOpen(false);
+                      setDeleteClinicaTarget(null);
+                      setDeleteConfirmInput("");
+                    }}
+                    disabled={deleteClinicaLoading}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="destructive"
+                    disabled={deleteClinicaLoading || deleteConfirmInput.trim().toLowerCase() !== deleteClinicaTarget.nome.trim().toLowerCase()}
+                  >
+                    {deleteClinicaLoading ? "Excluindo..." : "Sim, excluir tudo"}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
+
         <Tabs
           defaultValue={(new URLSearchParams(location.search).get("tab") as "perfil" | "geral" | "logs") ?? "perfil"}
           className="w-full"
@@ -1360,6 +1465,18 @@ const Configuracoes = () => {
                                     >
                                       <Edit className="h-3 w-3" />
                                       Editar
+                                    </Button>
+                                    <Button
+                                      variant="outline"
+                                      className="h-7 px-2.5 text-xs flex gap-1 items-center justify-center border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                      onClick={() => {
+                                        setDeleteClinicaTarget(cliente);
+                                        setDeleteConfirmInput("");
+                                        setDeleteClinicaOpen(true);
+                                      }}
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                      Excluir
                                     </Button>
                                   </div>
                                 </TableCell>
