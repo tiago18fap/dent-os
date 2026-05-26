@@ -92,7 +92,9 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
 
       if (!clinicaError && clinicaData) {
         const c = clinicaData as Clinica;
-        if (c.status_pagamento === "teste_gratis" && c.data_fim_teste) {
+        if (c.plano === "ilimitado_premium") {
+          c.status_pagamento = "ativo";
+        } else if (c.status_pagamento === "teste_gratis" && c.data_fim_teste) {
           const fim = new Date(c.data_fim_teste).getTime();
           if (Date.now() > fim) {
             c.status_pagamento = "inadimplente";

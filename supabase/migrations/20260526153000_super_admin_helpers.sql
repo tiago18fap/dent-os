@@ -1,5 +1,12 @@
--- 1. Habilitar extensões necessárias
+-- 1. Habilitar extensões necessárias e garantir colunas da tabela clinicas
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+ALTER TABLE public.clinicas ADD COLUMN IF NOT EXISTS plano TEXT DEFAULT 'bronze';
+ALTER TABLE public.clinicas ADD COLUMN IF NOT EXISTS status_pagamento TEXT DEFAULT 'teste_gratis';
+ALTER TABLE public.clinicas ADD COLUMN IF NOT EXISTS limite_mensagens INTEGER DEFAULT 100;
+ALTER TABLE public.clinicas ADD COLUMN IF NOT EXISTS limite_procedimentos INTEGER DEFAULT 5;
+ALTER TABLE public.clinicas ADD COLUMN IF NOT EXISTS data_fim_teste TIMESTAMP WITH TIME ZONE DEFAULT (now() + interval '7 days');
+ALTER TABLE public.clinicas ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
 
 -- 2. Atualizar o trigger de novo usuário para suportar clinica_id pré-definido e role customizada
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -196,7 +203,7 @@ BEGIN
     _status_pagamento,
     _limite_mensagens,
     _limite_procedimentos,
-    CASE WHEN _status_pagamento = 'teste_gratis' THEN now() + interval '7 days' ELSE NULL END
+    CASE WHEN _plano = 'ilimitado_premium' THEN NULL WHEN _status_pagamento = 'teste_gratis' THEN now() + interval '7 days' ELSE NULL END
   )
   RETURNING id INTO new_clinica_id;
 

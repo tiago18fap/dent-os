@@ -62,7 +62,7 @@ const Configuracoes = () => {
   // Estados de criação de clínica
   const [createClinicaOpen, setCreateClinicaOpen] = useState(false);
   const [newClinicaNome, setNewClinicaNome] = useState("");
-  const [newClinicaPlano, setNewClinicaPlano] = useState<"bronze" | "prata" | "ouro">("bronze");
+  const [newClinicaPlano, setNewClinicaPlano] = useState<"bronze" | "prata" | "ouro" | "ilimitado_premium">("bronze");
   const [newClinicaStatus, setNewClinicaStatus] = useState<"ativo" | "inadimplente" | "teste_gratis" | "cancelado">("teste_gratis");
   const [newClinicaLimiteMsg, setNewClinicaLimiteMsg] = useState(100);
   const [newClinicaLimiteProc, setNewClinicaLimiteProc] = useState(5);
@@ -270,7 +270,7 @@ const Configuracoes = () => {
           status_pagamento: editClinicaStatus,
           limite_mensagens: Number(editClinicaLimiteMsg),
           limite_procedimentos: Number(editClinicaLimiteProc),
-          data_fim_teste: editClinicaDataFimTeste ? new Date(editClinicaDataFimTeste).toISOString() : null
+          data_fim_teste: editClinicaPlano === "ilimitado_premium" ? null : (editClinicaDataFimTeste ? new Date(editClinicaDataFimTeste).toISOString() : null)
         })
         .eq("id", selectedClinica.id);
 
@@ -650,6 +650,7 @@ const Configuracoes = () => {
                       <option value="bronze">Bronze</option>
                       <option value="prata">Prata</option>
                       <option value="ouro">Ouro</option>
+                      <option value="ilimitado_premium">Ilimitado Premium</option>
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -779,6 +780,7 @@ const Configuracoes = () => {
                           <option value="bronze">Bronze</option>
                           <option value="prata">Prata</option>
                           <option value="ouro">Ouro</option>
+                          <option value="ilimitado_premium">Ilimitado Premium</option>
                         </select>
                       </div>
                       <div className="space-y-2">
@@ -1301,7 +1303,12 @@ const Configuracoes = () => {
                                     {cliente.status_pagamento.replace('_', ' ').toUpperCase()}
                                   </Badge>
                                 </TableCell>
-                                <TableCell className="text-xs uppercase font-medium">{cliente.plano}</TableCell>
+                                 <TableCell className="text-xs font-medium">
+                                   {cliente.plano === 'ilimitado_premium' ? 'Ilimitado Premium' : 
+                                    (cliente.plano === 'bronze' ? 'Bronze' : 
+                                     (cliente.plano === 'prata' ? 'Prata' : 
+                                      (cliente.plano === 'ouro' ? 'Ouro' : cliente.plano.toUpperCase())))}
+                                 </TableCell>
                                 <TableCell className="text-xs text-muted-foreground">
                                   {cliente.data_fim_teste ? (
                                     <>
