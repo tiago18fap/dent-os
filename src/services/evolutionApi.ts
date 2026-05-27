@@ -7,7 +7,7 @@
  */
 
 const EVOLUTION_API_URL = "https://evolution-evolution-api.qfjowr.easypanel.host";
-const EVOLUTION_API_KEY = "0FD55DB5F85B-4A0A-938E-2FFC0B35EA74";
+const EVOLUTION_API_KEY = "429683C4C977415CAAFCCE10F7D57E11";
 
 /**
  * Gera um nome de instância a partir do clinica_id.
