@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 interface Clinica {
   id: string;
   nome: string;
-  plano: "bronze" | "prata" | "ouro";
+  plano: "bronze" | "prata" | "ouro" | "ilimitado_premium";
   status_pagamento: "ativo" | "inadimplente" | "teste_gratis" | "cancelado";
   limite_mensagens: number;
   limite_procedimentos: number;

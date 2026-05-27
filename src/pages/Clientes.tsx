@@ -113,7 +113,7 @@ const Clientes = () => {
                 Ocorreu um erro ao carregar os clientes. Tente novamente em instantes.
               </p>
             )}
-            {!isLoading && !error && (!data || data.length === 0) && (
+            {!isLoading && !error && (!data || data.length === 0 || filteredData.length === 0) && (
               <p className="text-sm text-muted-foreground">Nenhum cliente encontrado.</p>
             )}
             {!isLoading && !error && data && data.length > 0 && (
@@ -138,7 +138,7 @@ const Clientes = () => {
                           <TableCell>{cliente.codigo ?? "-"}</TableCell>
                           <TableCell>
                             {cliente.nascimento
-                              ? new Date(cliente.nascimento).toLocaleDateString("pt-BR")
+                              ? new Date(cliente.nascimento + "T00:00:00").toLocaleDateString("pt-BR")
                               : "-"}
                           </TableCell>
                           <TableCell>{cliente.situacao ?? "-"}</TableCell>

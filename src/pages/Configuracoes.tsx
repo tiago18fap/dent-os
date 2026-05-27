@@ -6,9 +6,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { useWhatsappStatus } from "@/hooks/use-whatsapp-status";
@@ -16,7 +16,8 @@ import { useClinica } from "@/contexts/ClinicaContext";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye } from "lucide-react";
+import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, Loader2, Wifi, WifiOff } from "lucide-react";
+import { createInstance, connectInstance, getConnectionState, disconnectAndDelete, fetchInstanceInfo } from "@/services/evolutionApi";
 
 interface ImportLogItem {
   id: string;
@@ -46,8 +47,7 @@ const SUPER_ADMIN_EMAILS: string[] = ["tiago@dentos.com.br", "admin@dentos.com.b
 
 const Configuracoes = () => {
   const { toast } = useToast();
-  const { clinica } = useClinica();
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const { clinica, isSuperAdmin } = useClinica();
   const whatsappStatus = useWhatsappStatus();
   const location = useLocation();
   const navigate = useNavigate();
@@ -55,6 +55,10 @@ const Configuracoes = () => {
   const [connectLoading, setConnectLoading] = useState(false);
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [loadingLogout, setLoadingLogout] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [pollingConnection, setPollingConnection] = useState(false);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const queryClient = useQueryClient();
 
   // Estados de dados do usuário ativo
   const [currentUserEmail, setCurrentUserEmail] = useState("");
@@ -132,10 +136,7 @@ const Configuracoes = () => {
         const email = data.user?.email ?? "";
         setCurrentUserEmail(email);
 
-        const lowerEmail = email.toLowerCase().trim();
-        if (lowerEmail && SUPER_ADMIN_EMAILS.map((e) => e.toLowerCase().trim()).includes(lowerEmail)) {
-          setIsSuperAdmin(true);
-        }
+
 
         if (data.user) {
           const { data: perfilData } = await supabase
@@ -146,9 +147,7 @@ const Configuracoes = () => {
 
           if (perfilData) {
             setCurrentUserName(perfilData.full_name ?? "");
-            if (perfilData.role === "super_admin" || perfilData.role === "admin_master") {
-              setIsSuperAdmin(true);
-            }
+
 
             if (perfilData.clinica_id) {
               const { data: clinicaData } = await supabase
@@ -165,7 +164,7 @@ const Configuracoes = () => {
         }
       })
       .catch(() => {
-        setIsSuperAdmin(false);
+        // auth error handled silently
       });
   }, []);
 
@@ -473,26 +472,107 @@ const Configuracoes = () => {
     }
   };
 
+  // Limpar polling ao desmontar ou fechar dialog
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    setPollingConnection(false);
+  }, []);
+
+  // Iniciar polling de estado da conexão
+  const startPolling = useCallback(() => {
+    if (!clinica?.id) return;
+    setPollingConnection(true);
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const { state } = await getConnectionState(clinica.id);
+        
+        if (state === "open") {
+          stopPolling();
+          setConnectDialogOpen(false);
+          setQrImage(null);
+
+          // Buscar número conectado
+          const { number } = await fetchInstanceInfo(clinica.id);
+
+          // Atualizar whatsapp_config no Supabase
+          await (supabase as any)
+            .from("whatsapp_config")
+            .upsert({
+              clinica_id: clinica.id,
+              conectado: true,
+              numero: number ?? "Conectado",
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "clinica_id" });
+
+          // Refetch status
+          queryClient.invalidateQueries({ queryKey: ["whatsapp_status"] });
+
+          toast({
+            title: "WhatsApp conectado!",
+            description: number ? `Número ${number} vinculado com sucesso.` : "Conexão realizada com sucesso.",
+          });
+        }
+      } catch (err) {
+        console.error("[Polling] Erro:", err);
+      }
+    }, 5000); // Verificar a cada 5 segundos
+  }, [clinica?.id, stopPolling, toast, queryClient]);
+
+  // Limpar polling ao desmontar componente ou fechar dialog
+  useEffect(() => {
+    if (!connectDialogOpen) {
+      stopPolling();
+    }
+    return () => stopPolling();
+  }, [connectDialogOpen, stopPolling]);
+
   const handleConnectClick = async () => {
+    if (!clinica?.id) {
+      toast({ variant: "destructive", title: "Erro", description: "Nenhuma clínica selecionada." });
+      return;
+    }
+
     try {
       setConnectLoading(true);
       setQrImage(null);
 
-      const response = await fetch(`https://n8n.vendii.com.br/webhook/qrcode?clinica_id=${clinica?.id || ""}`);
-      if (!response.ok) {
-        throw new Error(`Erro ao buscar QR Code (status ${response.status})`);
+      // 1. Criar instância (ou reconectar se já existe)
+      const result = await createInstance(clinica.id);
+
+      if (!result.qrcode) {
+        // Se não retornou QR, pode já estar conectado — verificar
+        const { state } = await getConnectionState(clinica.id);
+        if (state === "open") {
+          toast({ title: "WhatsApp já está conectado!", description: "A instância já está ativa." });
+          return;
+        }
+        // Tentar reconectar para pegar novo QR
+        const reconnect = await connectInstance(clinica.id);
+        if (!reconnect.qrcode) {
+          // Último recurso: apagar e recriar
+          await disconnectAndDelete(clinica.id);
+          const fresh = await createInstance(clinica.id);
+          if (!fresh.qrcode) {
+            throw new Error("Não foi possível gerar o QR Code. Tente novamente.");
+          }
+          const src = fresh.qrcode.startsWith("data:image") ? fresh.qrcode : `data:image/png;base64,${fresh.qrcode}`;
+          setQrImage(src);
+        } else {
+          const src = reconnect.qrcode.startsWith("data:image") ? reconnect.qrcode : `data:image/png;base64,${reconnect.qrcode}`;
+          setQrImage(src);
+        }
+      } else {
+        const src = result.qrcode.startsWith("data:image") ? result.qrcode : `data:image/png;base64,${result.qrcode}`;
+        setQrImage(src);
       }
 
-      const data = await response.json();
-      const base64: string | undefined = data?.base64;
-
-      if (!base64) {
-        throw new Error("Resposta do webhook não contém o campo 'base64'.");
-      }
-
-      const imageSrc = base64.startsWith("data:image") ? base64 : `data:image/png;base64,${base64}`;
-      setQrImage(imageSrc);
       setConnectDialogOpen(true);
+      // Iniciar polling para detectar quando escanear
+      startPolling();
     } catch (error: any) {
       console.error("Erro ao conectar WhatsApp:", error);
       toast({
@@ -502,6 +582,44 @@ const Configuracoes = () => {
       });
     } finally {
       setConnectLoading(false);
+    }
+  };
+
+  const handleDisconnectWhatsApp = async () => {
+    if (!clinica?.id) return;
+
+    try {
+      setDisconnecting(true);
+
+      // Logout + Delete na Evolution API
+      await disconnectAndDelete(clinica.id);
+
+      // Atualizar whatsapp_config no Supabase
+      await (supabase as any)
+        .from("whatsapp_config")
+        .upsert({
+          clinica_id: clinica.id,
+          conectado: false,
+          numero: null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "clinica_id" });
+
+      // Refetch status
+      queryClient.invalidateQueries({ queryKey: ["whatsapp_status"] });
+
+      toast({
+        title: "WhatsApp desconectado",
+        description: "A instância foi removida. Você pode reconectar a qualquer momento.",
+      });
+    } catch (error: any) {
+      console.error("Erro ao desconectar:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao desconectar",
+        description: error?.message ?? "Tente novamente.",
+      });
+    } finally {
+      setDisconnecting(false);
     }
   };
 
@@ -627,7 +745,7 @@ const Configuracoes = () => {
           </Button>
         </div>
 
-        <Dialog open={connectDialogOpen} onOpenChange={setConnectDialogOpen}>
+        <Dialog open={connectDialogOpen} onOpenChange={(open) => { setConnectDialogOpen(open); if (!open) stopPolling(); }}>
           <DialogContent className="max-w-sm">
             <DialogHeader>
               <DialogTitle>Escaneie o QR Code</DialogTitle>
@@ -644,26 +762,35 @@ const Configuracoes = () => {
                     className="h-64 w-64 rounded-md bg-white p-2 shadow"
                   />
                 </div>
+                {pollingConnection && (
+                  <div className="flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Aguardando leitura do QR Code...</span>
+                  </div>
+                )}
                 <div className="space-y-2 rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
                   <div className="flex items-start gap-2">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" />
-                    <p>Verifique no seu celular se a conexão foi concluída com sucesso.</p>
+                    <p>Abra o WhatsApp no celular → Menu ⋮ → Dispositivos vinculados → Vincular dispositivo.</p>
                   </div>
                   <div className="flex items-start gap-2">
                     <Clock className="mt-0.5 h-4 w-4 text-primary" />
-                    <p>O tempo estimado para conexão é de até 10 segundos.</p>
+                    <p>Após escanear, a conexão será detectada automaticamente.</p>
                   </div>
                   <div className="flex items-start gap-2">
                     <RefreshCcw className="mt-0.5 h-4 w-4 text-primary" />
                     <p>
-                      Se não conectar, feche este popup e clique em
+                      Se o QR expirar, feche e clique em
                       <span className="ml-1 font-medium text-foreground">"Conectar Agora"</span> novamente.
                     </p>
                   </div>
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">Nenhum QR Code carregado ainda.</p>
+              <div className="flex flex-col items-center gap-3 py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Gerando QR Code...</p>
+              </div>
             )}
           </DialogContent>
         </Dialog>
@@ -1187,23 +1314,37 @@ const Configuracoes = () => {
                 <div>
                   <CardTitle className="text-sm">Status da integração WhatsApp</CardTitle>
                 </div>
-                {!(whatsappStatus.data?.conectado ?? false) && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={connectLoading}
-                    onClick={handleConnectClick}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--login-primary))] px-3 py-1 text-xs font-medium text-primary-foreground shadow-sm shadow-[hsl(var(--login-primary))]/60 transition hover:shadow-md disabled:opacity-70"
-                  >
-                    <QrCode className="h-3.5 w-3.5" />
-                    <span>{connectLoading ? "Gerando QR Code..." : "Conectar Agora"}</span>
-                  </Button>
-                )}
+                <div className="flex items-center gap-2">
+                  {(whatsappStatus.data?.conectado ?? false) && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={disconnecting}
+                      onClick={handleDisconnectWhatsApp}
+                      className="inline-flex items-center gap-1.5 rounded-full border-destructive/50 px-3 py-1 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-70"
+                    >
+                      {disconnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WifiOff className="h-3.5 w-3.5" />}
+                      <span>{disconnecting ? "Desconectando..." : "Desconectar"}</span>
+                    </Button>
+                  )}
+                  {!(whatsappStatus.data?.conectado ?? false) && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={connectLoading}
+                      onClick={handleConnectClick}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--login-primary))] px-3 py-1 text-xs font-medium text-primary-foreground shadow-sm shadow-[hsl(var(--login-primary))]/60 transition hover:shadow-md disabled:opacity-70"
+                    >
+                      {connectLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <QrCode className="h-3.5 w-3.5" />}
+                      <span>{connectLoading ? "Gerando QR Code..." : "Conectar Agora"}</span>
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <p className="text-xs text-muted-foreground">
-                  Veja abaixo se o WhatsApp da clínica está conectado. Este status é o mesmo exibido no topo do
-                  dashboard.
+                  Veja abaixo se o WhatsApp da clínica está conectado. Ao desconectar, a instância é removida e um novo QR Code será gerado na próxima conexão.
                 </p>
                 <div className="overflow-hidden rounded-md border bg-card">
                   <Table>
@@ -1234,7 +1375,7 @@ const Configuracoes = () => {
                       {!whatsappStatus.isLoading && !whatsappStatus.isError && !whatsappStatus.data && (
                         <TableRow>
                           <TableCell colSpan={3} className="text-center text-xs text-muted-foreground">
-                            Nenhum status configurado ainda.
+                            Nenhum WhatsApp conectado. Clique em "Conectar Agora" para vincular.
                           </TableCell>
                         </TableRow>
                       )}
@@ -1247,9 +1388,13 @@ const Configuracoes = () => {
                           <TableCell className="text-xs">
                             <Badge
                               variant={whatsappStatus.data.conectado ? "default" : "destructive"}
-                              className="text-[10px] font-normal"
+                              className={`text-[10px] font-normal ${whatsappStatus.data.conectado ? 'bg-green-500 hover:bg-green-600' : ''}`}
                             >
-                              {whatsappStatus.data.conectado ? "Conectado" : "Desconectado"}
+                              {whatsappStatus.data.conectado ? (
+                                <><Wifi className="mr-1 h-3 w-3" /> Conectado</>
+                              ) : (
+                                <><WifiOff className="mr-1 h-3 w-3" /> Desconectado</>
+                              )}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">

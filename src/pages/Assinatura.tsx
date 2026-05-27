@@ -192,7 +192,7 @@ const Assinatura = () => {
                             {c.nome}
                             <span className="block text-[9px] text-muted-foreground font-mono">{c.id}</span>
                           </TableCell>
-                          <TableCell className="text-xs capitalize">{c.plano.replace('_', ' ')}</TableCell>
+                          <TableCell className="text-xs capitalize">{c.plano.replaceAll('_', ' ')}</TableCell>
                           <TableCell>
                             <Badge 
                               variant={c.status_pagamento === 'ativo' ? 'default' : c.status_pagamento === 'teste_gratis' ? 'secondary' : 'destructive'}

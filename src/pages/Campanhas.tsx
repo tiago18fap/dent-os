@@ -114,6 +114,7 @@ export function Campanhas() {
 
   // Disparo em massa
   const [mensagemMassa, setMensagemMassa] = useState("");
+  const [enviandoMassa, setEnviandoMassa] = useState(false);
   const [historicoDisparosMassa, setHistoricoDisparosMassa] = useState<DisparoMassaHistoricoItem[]>([]);
   const [enviarMassaAgora, setEnviarMassaAgora] = useState(true);
   const [dataMassa, setDataMassa] = useState("");
@@ -434,6 +435,11 @@ export function Campanhas() {
         .single();
         
       if (erroCarteira && erroCarteira.code !== 'PGRST116') throw new Error("Erro ao ler carteira");
+
+      if (!carteira) {
+        toast({ variant: 'destructive', title: 'Carteira não encontrada', description: 'Não foi encontrada uma carteira de envios para esta clínica.' });
+        return false;
+      }
       
       const saldoAtual = carteira?.saldo ?? 0;
       if (saldoAtual < quantidade) {
@@ -499,7 +505,10 @@ export function Campanhas() {
   };
 
   const handleEnviarMassa = async () => {
+    if (enviandoMassa) return;
     if (!requireMensagem(mensagemMassa)) return;
+    setEnviandoMassa(true);
+    try {
 
     const quantidadeDestinatarios = pacientesSelecionadosIds.length;
 
@@ -556,6 +565,9 @@ export function Campanhas() {
         title: "Disparo agendado com sucesso!",
         description: `${quantidadeDestinatarios.toLocaleString("pt-BR")} mensagens foram adicionadas à Fila de Envios e o saldo foi deduzido da sua Carteira.`,
       });
+    }
+    } finally {
+      setEnviandoMassa(false);
     }
   };
 
@@ -643,10 +655,16 @@ export function Campanhas() {
  
   const removerCampanhaGrupo = async (groupId: string) => {
     try {
-      const { error } = await (supabase as any)
+      let query = (supabase as any)
         .from(TABELA_CAMPANHAS_PROCEDIMENTO)
         .delete()
         .eq("group_id", groupId);
+
+      if (clinica?.id) {
+        query = query.eq("clinica_id", clinica.id);
+      }
+
+      const { error } = await query;
  
       if (error) {
         console.error("Erro ao remover resumo de campanha por procedimento", error);
@@ -676,10 +694,16 @@ export function Campanhas() {
 
     // Remove configuração salva para este procedimento, se existir
     try {
-      const { error } = await (supabase as any)
+      let query = (supabase as any)
         .from("campanhas_config")
         .delete()
         .eq("chave", `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${id}`);
+
+      if (clinica?.id) {
+        query = query.eq("clinica_id", clinica.id);
+      }
+
+      const { error } = await query;
 
       if (error) {
         console.error("Erro ao remover configuração de campanha do procedimento", error);
@@ -1147,8 +1171,8 @@ export function Campanhas() {
                   <p className="text-[11px] text-muted-foreground">{mensagemMassa.length} caracteres</p>
                 </div>
 
-                <Button type="button" size="sm" onClick={handleEnviarMassa} className="w-full">
-                  Enviar
+                <Button type="button" size="sm" onClick={handleEnviarMassa} className="w-full" disabled={enviandoMassa}>
+                  {enviandoMassa ? "Enviando…" : "Enviar"}
                 </Button>
 
                 {historicoDisparosMassa.length > 0 && (
@@ -1576,26 +1600,24 @@ export function Campanhas() {
                                   type="number"
                                   min={1}
                                   value={grupo.config.diasEntreEnvios}
-                                 onChange={(event) => {
-                                     const novoValor = Number(event.target.value) || 0;
-                                     const configAtualizada = {
-                                       ...grupo.config,
-                                       diasEntreEnvios: novoValor,
-                                     };
-
-                                     grupo.procedimentoIds.forEach((idProcedimento) => {
-                                       updateProcedimento(idProcedimento, {
-                                         diasEntreEnvios: novoValor,
-                                       });
-                                       void salvarCampanhaConfig(
-                                         `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${idProcedimento}`,
-                                         configAtualizada.mensagem,
-                                         configAtualizada.ativo,
-                                       );
-                                     });
-
-                                     void sincronizarCampanhaGrupo(chaveGrupo, grupo.procedimentoIds, configAtualizada);
-                                   }}
+                                  onChange={(event) => {
+                                    const novoValor = Number(event.target.value) || 0;
+                                    grupo.procedimentoIds.forEach((idProcedimento) => {
+                                      updateProcedimento(idProcedimento, {
+                                        diasEntreEnvios: novoValor,
+                                      });
+                                    });
+                                  }}
+                                  onBlur={() => {
+                                    void sincronizarCampanhaGrupo(chaveGrupo, grupo.procedimentoIds, grupo.config);
+                                    grupo.procedimentoIds.forEach((idProcedimento) => {
+                                      void salvarCampanhaConfig(
+                                        `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${idProcedimento}`,
+                                        grupo.config.mensagem,
+                                        grupo.config.ativo,
+                                      );
+                                    });
+                                  }}
                                 />
                                 <span className="text-xs text-muted-foreground">dias</span>
                               </div>
@@ -1611,23 +1633,21 @@ export function Campanhas() {
                                 value={grupo.config.mensagem}
                                 onChange={(event) => {
                                   const novaMensagem = event.target.value;
-                                  const configAtualizada = {
-                                    ...grupo.config,
-                                    mensagem: novaMensagem,
-                                  };
-
                                   grupo.procedimentoIds.forEach((idProcedimento) => {
                                     updateProcedimento(idProcedimento, {
                                       mensagem: novaMensagem,
                                     });
+                                  });
+                                }}
+                                onBlur={() => {
+                                  grupo.procedimentoIds.forEach((idProcedimento) => {
                                     void salvarCampanhaConfig(
                                       `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${idProcedimento}`,
-                                      novaMensagem,
-                                      configAtualizada.ativo,
+                                      grupo.config.mensagem,
+                                      grupo.config.ativo,
                                     );
                                   });
-
-                                  void sincronizarCampanhaGrupo(chaveGrupo, grupo.procedimentoIds, configAtualizada);
+                                  void sincronizarCampanhaGrupo(chaveGrupo, grupo.procedimentoIds, grupo.config);
                                 }}
                               />
                               <p className="text-[11px] text-muted-foreground">
@@ -1672,7 +1692,10 @@ export function Campanhas() {
                         </span>
                         <Switch
                           checked={aniversarioDiaAtivo}
-                          onCheckedChange={setAniversarioDiaAtivo}
+                          onCheckedChange={(checked) => {
+                            setAniversarioDiaAtivo(checked);
+                            void salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_DIA, mensagemAniversarioDia, checked);
+                          }}
                           aria-label="Ativar mensagem no dia do aniversário"
                         />
                       </div>
@@ -1684,6 +1707,7 @@ export function Campanhas() {
                         rows={3}
                         value={mensagemAniversarioDia}
                         onChange={(event) => setMensagemAniversarioDia(event.target.value)}
+                        onBlur={() => void salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_DIA, mensagemAniversarioDia, aniversarioDiaAtivo)}
                       />
                       <p className="text-[11px] text-muted-foreground">{"Use {{nome}} na mensagem para inserir automaticamente o nome do paciente."}</p>
                     </div>
@@ -1704,7 +1728,10 @@ export function Campanhas() {
                         </span>
                         <Switch
                           checked={aniversarioMesAtivo}
-                          onCheckedChange={setAniversarioMesAtivo}
+                          onCheckedChange={(checked) => {
+                            setAniversarioMesAtivo(checked);
+                            void salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_MES, mensagemAniversarioMes, checked);
+                          }}
                           aria-label="Ativar mensagem no mês de aniversário"
                         />
                       </div>
@@ -1716,6 +1743,7 @@ export function Campanhas() {
                         rows={3}
                         value={mensagemAniversarioMes}
                         onChange={(event) => setMensagemAniversarioMes(event.target.value)}
+                        onBlur={() => void salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_MES, mensagemAniversarioMes, aniversarioMesAtivo)}
                       />
                       <p className="text-[11px] text-muted-foreground">{"Use {{nome}} na mensagem para inserir automaticamente o nome do paciente."}</p>
                     </div>

@@ -367,6 +367,9 @@ const Importacoes = () => {
           <h2 className="text-sm font-semibold text-foreground">Histórico de importações</h2>
         </div>
         <div className="overflow-hidden rounded-md border bg-card">
+          {loadingHistorico && <p className="text-sm text-muted-foreground p-4">Carregando histórico…</p>}
+          {historicoError && <p className="text-sm text-destructive p-4">Erro ao carregar histórico.</p>}
+          {!loadingHistorico && !historicoError && historico && historico.length > 0 && (
           <Table>
             <TableHeader>
               <TableRow>
@@ -377,7 +380,7 @@ const Importacoes = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {historico && historico.map((item) => (
+              {historico.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">{item.arquivo}</TableCell>
                     <TableCell>{item.tipo}</TableCell>
@@ -391,6 +394,8 @@ const Importacoes = () => {
               ))}
             </TableBody>
           </Table>
+          )}
+          {!loadingHistorico && !historicoError && (!historico || historico.length === 0) && <p className="text-sm text-muted-foreground p-4">Nenhuma importação registrada.</p>}
         </div>
       </section>
     </AppLayout>

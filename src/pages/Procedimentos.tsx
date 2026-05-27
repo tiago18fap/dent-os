@@ -66,10 +66,7 @@ const Procedimentos = () => {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [professionalFilter, setProfessionalFilter] = useState("");
-  const [date, setDate] = useState<DateRange | undefined>({
-    from: undefined,
-    to: new Date(),
-  });
+  const [date, setDate] = useState<DateRange | undefined>(undefined);
   
   const [page, setPage] = useState(1);
   const [prestadorOpen, setPrestadorOpen] = useState(false);
@@ -104,17 +101,24 @@ const Procedimentos = () => {
            try {
              const procDate = parse(proc.data_finalizacao, "dd/MM/yyyy", new Date());
              const procTime = procDate.getTime();
-             
              if (date.from && date.to) {
-                // Adjust toTime to include the full end day
-                const fromTime = date.from.setHours(0,0,0,0);
-                const toTime = date.to.setHours(23,59,59,999);
-                matchDate = procTime >= fromTime && procTime <= toTime;
-             } else if (date.from) {
-                matchDate = procTime >= date.from.setHours(0,0,0,0);
-             } else if (date.to) {
-                matchDate = procTime <= date.to.setHours(23,59,59,999);
-             }
+                 // Adjust toTime to include the full end day
+                 const fromCopy = new Date(date.from);
+                 fromCopy.setHours(0,0,0,0);
+                 const toCopy = new Date(date.to);
+                 toCopy.setHours(23,59,59,999);
+                 const fromTime = fromCopy.getTime();
+                 const toTime = toCopy.getTime();
+                 matchDate = procTime >= fromTime && procTime <= toTime;
+              } else if (date.from) {
+                 const fromCopy = new Date(date.from);
+                 fromCopy.setHours(0,0,0,0);
+                 matchDate = procTime >= fromCopy.getTime();
+              } else if (date.to) {
+                 const toCopy = new Date(date.to);
+                 toCopy.setHours(23,59,59,999);
+                 matchDate = procTime <= toCopy.getTime();
+              }
            } catch(e) {
              matchDate = false;
            }
@@ -288,7 +292,7 @@ const Procedimentos = () => {
                 Ocorreu um erro ao carregar os procedimentos. Detalhes: {(error as Error).message}
               </p>
             )}
-            {!isLoading && !error && (!data || data.length === 0) && (
+            {!isLoading && !error && (!data || data.length === 0 || filteredData.length === 0) && (
               <p className="text-sm text-muted-foreground">Nenhum procedimento encontrado.</p>
             )}
             {!isLoading && !error && filteredData && filteredData.length > 0 && (
