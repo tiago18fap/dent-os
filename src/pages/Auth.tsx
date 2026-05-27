@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { User, Session } from "@supabase/supabase-js";
+import { User } from "@supabase/supabase-js";
 import logoFull from "@/assets/logo-dentos.png";
 import { z } from "zod";
 
@@ -20,7 +20,6 @@ const Auth = () => {
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
 
-  const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
 
   const [email, setEmail] = useState("");
@@ -38,14 +37,12 @@ const Auth = () => {
     // Setup auth state listener first
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session);
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
 
     // Then check existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
       setUser(session?.user ?? null);
     });
 
@@ -95,13 +92,19 @@ const Auth = () => {
         });
         navigate("/app");
       }
-    } catch (err) {
+    } catch (err: any) {
       if (err instanceof z.ZodError) {
         toast({
           variant: "destructive",
           title: "Email inválido",
           description:
             err.errors[0]?.message ?? "Verifique o endereço de email informado.",
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Erro ao entrar",
+          description: err?.message ?? "Ocorreu um erro inesperado. Tente novamente.",
         });
       }
     } finally {
@@ -182,12 +185,18 @@ const Auth = () => {
             "Verifique seu email para confirmar o cadastro. Se não receber, verifique sua caixa de spam.",
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       if (err instanceof z.ZodError) {
         toast({
           variant: "destructive",
           title: "Email inválido",
           description: err.errors[0]?.message ?? "Verifique o endereço de email informado.",
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Erro ao criar conta",
+          description: err?.message ?? "Ocorreu um erro inesperado. Tente novamente.",
         });
       }
     } finally {

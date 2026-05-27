@@ -1,4 +1,4 @@
-import { LayoutDashboard, Upload, Megaphone, Gift, Settings, Users, FileText, LogOut, MessageCircle, Wallet, CreditCard } from "lucide-react";
+import { LayoutDashboard, Upload, Megaphone, Settings, Users, FileText, MessageCircle, Wallet, CreditCard } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
@@ -21,7 +21,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
-import logoDentalerta from "@/assets/logo-dentos.png";
+
 import logoDentalertaFull from "@/assets/logo-dentos.png";
 import type { ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -77,6 +77,8 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
     "/dados/clientes": "Pacientes",
     "/dados/procedimentos": "Procedimentos",
     "/configuracoes": "Configurações",
+    "/fila-envios": "Fila de Envios",
+    "/assinatura": "Meu Plano",
   };
 
   const currentTitle = titleMap[location.pathname] ?? "DentAlerta";
@@ -88,7 +90,7 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
         className="bg-sidebar-background text-sidebar-foreground border-r border-sidebar-border shadow-lg shadow-primary/25"
       >
         <SidebarHeader className="flex items-center justify-between gap-2 border-b border-sidebar-border bg-sidebar-background/90 px-3 py-3">
-          <NavLink to="/" className="flex items-center gap-2 px-1" aria-label="Ir para a home">
+          <NavLink to="/app" className="flex items-center gap-2 px-1" aria-label="Ir para a home">
             <img
               src={logoDentalertaFull}
               alt="Logo completo DentOS"
