@@ -269,8 +269,8 @@ const Auth = () => {
              </Button>
           </form>
 
-          <div className="mt-4 text-center text-sm text-muted-foreground">
-            {isSignUp ? (
+          {isSignUp && (
+            <div className="mt-4 text-center text-sm text-muted-foreground">
               <p>
                 Já tem uma conta?{" "}
                 <button
@@ -282,20 +282,8 @@ const Auth = () => {
                   Fazer login
                 </button>
               </p>
-            ) : (
-              <p>
-                Não tem uma conta?{" "}
-                <button
-                  type="button"
-                  onClick={() => setIsSignUp(true)}
-                  className="font-medium text-primary underline-offset-4 hover:underline"
-                  disabled={loading}
-                >
-                  Criar conta
-                </button>
-              </p>
-            )}
-          </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
