@@ -1481,7 +1481,7 @@ const Configuracoes = () => {
         >
           <TabsList className="flex w-full overflow-x-auto">
             <TabsTrigger value="perfil">Dados de perfil</TabsTrigger>
-            <TabsTrigger value="geral">Geral</TabsTrigger>
+            <TabsTrigger value="geral">WhatsApp</TabsTrigger>
             <TabsTrigger value="clientes" disabled={!isSuperAdmin}>
               Gerenciar Clientes
             </TabsTrigger>
@@ -1735,51 +1735,7 @@ const Configuracoes = () => {
               </CardContent>
             </Card>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Preferências de comunicação</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-sm">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <Label htmlFor="whatsapp-alertas">Alertas por WhatsApp</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Ative ou pause o envio de lembretes automáticos (controle apenas visual por enquanto).
-                      </p>
-                    </div>
-                    <Switch id="whatsapp-alertas" defaultChecked />
-                  </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <Label htmlFor="email-relatorios">Resumo semanal por e-mail</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Receba um resumo das importações e campanhas da semana.
-                      </p>
-                    </div>
-                    <Switch id="email-relatorios" />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Conta e segurança</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-sm text-muted-foreground">
-                  <div className="space-y-3">
-                    <p>
-                      Nesta área você poderá gerenciar usuários, permissões e dados da clínica.
-                    </p>
-                    <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground/80">
-                      <li>Atualização de dados de cadastro.</li>
-                      <li>Configuração de integrações de mensageria.</li>
-                      <li>Gerenciamento de equipe e controle de acesso.</li>
-                    </ul>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <span />
           </TabsContent>
 
           <TabsContent value="clientes" className="mt-4">
