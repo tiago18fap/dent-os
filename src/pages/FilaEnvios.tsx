@@ -1,4 +1,5 @@
 import { AppLayout } from "@/layouts/AppLayout";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -61,6 +62,7 @@ function getDateRange(periodo: PeriodoFiltro, customRange?: DateRange): { start:
 
 const FilaEnvios = () => {
   const { clinica, loading, isSuperAdmin, isImpersonating } = useClinica();
+  const isMobile = useIsMobile();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -281,14 +283,14 @@ const FilaEnvios = () => {
         </div>
 
         {/* Cards de resumo */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:gap-4 md:grid-cols-4">
           <Card className="bg-gradient-to-br from-primary/10 via-background to-background">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Saldo da Carteira</CardTitle>
               <Wallet className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-primary">
+              <div className="text-2xl sm:text-3xl font-bold text-primary">
                 {carteira?.saldo?.toLocaleString('pt-BR') ?? 0}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
@@ -303,7 +305,7 @@ const FilaEnvios = () => {
               <Clock className="h-4 w-4 text-amber-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-amber-600">
+              <div className="text-xl sm:text-2xl font-bold text-amber-600">
                 {contagens.pendentes}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
@@ -318,7 +320,7 @@ const FilaEnvios = () => {
               <CheckCircle2 className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">
+              <div className="text-xl sm:text-2xl font-bold text-green-600">
                 {contagens.enviados}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
@@ -333,7 +335,7 @@ const FilaEnvios = () => {
               <AlertTriangle className="h-4 w-4 text-destructive" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-destructive">
+              <div className="text-xl sm:text-2xl font-bold text-destructive">
                 {contagens.falhas}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
@@ -385,7 +387,7 @@ const FilaEnvios = () => {
                         setCustomRange(d);
                         setPage(1);
                       }}
-                      numberOfMonths={2}
+                      numberOfMonths={isMobile ? 1 : 2}
                       locale={ptBR}
                     />
                   </PopoverContent>
@@ -429,11 +431,11 @@ const FilaEnvios = () => {
                       <TableRow>
                         <TableHead>Data Programada</TableHead>
                         <TableHead>Paciente</TableHead>
-                        <TableHead>Telefone</TableHead>
-                        <TableHead>Mensagem</TableHead>
+                        <TableHead className="hidden sm:table-cell">Telefone</TableHead>
+                        <TableHead className="hidden sm:table-cell">Mensagem</TableHead>
                         <TableHead>Origem</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Custo</TableHead>
+                        <TableHead className="hidden sm:table-cell text-right">Custo</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -452,11 +454,11 @@ const FilaEnvios = () => {
                           <TableRow key={item.id}>
                             <TableCell className="whitespace-nowrap font-medium text-xs">{dataFormatada}</TableCell>
                             <TableCell className="text-xs">{item.paciente_nome ?? "—"}</TableCell>
-                            <TableCell className="text-xs">{item.telefone ?? "—"}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate" title={item.mensagem}>{previewMsg}</TableCell>
+                            <TableCell className="hidden sm:table-cell text-xs">{item.telefone ?? "—"}</TableCell>
+                            <TableCell className="hidden sm:table-cell text-xs text-muted-foreground max-w-[200px] truncate" title={item.mensagem}>{previewMsg}</TableCell>
                             <TableCell>{getOrigemBadge(item.origem)}</TableCell>
                             <TableCell>{getStatusBadge(item.status)}</TableCell>
-                            <TableCell className="text-right text-destructive font-medium text-xs">-{item.custo ?? 1}</TableCell>
+                            <TableCell className="hidden sm:table-cell text-right text-destructive font-medium text-xs">-{item.custo ?? 1}</TableCell>
                           </TableRow>
                         );
                       })}

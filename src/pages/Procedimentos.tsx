@@ -1,4 +1,5 @@
 import { AppLayout } from "@/layouts/AppLayout";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -38,6 +39,7 @@ import { ptBR } from "date-fns/locale";
 import { useClinica } from "@/contexts/ClinicaContext";
 
 const Procedimentos = () => {
+  const isMobile = useIsMobile();
   const { clinica, loading, isSuperAdmin, isImpersonating } = useClinica();
 
   const { data, isLoading, error } = useQuery({
@@ -278,7 +280,7 @@ const Procedimentos = () => {
                       setPage(1);
                       setDate(d);
                     }}
-                    numberOfMonths={2}
+                    numberOfMonths={isMobile ? 1 : 2}
                     locale={ptBR}
                   />
                 </PopoverContent>
@@ -297,14 +299,14 @@ const Procedimentos = () => {
             )}
             {!isLoading && !error && filteredData && filteredData.length > 0 && (
               <div className="space-y-3">
-                <div className="rounded-md border bg-card">
+                <div className="rounded-md border bg-card overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Nome do paciente</TableHead>
                         <TableHead>Procedimento</TableHead>
-                        <TableHead>Prestador</TableHead>
-                        <TableHead>Data finalização</TableHead>
+                        <TableHead className="hidden sm:table-cell">Prestador</TableHead>
+                        <TableHead className="hidden sm:table-cell">Data finalização</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -314,8 +316,8 @@ const Procedimentos = () => {
                           <TableRow key={proc.id}>
                             <TableCell>{nomePaciente}</TableCell>
                             <TableCell>{proc.procedimento}</TableCell>
-                            <TableCell>{proc.prestador ?? "-"}</TableCell>
-                            <TableCell>{proc.data_finalizacao ?? "-"}</TableCell>
+                            <TableCell className="hidden sm:table-cell">{proc.prestador ?? "-"}</TableCell>
+                            <TableCell className="hidden sm:table-cell">{proc.data_finalizacao ?? "-"}</TableCell>
                           </TableRow>
                         );
                       })}

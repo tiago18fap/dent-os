@@ -840,7 +840,7 @@ export function Campanhas() {
           }}
           className="w-full"
         >
-          <TabsList className="mb-3 flex w-full justify-start gap-2 rounded-lg bg-card/80 p-1 shadow-sm">
+          <TabsList className="mb-3 flex w-full justify-start gap-2 overflow-x-auto flex-nowrap rounded-lg bg-card/80 p-1 shadow-sm">
             <TabsTrigger value="massa">Disparo em massa</TabsTrigger>
             <TabsTrigger value="procedimento">Disparo por procedimento</TabsTrigger>
             <TabsTrigger value="aniversario">Disparo de aniversário</TabsTrigger>
@@ -1179,7 +1179,7 @@ export function Campanhas() {
                   <div className="space-y-2 border-t pt-3">
                     <p className="text-xs font-medium text-foreground">Últimos disparos</p>
                     <div className="space-y-1 rounded-md bg-card p-2 text-xs">
-                      <div className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b pb-1 text-[11px] text-muted-foreground">
+                      <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b pb-1 text-[11px] text-muted-foreground">
                         <span>Data de envio</span>
                         <span>Mensagem</span>
                         <span className="text-right">Qtd. envios</span>
@@ -1188,7 +1188,7 @@ export function Campanhas() {
                       {historicoDisparosMassa.map((item) => (
                         <div
                           key={item.id}
-                          className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 py-1"
+                          className="grid grid-cols-2 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 py-1"
                         >
                           <span>{item.dataEnvio}</span>
                           <span className="truncate" title={item.previewMensagem}>
@@ -1215,7 +1215,7 @@ export function Campanhas() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs sm:text-xs text-sm text-muted-foreground">
                   Ative os procedimentos desejados, defina o intervalo em dias e personalize a mensagem padrão de WhatsApp.
                 </p>
 
@@ -1232,14 +1232,14 @@ export function Campanhas() {
                             placeholder="Buscar procedimento pelo nome"
                             value={buscaProcedimento}
                             onChange={(event) => setBuscaProcedimento(event.target.value)}
-                            className="h-8 text-xs"
+                            className="h-9 sm:h-8 text-sm sm:text-xs"
                           />
                           <p className="text-[11px] text-muted-foreground">
                             Digite parte do nome para filtrar a lista de procedimentos.
                           </p>
                         </div>
 
-                        <div className="mt-2 max-h-60 space-y-1 overflow-y-auto rounded-md border bg-background p-2 text-xs">
+                        <div className="mt-2 max-h-72 sm:max-h-60 space-y-1.5 sm:space-y-1 overflow-y-auto rounded-md border bg-background p-3 sm:p-2 text-sm sm:text-xs">
                           {procedimentosCarregando ? (
                             <p className="text-[11px] text-muted-foreground">Carregando procedimentos...</p>
                           ) : procedimentos.length === 0 ? (
@@ -1259,7 +1259,7 @@ export function Campanhas() {
                                 return (
                                   <label
                                     key={proc.id}
-                                    className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-0.5 hover:bg-muted"
+                                    className="flex cursor-pointer items-center gap-2.5 sm:gap-2 rounded-sm px-2 sm:px-1 py-1.5 sm:py-0.5 hover:bg-muted active:bg-muted/80"
                                   >
                                     <Checkbox
                                       checked={checked}
@@ -1272,7 +1272,7 @@ export function Campanhas() {
                                         });
                                       }}
                                     />
-                                    <span className="truncate text-xs text-foreground">{proc.procedimento}</span>
+                                    <span className="truncate text-sm sm:text-xs text-foreground">{proc.procedimento}</span>
                                   </label>
                                 );
                               })
@@ -1500,7 +1500,7 @@ export function Campanhas() {
                             </p>
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                               <select
-                                className="h-8 w-full rounded-md border bg-background px-2 text-xs sm:w-64"
+                                className="h-10 sm:h-8 w-full rounded-md border bg-background px-3 sm:px-2 text-sm sm:text-xs sm:w-64"
                                 value={novoProcedimentoPorGrupo[chaveGrupo] ?? ""}
                                 onChange={(event) => {
                                   const value = event.target.value as ProcedimentoId | "";
@@ -1619,7 +1619,7 @@ export function Campanhas() {
                                     });
                                   }}
                                 />
-                                <span className="text-xs text-muted-foreground">dias</span>
+                                <span className="text-sm sm:text-xs text-muted-foreground">dias</span>
                               </div>
                               <p className="text-[11px] text-muted-foreground">
                                 Informe em dias (ex: 30, 120, 365) após a data do procedimento.
@@ -1754,7 +1754,7 @@ export function Campanhas() {
                 <div className="space-y-2 border-t pt-3">
                   <p className="text-xs font-medium text-foreground">Aniversariantes do mês (simulação)</p>
                   <div className="space-y-1 rounded-md bg-card p-2 text-xs">
-                    <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1.2fr)] gap-2 border-b pb-1 text-[11px] text-muted-foreground">
+                    <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1.2fr)] gap-2 border-b pb-1 text-[11px] text-muted-foreground">
                       <span>Nome</span>
                       <span>Data</span>
                       <span>Telefone</span>
@@ -1763,7 +1763,7 @@ export function Campanhas() {
                     {aniversariantesFake.map((paciente) => (
                       <div
                         key={`${paciente.nome}-${paciente.data}`}
-                        className="grid grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1.2fr)] gap-2 py-1"
+                        className="grid grid-cols-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1.2fr)] gap-2 py-1"
                       >
                         <span>{paciente.nome}</span>
                         <span>{paciente.data}</span>

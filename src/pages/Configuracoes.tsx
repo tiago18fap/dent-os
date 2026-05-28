@@ -816,7 +816,7 @@ const Configuracoes = () => {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="newClinicaPlano">Plano</Label>
                     <select
@@ -846,7 +846,7 @@ const Configuracoes = () => {
                     </select>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="newClinicaLimiteMsg">Limite Mensagens</Label>
                     <Input
@@ -946,7 +946,7 @@ const Configuracoes = () => {
                         required
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="editClinicaPlano">Plano</Label>
                         <select
@@ -976,7 +976,7 @@ const Configuracoes = () => {
                         </select>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="editClinicaLimiteMsg">Limite Mensagens</Label>
                         <Input
@@ -1130,7 +1130,7 @@ const Configuracoes = () => {
                     </CardHeader>
                     <CardContent className="py-2">
                       <form onSubmit={handleAddClinicaUser} className="space-y-3">
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="space-y-1">
                             <Label htmlFor="newUserFullName" className="text-xs">Nome Completo</Label>
                             <Input
@@ -1156,7 +1156,7 @@ const Configuracoes = () => {
                             </select>
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="space-y-1">
                             <Label htmlFor="newUserEmail" className="text-xs">E-mail</Label>
                             <Input
@@ -1262,7 +1262,7 @@ const Configuracoes = () => {
           defaultValue={(new URLSearchParams(location.search).get("tab") as "perfil" | "geral" | "logs") ?? "perfil"}
           className="w-full"
         >
-          <TabsList>
+          <TabsList className="flex w-full overflow-x-auto">
             <TabsTrigger value="perfil">Dados de perfil</TabsTrigger>
             <TabsTrigger value="geral">Geral</TabsTrigger>
             <TabsTrigger value="clientes" disabled={!isSuperAdmin}>
@@ -1346,7 +1346,7 @@ const Configuracoes = () => {
                 <p className="text-xs text-muted-foreground">
                   Veja abaixo se o WhatsApp da clínica está conectado. Ao desconectar, a instância é removida e um novo QR Code será gerado na próxima conexão.
                 </p>
-                <div className="overflow-hidden rounded-md border bg-card">
+                <div className="overflow-x-auto rounded-md border bg-card">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1516,17 +1516,17 @@ const Configuracoes = () => {
                     <CardTitle className="text-sm">Todas as Clínicas (Dashboard Admin)</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="overflow-hidden rounded-md border bg-card">
+                    <div className="overflow-x-auto rounded-md border bg-card">
                       <ScrollArea className="h-[500px]">
                         <Table>
                           <TableHeader>
                             <TableRow>
                               <TableHead>Clínica</TableHead>
-                              <TableHead>Cadastro</TableHead>
+                              <TableHead className="hidden sm:table-cell">Cadastro</TableHead>
                               <TableHead>Status</TableHead>
-                              <TableHead>Plano</TableHead>
-                              <TableHead>Fim do Trial</TableHead>
-                              <TableHead>Mensagens / Proc.</TableHead>
+                              <TableHead className="hidden md:table-cell">Plano</TableHead>
+                              <TableHead className="hidden md:table-cell">Fim do Trial</TableHead>
+                              <TableHead className="hidden lg:table-cell">Mensagens / Proc.</TableHead>
                               <TableHead className="text-right">Ações</TableHead>
                             </TableRow>
                           </TableHeader>
@@ -1542,7 +1542,7 @@ const Configuracoes = () => {
                                   <p>{cliente.nome}</p>
                                   <span className="text-[9px] text-muted-foreground font-mono block mt-0.5">{cliente.id}</span>
                                 </TableCell>
-                                <TableCell className="text-xs text-muted-foreground">
+                                <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
                                   {new Date(cliente.created_at).toLocaleDateString("pt-BR")}
                                 </TableCell>
                                 <TableCell>
@@ -1553,13 +1553,13 @@ const Configuracoes = () => {
                                     {cliente.status_pagamento.replace('_', ' ').toUpperCase()}
                                   </Badge>
                                 </TableCell>
-                                 <TableCell className="text-xs font-medium">
+                                 <TableCell className="hidden md:table-cell text-xs font-medium">
                                    {cliente.plano === 'ilimitado_premium' ? 'Ilimitado Premium' : 
                                     (cliente.plano === 'bronze' ? 'Bronze' : 
                                      (cliente.plano === 'prata' ? 'Prata' : 
                                       (cliente.plano === 'ouro' ? 'Ouro' : cliente.plano.toUpperCase())))}
                                  </TableCell>
-                                <TableCell className="text-xs text-muted-foreground">
+                                <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
                                   {cliente.data_fim_teste ? (
                                     <>
                                       {new Date(cliente.data_fim_teste).toLocaleDateString("pt-BR")}
@@ -1571,7 +1571,7 @@ const Configuracoes = () => {
                                     </>
                                   ) : '-'}
                                 </TableCell>
-                                <TableCell className="text-xs text-muted-foreground">
+                                <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
                                   {cliente.limite_mensagens} / {cliente.limite_procedimentos}
                                 </TableCell>
                                 <TableCell className="text-right">
@@ -1660,18 +1660,18 @@ const Configuracoes = () => {
                     Cada linha representa um clique no botão de importação (clientes/procedimentos), com o arquivo
                     enviado, origem, status interno e o status retornado pelo webhook (quando disponível).
                   </p>
-                  <div className="mt-2 overflow-hidden rounded-md border bg-card">
+                  <div className="mt-2 overflow-x-auto rounded-md border bg-card">
                     <ScrollArea className="h-[420px]">
                       <Table>
                         <TableHeader>
                           <TableRow>
                             <TableHead>Data</TableHead>
                             <TableHead>Arquivo</TableHead>
-                            <TableHead>Tipo</TableHead>
-                            <TableHead>Origem</TableHead>
-                            <TableHead>Status interno</TableHead>
-                            <TableHead>Status n8n</TableHead>
-                            <TableHead>Prévia da resposta</TableHead>
+                            <TableHead className="hidden sm:table-cell">Tipo</TableHead>
+                            <TableHead className="hidden sm:table-cell">Origem</TableHead>
+                            <TableHead className="hidden md:table-cell">Status interno</TableHead>
+                            <TableHead className="hidden md:table-cell">Status n8n</TableHead>
+                            <TableHead className="hidden lg:table-cell">Prévia da resposta</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1703,9 +1703,9 @@ const Configuracoes = () => {
                                 <TableCell className="max-w-[220px] truncate text-xs" title={item.arquivo}>
                                   {item.arquivo}
                                 </TableCell>
-                                <TableCell className="text-xs">{item.tipo}</TableCell>
-                                <TableCell className="text-xs">{item.origem}</TableCell>
-                                <TableCell>
+                                <TableCell className="hidden sm:table-cell text-xs">{item.tipo}</TableCell>
+                                <TableCell className="hidden sm:table-cell text-xs">{item.origem}</TableCell>
+                                <TableCell className="hidden md:table-cell">
                                   <Badge
                                     variant={item.status.toLowerCase().startsWith("erro") ? "destructive" : "default"}
                                     className="text-[10px] font-normal"
@@ -1713,7 +1713,7 @@ const Configuracoes = () => {
                                     {item.status}
                                   </Badge>
                                 </TableCell>
-                                <TableCell className="text-xs">
+                                <TableCell className="hidden md:table-cell text-xs">
                                   {item.n8nStatus ? (
                                     <Badge
                                       variant={item.n8nStatus.startsWith("2") ? "default" : "destructive"}
@@ -1725,7 +1725,7 @@ const Configuracoes = () => {
                                     <span className="text-[11px] text-muted-foreground">—</span>
                                   )}
                                 </TableCell>
-                                <TableCell className="max-w-[260px] truncate text-[11px] text-muted-foreground" title={
+                                <TableCell className="hidden lg:table-cell max-w-[260px] truncate text-[11px] text-muted-foreground" title={
                                   item.n8nPreview ?? undefined
                                 }>
                                   {item.n8nPreview ?? "(sem conteúdo registrado)"}

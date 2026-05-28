@@ -118,16 +118,16 @@ const Clientes = () => {
             )}
             {!isLoading && !error && data && data.length > 0 && (
               <div className="space-y-3">
-                <div className="rounded-md border bg-card">
+                <div className="overflow-x-auto rounded-md border bg-card">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Paciente</TableHead>
                         <TableHead>Telefone</TableHead>
-                        <TableHead>Código</TableHead>
-                        <TableHead>Nascimento</TableHead>
-                        <TableHead>Situação</TableHead>
-                        <TableHead>Prestador</TableHead>
+                        <TableHead className="hidden sm:table-cell">Código</TableHead>
+                        <TableHead className="hidden sm:table-cell">Nascimento</TableHead>
+                        <TableHead className="hidden sm:table-cell">Situação</TableHead>
+                        <TableHead className="hidden sm:table-cell">Prestador</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -135,14 +135,14 @@ const Clientes = () => {
                         <TableRow key={cliente.id}>
                           <TableCell>{cliente.paciente}</TableCell>
                           <TableCell>{cliente.telefone ?? "-"}</TableCell>
-                          <TableCell>{cliente.codigo ?? "-"}</TableCell>
-                          <TableCell>
+                          <TableCell className="hidden sm:table-cell">{cliente.codigo ?? "-"}</TableCell>
+                          <TableCell className="hidden sm:table-cell">
                             {cliente.nascimento
                               ? new Date(cliente.nascimento + "T00:00:00").toLocaleDateString("pt-BR")
                               : "-"}
                           </TableCell>
-                          <TableCell>{cliente.situacao ?? "-"}</TableCell>
-                          <TableCell>{cliente.prestador ?? "-"}</TableCell>
+                          <TableCell className="hidden sm:table-cell">{cliente.situacao ?? "-"}</TableCell>
+                          <TableCell className="hidden sm:table-cell">{cliente.prestador ?? "-"}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
