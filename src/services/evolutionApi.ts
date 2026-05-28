@@ -178,10 +178,14 @@ export async function fetchInstanceInfo(
 
     if (!instance) return { number: null, exists: false };
 
-    const number =
+    const rawNumber =
+      instance?.instance?.ownerJid ??
+      instance?.ownerJid ??
       instance?.instance?.owner ??
       instance?.owner ??
       null;
+
+    const number = rawNumber ? rawNumber.split("@")[0] : null;
 
     return { number, exists: true };
   } catch {
