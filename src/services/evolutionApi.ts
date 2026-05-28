@@ -188,3 +188,45 @@ export async function fetchInstanceInfo(
     return { number: null, exists: false };
   }
 }
+
+/**
+ * Envia uma mensagem de texto de teste para um número específico.
+ */
+export async function sendTextMessage(
+  clinicaId: string,
+  number: string,
+  text: string
+): Promise<{ success: boolean; error?: string }> {
+  const instanceName = getInstanceName(clinicaId);
+  
+  // Limpar formatação do número (deixar apenas dígitos)
+  const cleanedNumber = number.replace(/\D/g, "");
+
+  try {
+    const res = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: EVOLUTION_API_KEY,
+      },
+      body: JSON.stringify({
+        number: cleanedNumber,
+        text,
+        options: {
+          delay: 1200,
+          presence: "composing"
+        }
+      })
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, error: errData?.message || `Erro HTTP ${res.status}` };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Erro de rede ao enviar mensagem" };
+  }
+}
+
