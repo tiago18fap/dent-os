@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, Loader2, Wifi, WifiOff, Send } from "lucide-react";
-import { createInstance, connectInstance, getConnectionState, disconnectAndDelete, fetchInstanceInfo, sendTextMessage } from "@/services/evolutionApi";
+import { createInstance, connectInstance, getConnectionState, disconnectAndDelete, fetchInstanceInfo, sendTextMessage, configureWebhook } from "@/services/evolutionApi";
 
 interface ImportLogItem {
   id: string;
@@ -112,6 +112,29 @@ const Configuracoes = () => {
   const [editingUserPasswordId, setEditingUserPasswordId] = useState<string | null>(null);
   const [newPasswordForUser, setNewPasswordForUser] = useState("");
   const [changingUserPassword, setChangingUserPassword] = useState(false);
+
+  // Estados para redirecionamento/triangulação WhatsApp
+  const [redirecionarAtivo, setRedirecionarAtivo] = useState(false);
+  const [redirecionarNumero, setRedirecionarNumero] = useState("");
+  const [redirecionarMensagem, setRedirecionarMensagem] = useState("");
+  const [savingRedirect, setSavingRedirect] = useState(false);
+  const [hasInitializedRedirect, setHasInitializedRedirect] = useState(false);
+
+  useEffect(() => {
+    if (whatsappStatus.data && !hasInitializedRedirect) {
+      setRedirecionarAtivo(whatsappStatus.data.redirecionar_ativo ?? false);
+      setRedirecionarNumero(whatsappStatus.data.redirecionar_numero ?? "");
+      setRedirecionarMensagem(
+        whatsappStatus.data.redirecionar_mensagem ??
+          "Olá! Este número é utilizado apenas para envios automáticos e não recebe mensagens ou ligações. 🤖\n\nPara falar com o nosso atendimento, por favor clique no link abaixo:\n{numero_atendimento}"
+      );
+      setHasInitializedRedirect(true);
+    }
+  }, [whatsappStatus.data, hasInitializedRedirect]);
+
+  useEffect(() => {
+    setHasInitializedRedirect(false);
+  }, [clinica?.id]);
 
   const handleLogout = async () => {
     setLoadingLogout(true);
@@ -518,6 +541,15 @@ const Configuracoes = () => {
           // Refetch status
           queryClient.invalidateQueries({ queryKey: ["whatsapp_status"] });
 
+          // Se o redirecionamento estiver ativo, registra o webhook na Evolution API
+          if (redirecionarAtivo) {
+            try {
+              await configureWebhook(clinica.id, true);
+            } catch (webErr) {
+              console.error("[Polling] Erro ao registrar webhook na conexão:", webErr);
+            }
+          }
+
           toast({
             title: "WhatsApp conectado!",
             description: number ? `Número ${number} vinculado com sucesso.` : "Conexão realizada com sucesso.",
@@ -527,7 +559,7 @@ const Configuracoes = () => {
         console.error("[Polling] Erro:", err);
       }
     }, 5000); // Verificar a cada 5 segundos
-  }, [clinica?.id, stopPolling, toast, queryClient]);
+  }, [clinica?.id, stopPolling, toast, queryClient, redirecionarAtivo]);
 
   // Limpar polling ao desmontar componente ou fechar dialog
   useEffect(() => {
@@ -675,6 +707,79 @@ const Configuracoes = () => {
       });
     } finally {
       setSendingTest(false);
+    }
+  };
+
+  const handleSuggestMessage = () => {
+    setRedirecionarMensagem(
+      "Olá! Este número é utilizado apenas para envios automáticos e não recebe mensagens ou ligações. 🤖\n\nPara falar com o nosso atendimento, por favor clique no link abaixo:\n{numero_atendimento}"
+    );
+    toast({
+      title: "Sugestão aplicada",
+      description: "A mensagem padrão sugerida foi colocada no campo."
+    });
+  };
+
+  const handleSaveRedirectSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clinica?.id) {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Clínica não identificada."
+      });
+      return;
+    }
+
+    const cleanPhone = redirecionarNumero.replace(/\D/g, "");
+    if (redirecionarAtivo && (!cleanPhone || cleanPhone.length < 10)) {
+      toast({
+        variant: "destructive",
+        title: "Número inválido",
+        description: "Por favor, insira um número de WhatsApp de destino válido com DDI e DDD (ex: 5511999999999)."
+      });
+      return;
+    }
+
+    try {
+      setSavingRedirect(true);
+
+      // 1. Atualizar banco de dados
+      const { error } = await (supabase as any)
+        .from("whatsapp_config")
+        .upsert({
+          clinica_id: clinica.id,
+          redirecionar_ativo: redirecionarAtivo,
+          redirecionar_numero: cleanPhone || null,
+          redirecionar_mensagem: redirecionarMensagem || null,
+          updated_at: new Date().toISOString()
+        }, { onConflict: "clinica_id" });
+
+      if (error) throw error;
+
+      // 2. Se estiver conectado, configurar/sincronizar webhook na Evolution API
+      if (whatsappStatus.data?.conectado) {
+        const webRes = await configureWebhook(clinica.id, redirecionarAtivo);
+        if (!webRes.success) {
+          console.warn("Aviso ao configurar webhook na Evolution API:", webRes.error);
+        }
+      }
+
+      toast({
+        title: "Configurações salvas!",
+        description: "Redirecionamento automático atualizado com sucesso."
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["whatsapp_status"] });
+    } catch (err: any) {
+      console.error("Erro ao salvar configurações de redirecionamento:", err);
+      toast({
+        variant: "destructive",
+        title: "Erro ao salvar",
+        description: err.message ?? "Não foi possível salvar as configurações de redirecionamento."
+      });
+    } finally {
+      setSavingRedirect(false);
     }
   };
 
@@ -1531,6 +1636,102 @@ const Configuracoes = () => {
                     </TableBody>
                   </Table>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-300">
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <RefreshCcw className="h-4 w-4 text-primary" />
+                  <span>Redirecionamento Automático e Triangulação (WhatsApp sem Atendimento)</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  Se este número de WhatsApp não possui atendimento humano, ative o redirecionamento.
+                  Quando um cliente enviar qualquer mensagem ou áudio, o sistema responderá automaticamente direcionando-o para o número correto via link clicável, e enviará uma notificação ao seu atendimento para alertá-los sobre o contato.
+                </p>
+
+                <form onSubmit={handleSaveRedirectSettings} className="space-y-4">
+                  <div className="flex items-center justify-between border-b pb-4">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="redirect-ativo" className="text-sm font-medium">
+                        Ativar Redirecionamento Automático
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Responde ao cliente após 7 a 15 segundos e encaminha a notificação ao atendimento.
+                      </p>
+                    </div>
+                    <Switch
+                      id="redirect-ativo"
+                      checked={redirecionarAtivo}
+                      onCheckedChange={setRedirecionarAtivo}
+                    />
+                  </div>
+
+                  {redirecionarAtivo && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <div className="space-y-2">
+                        <Label htmlFor="redirect-numero" className="text-sm font-medium">
+                          Número de WhatsApp para Atendimento (Destino)
+                        </Label>
+                        <Input
+                          id="redirect-numero"
+                          type="tel"
+                          placeholder="Ex: 5511999999999"
+                          value={redirecionarNumero}
+                          onChange={(e) => setRedirecionarNumero(e.target.value)}
+                          className="max-w-md"
+                          required={redirecionarAtivo}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Digite o número completo com DDI (55 para Brasil) e DDD. Somente números.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="redirect-mensagem" className="text-sm font-medium">
+                            Frase / Mensagem de Redirecionamento
+                          </Label>
+                          <Button
+                            type="button"
+                            variant="link"
+                            size="sm"
+                            className="text-xs h-auto p-0"
+                            onClick={handleSuggestMessage}
+                          >
+                            Restaurar Sugestão Padrão
+                          </Button>
+                        </div>
+                        <Textarea
+                          id="redirect-mensagem"
+                          rows={4}
+                          placeholder="Digite a mensagem automática de redirecionamento..."
+                          value={redirecionarMensagem}
+                          onChange={(e) => setRedirecionarMensagem(e.target.value)}
+                          required={redirecionarAtivo}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Use a tag <code className="bg-muted px-1 py-0.5 rounded font-mono text-[10px]">{`{numero_atendimento}`}</code> no local onde deseja exibir o link direto para o novo WhatsApp.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex justify-end pt-2">
+                    <Button type="submit" disabled={savingRedirect} size="sm">
+                      {savingRedirect ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          <span>Salvando...</span>
+                        </>
+                      ) : (
+                        <span>Salvar Configurações de Redirecionamento</span>
+                      )}
+                    </Button>
+                  </div>
+                </form>
               </CardContent>
             </Card>
 
