@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getConnectionState, fetchInstanceInfo } from "@/services/evolutionApi";
 
 export interface WhatsappConfig {
   id: string;
@@ -55,14 +56,67 @@ export const useWhatsappStatus = () => {
         return null;
       }
 
-      if (!data) return null;
+      // Verificar estado real na Evolution API
+      let realConectado = data ? (data as WhatsappConfig).conectado : false;
+      let realNumero = data ? (data as WhatsappConfig).numero : null;
+      let checkSuccess = false;
+      
+      try {
+        const conn = await getConnectionState(targetClinicaId);
+        realConectado = (conn.state === "open");
+        checkSuccess = true;
+        
+        if (realConectado) {
+          const info = await fetchInstanceInfo(targetClinicaId);
+          realNumero = info.number;
+        } else {
+          realNumero = null;
+        }
+      } catch (e) {
+        console.error("Erro ao verificar status na Evolution API:", e);
+      }
 
-      const cfg = data as WhatsappConfig;
+      // Sincronizar banco de dados se houver divergência e a consulta na API funcionou
+      if (checkSuccess) {
+        if (!data) {
+          if (realConectado) {
+            try {
+              await (supabase as any)
+                .from("whatsapp_config")
+                .insert({
+                  clinica_id: targetClinicaId,
+                  conectado: true,
+                  numero: realNumero,
+                  updated_at: new Date().toISOString()
+                });
+            } catch (insertErr) {
+              console.error("Erro ao inserir status sincronizado:", insertErr);
+            }
+          }
+        } else {
+          const cfg = data as WhatsappConfig;
+          if (cfg.conectado !== realConectado || cfg.numero !== realNumero) {
+            try {
+              await (supabase as any)
+                .from("whatsapp_config")
+                .update({
+                  conectado: realConectado,
+                  numero: realNumero,
+                  updated_at: new Date().toISOString()
+                })
+                .eq("clinica_id", targetClinicaId);
+            } catch (updateErr) {
+              console.error("Erro ao atualizar status sincronizado:", updateErr);
+            }
+          }
+        }
+      }
 
+      // Retornar os dados mais atualizados
       return {
-        conectado: cfg.conectado,
-        numero: cfg.numero,
-        updated_at: cfg.updated_at ?? null,
+        conectado: realConectado,
+        numero: realNumero,
+        updated_at: data ? (data as WhatsappConfig).updated_at : new Date().toISOString(),
       };
     },
   });
