@@ -125,9 +125,10 @@ BEGIN
   END IF;
 
   new_user_id := gen_random_uuid();
-  encrypted_pw := crypt(_password, gen_salt('bf'));
+  -- Usa 10 rodadas de bcrypt para compatibilidade com o GoTrue do Supabase
+  encrypted_pw := crypt(_password, gen_salt('bf', 10));
 
-  -- Insere na tabela auth.users (o trigger handle_new_user cuidará de criar o perfil, profiles e user_roles)
+  -- Insere na tabela auth.users com as colunas vazias em vez de NULL
   INSERT INTO auth.users (
     id,
     instance_id,
@@ -140,7 +141,16 @@ BEGIN
     updated_at,
     role,
     aud,
-    confirmation_token
+    confirmation_token,
+    recovery_token,
+    email_change_token_new,
+    email_change,
+    email_change_token_current,
+    phone_change_token,
+    phone_change,
+    reauthentication_token,
+    is_sso_user,
+    is_anonymous
   )
   VALUES (
     new_user_id,
@@ -159,7 +169,43 @@ BEGIN
     now(),
     'authenticated',
     'authenticated',
-    ''
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    false,
+    false
+  );
+
+  -- Insere na tabela auth.identities para que o GoTrue reconheça o usuário e o login funcione
+  INSERT INTO auth.identities (
+    id,
+    user_id,
+    identity_data,
+    provider,
+    provider_id,
+    last_sign_in_at,
+    created_at,
+    updated_at
+  )
+  VALUES (
+    gen_random_uuid(),
+    new_user_id,
+    jsonb_build_object(
+      'sub', new_user_id::text,
+      'email', _email,
+      'email_verified', true,
+      'phone_verified', false
+    ),
+    'email',
+    new_user_id::text,
+    now(),
+    now(),
+    now()
   );
 
   RETURN new_user_id;
