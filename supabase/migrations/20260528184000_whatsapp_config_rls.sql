@@ -21,3 +21,7 @@ CREATE POLICY "Tenant Isolation whatsapp_config" ON public.whatsapp_config
 ALTER TABLE public.whatsapp_config 
 DROP CONSTRAINT IF EXISTS whatsapp_config_clinica_id_key,
 ADD CONSTRAINT whatsapp_config_clinica_id_key UNIQUE (clinica_id);
+
+-- Make user_id nullable to support clinic-scoped config
+ALTER TABLE public.whatsapp_config 
+ALTER COLUMN user_id DROP NOT NULL;
