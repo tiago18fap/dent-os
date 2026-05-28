@@ -16,8 +16,9 @@ import { useClinica } from "@/contexts/ClinicaContext";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, Loader2, Wifi, WifiOff } from "lucide-react";
-import { createInstance, connectInstance, getConnectionState, disconnectAndDelete, fetchInstanceInfo } from "@/services/evolutionApi";
+import { Textarea } from "@/components/ui/textarea";
+import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, Loader2, Wifi, WifiOff, Send } from "lucide-react";
+import { createInstance, connectInstance, getConnectionState, disconnectAndDelete, fetchInstanceInfo, sendTextMessage } from "@/services/evolutionApi";
 
 interface ImportLogItem {
   id: string;
@@ -59,6 +60,12 @@ const Configuracoes = () => {
   const [pollingConnection, setPollingConnection] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const queryClient = useQueryClient();
+
+  // Estados para envio de mensagem de teste
+  const [testDialogOpen, setTestDialogOpen] = useState(false);
+  const [testNumber, setTestNumber] = useState("");
+  const [testMessage, setTestMessage] = useState("Olá! Esta é uma mensagem de teste enviada a partir da configuração de WhatsApp do DentOS. 🦷");
+  const [sendingTest, setSendingTest] = useState(false);
 
   // Estados de dados do usuário ativo
   const [currentUserEmail, setCurrentUserEmail] = useState("");
@@ -623,6 +630,54 @@ const Configuracoes = () => {
     }
   };
 
+  const handleSendTestMessage = async () => {
+    if (!clinica?.id) return;
+    if (!testNumber) {
+      toast({
+        variant: "destructive",
+        title: "Número obrigatório",
+        description: "Por favor, informe o número de WhatsApp para teste.",
+      });
+      return;
+    }
+    if (!testMessage) {
+      toast({
+        variant: "destructive",
+        title: "Mensagem obrigatória",
+        description: "Por favor, digite a mensagem de teste.",
+      });
+      return;
+    }
+
+    try {
+      setSendingTest(true);
+      const res = await sendTextMessage(clinica.id, testNumber, testMessage);
+
+      if (res.success) {
+        toast({
+          title: "Mensagem de teste enviada!",
+          description: "Verifique o celular de destino para confirmar se chegou.",
+        });
+        setTestDialogOpen(false);
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Falha ao enviar mensagem",
+          description: res.error || "Erro desconhecido ao tentar enviar.",
+        });
+      }
+    } catch (error: any) {
+      console.error("Erro ao enviar mensagem de teste:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro inesperado",
+        description: error?.message || "Tente novamente.",
+      });
+    } finally {
+      setSendingTest(false);
+    }
+  };
+
   const logsQuery = useQuery({
     queryKey: ["webhook_logs"],
     enabled: isSuperAdmin,
@@ -792,6 +847,63 @@ const Configuracoes = () => {
                 <p className="text-sm text-muted-foreground">Gerando QR Code...</p>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={testDialogOpen} onOpenChange={setTestDialogOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Testar Conexão WhatsApp</DialogTitle>
+              <DialogDescription>
+                Envie uma mensagem de teste para verificar se o WhatsApp da clínica está conectando e enviando corretamente.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="test-number">Número do Destinatário</Label>
+                <Input
+                  id="test-number"
+                  type="text"
+                  placeholder="Ex: 5511999999999"
+                  value={testNumber}
+                  onChange={(e) => setTestNumber(e.target.value)}
+                  disabled={sendingTest}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Insira o número com DDI (55 para Brasil), DDD e número, sem espaços ou traços.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="test-message">Mensagem de Teste</Label>
+                <Textarea
+                  id="test-message"
+                  placeholder="Digite a mensagem de teste..."
+                  value={testMessage}
+                  onChange={(e) => setTestMessage(e.target.value)}
+                  disabled={sendingTest}
+                  className="resize-none"
+                  rows={4}
+                />
+              </div>
+              <Button
+                type="button"
+                className="w-full bg-[hsl(var(--login-primary))] text-primary-foreground hover:bg-[hsl(var(--login-primary))]/90"
+                disabled={sendingTest}
+                onClick={handleSendTestMessage}
+              >
+                {sendingTest ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Enviando teste...
+                  </>
+                ) : (
+                  <>
+                    <Send className="mr-2 h-4 w-4" />
+                    Enviar Mensagem de Teste
+                  </>
+                )}
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
 
@@ -1316,17 +1428,29 @@ const Configuracoes = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   {(whatsappStatus.data?.conectado ?? false) && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={disconnecting}
-                      onClick={handleDisconnectWhatsApp}
-                      className="inline-flex items-center gap-1.5 rounded-full border-destructive/50 px-3 py-1 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-70"
-                    >
-                      {disconnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WifiOff className="h-3.5 w-3.5" />}
-                      <span>{disconnecting ? "Desconectando..." : "Desconectar"}</span>
-                    </Button>
+                    <>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setTestDialogOpen(true)}
+                        className="inline-flex items-center gap-1.5 rounded-full border-green-500/50 px-3 py-1 text-xs font-medium text-green-600 hover:bg-green-50/50"
+                      >
+                        <Send className="h-3.5 w-3.5" />
+                        <span>Testar Conexão</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={disconnecting}
+                        onClick={handleDisconnectWhatsApp}
+                        className="inline-flex items-center gap-1.5 rounded-full border-destructive/50 px-3 py-1 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-70"
+                      >
+                        {disconnecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WifiOff className="h-3.5 w-3.5" />}
+                        <span>{disconnecting ? "Desconectando..." : "Desconectar"}</span>
+                      </Button>
+                    </>
                   )}
                   {!(whatsappStatus.data?.conectado ?? false) && (
                     <Button
