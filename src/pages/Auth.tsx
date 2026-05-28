@@ -209,7 +209,7 @@ const Auth = () => {
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="space-y-4 text-center">
           <img src={logoFull} alt="DentOS" className="mx-auto h-12 w-auto" />
-          <CardTitle className="text-2xl">{isSignUp ? "Criar conta" : "Entrar no DentAlerta"}</CardTitle>
+          <CardTitle className="text-2xl">{isSignUp ? "Criar conta" : "Entrar"}</CardTitle>
           <CardDescription>
             {isSignUp
               ? "Preencha os dados para criar sua conta"
