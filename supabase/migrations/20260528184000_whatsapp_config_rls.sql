@@ -16,3 +16,8 @@ CREATE POLICY "Tenant Isolation whatsapp_config" ON public.whatsapp_config
   TO authenticated
   USING (clinica_id = get_user_clinica_id())
   WITH CHECK (clinica_id = get_user_clinica_id());
+
+-- Add UNIQUE constraint on clinica_id to support upsert
+ALTER TABLE public.whatsapp_config 
+DROP CONSTRAINT IF EXISTS whatsapp_config_clinica_id_key,
+ADD CONSTRAINT whatsapp_config_clinica_id_key UNIQUE (clinica_id);
