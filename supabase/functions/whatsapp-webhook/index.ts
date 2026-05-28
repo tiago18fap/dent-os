@@ -176,6 +176,64 @@ serve(async (req) => {
           console.error(`[Webhook] Erro ao notificar atendimento: ${sendNotification.status}`);
         }
 
+        // 8. Se for áudio, encaminhar o arquivo de áudio para o atendimento
+        const hasAudio = !!msg?.audioMessage;
+        if (hasAudio && messageData.key?.id) {
+          console.log(`[Webhook] Mensagem é um áudio. Baixando mídia para encaminhar...`);
+          try {
+            const downloadRes = await fetch(`${EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${instance}`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                apikey: EVOLUTION_API_KEY,
+              },
+              body: JSON.stringify({
+                message: {
+                  key: {
+                    id: messageData.key.id
+                  }
+                },
+                convertToMp4: false
+              })
+            });
+
+            if (downloadRes.ok) {
+              const mediaData = await downloadRes.json();
+              if (mediaData && mediaData.base64) {
+                console.log(`[Webhook] Mídia baixada com sucesso. Encaminhando áudio para ${cleanRedirectNumber}...`);
+                
+                const sendMediaRes = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${instance}`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    apikey: EVOLUTION_API_KEY,
+                  },
+                  body: JSON.stringify({
+                    number: cleanRedirectNumber,
+                    mediatype: "audio",
+                    mimetype: mediaData.mimetype || "audio/ogg",
+                    caption: `Áudio original de +${clientNumber}`,
+                    media: mediaData.base64,
+                    fileName: mediaData.fileName || "audio.ogg"
+                  })
+                });
+
+                if (!sendMediaRes.ok) {
+                  console.error(`[Webhook] Erro ao encaminhar áudio: ${sendMediaRes.status}`);
+                } else {
+                  console.log(`[Webhook] Áudio encaminhado com sucesso!`);
+                }
+              } else {
+                console.error(`[Webhook] Resposta de download inválida ou sem base64.`);
+              }
+            } else {
+              console.error(`[Webhook] Falha ao baixar áudio da Evolution API: ${downloadRes.status}`);
+            }
+          } catch (downloadErr) {
+            console.error(`[Webhook] Exceção ao baixar/encaminhar áudio:`, downloadErr);
+          }
+        }
+
       } catch (err) {
         console.error("[Webhook Background Process] Erro:", err);
       }
