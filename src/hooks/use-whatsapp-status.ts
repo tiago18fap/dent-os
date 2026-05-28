@@ -8,12 +8,22 @@ export interface WhatsappConfig {
   numero: string | null;
   conectado: boolean;
   updated_at: string;
+  redirecionar_ativo?: boolean;
+  redirecionar_numero?: string | null;
+  redirecionar_mensagem?: string | null;
 }
 
 export const useWhatsappStatus = () => {
   return useQuery({
     queryKey: ["whatsapp_status"],
-    queryFn: async (): Promise<{ conectado: boolean; numero: string | null; updated_at: string | null } | null> => {
+    queryFn: async (): Promise<{ 
+      conectado: boolean; 
+      numero: string | null; 
+      updated_at: string | null;
+      redirecionar_ativo: boolean;
+      redirecionar_numero: string | null;
+      redirecionar_mensagem: string | null;
+    } | null> => {
       const { data: userData, error: userError } = await supabase.auth.getUser();
 
       if (userError || !userData?.user) {
@@ -47,7 +57,7 @@ export const useWhatsappStatus = () => {
 
       const { data, error } = await (supabase as any)
         .from("whatsapp_config")
-        .select("id, clinica_id, numero, conectado, updated_at")
+        .select("id, clinica_id, numero, conectado, updated_at, redirecionar_ativo, redirecionar_numero, redirecionar_mensagem")
         .eq("clinica_id", targetClinicaId)
         .maybeSingle();
 
@@ -117,6 +127,9 @@ export const useWhatsappStatus = () => {
         conectado: realConectado,
         numero: realNumero,
         updated_at: data ? (data as WhatsappConfig).updated_at : new Date().toISOString(),
+        redirecionar_ativo: data ? (data as any).redirecionar_ativo ?? false : false,
+        redirecionar_numero: data ? (data as any).redirecionar_numero ?? null : null,
+        redirecionar_mensagem: data ? (data as any).redirecionar_mensagem ?? null : null,
       };
     },
   });

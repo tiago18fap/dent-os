@@ -234,3 +234,39 @@ export async function sendTextMessage(
   }
 }
 
+/**
+ * Configura ou desativa o webhook da instância na Evolution API.
+ */
+export async function configureWebhook(
+  clinicaId: string,
+  enabled: boolean
+): Promise<{ success: boolean; error?: string }> {
+  const instanceName = getInstanceName(clinicaId);
+  const webhookUrl = "https://dzbeorfkualalocrvobe.supabase.co/functions/v1/whatsapp-webhook";
+
+  try {
+    const res = await fetch(`${EVOLUTION_API_URL}/webhook/set/${instanceName}`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({
+        webhook: {
+          enabled,
+          url: webhookUrl,
+          byEvents: true,
+          base64: false,
+          events: ["MESSAGES_UPSERT"]
+        }
+      })
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      return { success: false, error: errData?.message || `Erro HTTP ${res.status}` };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || "Erro de rede ao configurar webhook" };
+  }
+}
+
