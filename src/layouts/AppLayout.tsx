@@ -253,7 +253,7 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
         <SidebarRail />
       </Sidebar>
       <SidebarInset>
-        <header className="flex h-16 items-center gap-3 border-b border-border bg-gradient-to-r from-primary/5 via-accent/10 to-secondary/10 px-4">
+        <header className="flex h-14 sm:h-16 items-center gap-2 sm:gap-3 border-b border-border bg-gradient-to-r from-primary/5 via-accent/10 to-secondary/10 px-3 sm:px-4">
           <div className="flex items-center gap-3">
             <SidebarTrigger className="md:hidden" />
             <div className="hidden items-center gap-2 md:flex" />
@@ -267,7 +267,7 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
                 variant="outline"
                 onClick={() => navigate("/configuracoes?tab=geral#whatsapp-config")}
                 className={
-                  "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all " +
+                  "flex items-center gap-1 sm:gap-1.5 rounded-full border px-2 sm:px-3 py-1 sm:py-1.5 text-[11px] sm:text-xs font-medium transition-all " +
                   (whatsappStatusQuery.isLoading
                     ? "border-muted-foreground/40 bg-muted/40 text-muted-foreground cursor-wait"
                     : (whatsappStatusQuery.data?.conectado ?? false)
@@ -276,17 +276,19 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
                 }
               >
                 <MessageCircle className="h-3.5 w-3.5" />
-                {whatsappStatusQuery.isLoading
-                  ? "Verificando WhatsApp..."
-                  : (whatsappStatusQuery.data?.conectado ?? false)
-                  ? "WhatsApp conectado"
-                  : "Conectar WhatsApp"}
+                <span className="hidden sm:inline">
+                  {whatsappStatusQuery.isLoading
+                    ? "Verificando..."
+                    : (whatsappStatusQuery.data?.conectado ?? false)
+                    ? "WhatsApp conectado"
+                    : "Conectar WhatsApp"}
+                </span>
               </Button>
             </div>
           </div>
         </header>
-        <main className="flex-1 bg-background/80 p-4">
-          <div className="mx-auto max-w-6xl space-y-4 font-sans">
+        <main className="flex-1 bg-background/80 p-3 sm:p-4">
+          <div className="mx-auto max-w-6xl space-y-3 sm:space-y-4 font-sans">
             {isSuperAdmin && !isImpersonating && (
               <div className="bg-destructive/10 border border-destructive/30 text-destructive rounded-lg p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs sm:text-sm shadow-sm">
                 <div className="flex items-center gap-2">

@@ -105,3 +105,66 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* ==============================
+   MOBILE-FIRST RESPONSIVE STYLES
+   Melhora legibilidade e usabilidade em telas pequenas.
+   Não altera o layout desktop.
+   ============================== */
+
+@layer components {
+  /* --- Touch targets mínimos de 44px para botões e links no mobile --- */
+  @media (max-width: 639px) {
+    /* Inputs e selects mais altos para facilitar o toque */
+    input:not([type="checkbox"]):not([type="radio"]),
+    select,
+    textarea {
+      min-height: 2.75rem; /* 44px */
+      font-size: 1rem !important; /* 16px evita zoom no iOS */
+    }
+
+    /* Labels mais legíveis */
+    label {
+      font-size: 0.875rem; /* 14px */
+    }
+
+    /* Botões com altura mínima touch-friendly */
+    button:not([class*="h-7"]):not([class*="h-6"]):not([class*="size-"]):not([class*="w-7"]) {
+      min-height: 2.5rem; /* 40px */
+    }
+
+    /* Texto tiny (text-[11px], text-[10px]) mais legível no mobile */
+    .text-\[11px\] {
+      font-size: 0.8125rem; /* 13px */
+      line-height: 1.4;
+    }
+
+    .text-\[10px\] {
+      font-size: 0.75rem; /* 12px */
+      line-height: 1.4;
+    }
+
+    /* Switch + label alinhamento melhor no mobile */
+    [role="switch"] {
+      flex-shrink: 0;
+    }
+
+    /* Cards com padding mais generoso */
+    .space-y-2.rounded-md.border.bg-card {
+      padding: 1rem;
+    }
+
+    /* Tabs triggers mais espaçosos no mobile */
+    [role="tablist"] [role="tab"] {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.8125rem;
+      white-space: nowrap;
+    }
+
+    /* Tags/badges de procedimentos mais fáceis de tocar */
+    .rounded-full.border.bg-background {
+      padding: 0.375rem 0.75rem;
+      font-size: 0.8125rem;
+    }
+  }
+}

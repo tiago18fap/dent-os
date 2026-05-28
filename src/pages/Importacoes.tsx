@@ -366,7 +366,7 @@ const Importacoes = () => {
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-foreground">Histórico de importações</h2>
         </div>
-        <div className="overflow-hidden rounded-md border bg-card">
+        <div className="overflow-x-auto rounded-md border bg-card">
           {loadingHistorico && <p className="text-sm text-muted-foreground p-4">Carregando histórico…</p>}
           {historicoError && <p className="text-sm text-destructive p-4">Erro ao carregar histórico.</p>}
           {!loadingHistorico && !historicoError && historico && historico.length > 0 && (
@@ -374,8 +374,8 @@ const Importacoes = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>Arquivo</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Data</TableHead>
+                <TableHead className="hidden sm:table-cell">Tipo</TableHead>
+                <TableHead className="hidden sm:table-cell">Data</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -383,8 +383,8 @@ const Importacoes = () => {
               {historico.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">{item.arquivo}</TableCell>
-                    <TableCell>{item.tipo}</TableCell>
-                    <TableCell>{item.data}</TableCell>
+                    <TableCell className="hidden sm:table-cell">{item.tipo}</TableCell>
+                    <TableCell className="hidden sm:table-cell">{item.data}</TableCell>
                     <TableCell>
                       <Badge variant={item.status === "Sucesso" ? "default" : "destructive"} className="text-xs font-normal">
                         {item.status}
