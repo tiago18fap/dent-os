@@ -32,7 +32,7 @@ const Auth = () => {
   const [isSignUp, setIsSignUp] = useState(initialMode);
 
   useEffect(() => {
-    document.title = "Login - DentAlerta";
+    document.title = "Login - DentOS";
 
     // Setup auth state listener first
     const {
@@ -88,7 +88,7 @@ const Auth = () => {
       } else {
         toast({
           title: "Login realizado",
-          description: "Bem-vindo(a) ao DentAlerta!",
+          description: "Bem-vindo(a) ao DentOS!",
         });
         navigate("/app");
       }

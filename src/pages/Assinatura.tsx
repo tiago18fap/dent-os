@@ -124,7 +124,7 @@ const Assinatura = () => {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Painel de Assinaturas (Admin)</h1>
             <p className="text-muted-foreground mt-2">
-              Visão geral de faturamento e planos de todas as clínicas cadastradas no DentAlerta.
+              Visão geral de faturamento e planos de todas as clínicas cadastradas no DentOS.
             </p>
           </div>
 

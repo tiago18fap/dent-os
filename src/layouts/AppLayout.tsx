@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 
-import logoDentalertaFull from "@/assets/logo-dentos.png";
+import logoDentosFull from "@/assets/logo-dentos.png";
 import type { ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -81,7 +81,7 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
     "/assinatura": "Meu Plano",
   };
 
-  const currentTitle = titleMap[location.pathname] ?? "DentAlerta";
+  const currentTitle = titleMap[location.pathname] ?? "DentOS";
 
   return (
     <SidebarProvider>
@@ -92,7 +92,7 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
         <SidebarHeader className="flex items-center justify-between gap-2 border-b border-sidebar-border bg-sidebar-background/90 px-3 py-3">
           <NavLink to="/app" className="flex items-center gap-2 px-1" aria-label="Ir para a home">
             <img
-              src={logoDentalertaFull}
+              src={logoDentosFull}
               alt="Logo completo DentOS"
               className="h-8 w-auto max-w-[160px] object-contain"
             />

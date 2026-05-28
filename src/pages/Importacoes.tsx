@@ -78,7 +78,7 @@ const Importacoes = () => {
   });
 
   useEffect(() => {
-    document.title = "Importações DentAlerta";
+    document.title = "Importações DentOS";
   }, []);
 
   const validateXlsx = (file: File | null) => {

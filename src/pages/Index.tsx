@@ -9,7 +9,7 @@ const Index = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    document.title = "Dashboard DentAlerta";
+    document.title = "Dashboard DentOS";
   }, []);
 
   const today = new Date();
@@ -63,11 +63,11 @@ const Index = () => {
       <section className="grid gap-3 md:gap-4 md:grid-cols-[2fr,1fr]" aria-label="Ações rápidas">
         <Card>
           <CardHeader>
-            <CardTitle>Bem-vindo ao DentAlerta</CardTitle>
+            <CardTitle>Bem-vindo ao DentOS</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-muted-foreground">
             <p>
-              Conecte o seu ERP odontológico ao DentAlerta para importar clientes e procedimentos e automatizar a
+              Conecte o seu ERP odontológico ao DentOS para importar clientes e procedimentos e automatizar a
               comunicação com seus pacientes.
             </p>
             <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
