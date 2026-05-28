@@ -20,13 +20,13 @@ const IndiqueEGanhe = () => {
   const codigoIndicacao = "DENTAL-123ABC";
 
   useEffect(() => {
-    document.title = "Indique e Ganhe DentAlerta";
+    document.title = "Indique e Ganhe DentOS";
   }, []);
 
   const handleCopiarCodigo = async () => {
     try {
       await navigator.clipboard.writeText(codigoIndicacao);
-      toast({ title: "Código copiado", description: "Cole o código onde preferir para indicar o DentAlerta." });
+      toast({ title: "Código copiado", description: "Cole o código onde preferir para indicar o DentOS." });
     } catch (error) {
       console.error("Erro ao copiar código de indicação", error);
       toast({
@@ -38,7 +38,7 @@ const IndiqueEGanhe = () => {
   };
 
   const handleCompartilharWhatsapp = () => {
-    const mensagem = `Olá! Estou indicando o DentAlerta para sua clínica. Use meu código ${codigoIndicacao} e ganhe condições especiais.`;
+    const mensagem = `Olá! Estou indicando o DentOS para sua clínica. Use meu código ${codigoIndicacao} e ganhe condições especiais.`;
     const url = `https://wa.me/?text=${encodeURIComponent(mensagem)}`;
     window.open(url, "_blank", "noopener,noreferrer");
   };
@@ -50,7 +50,7 @@ const IndiqueEGanhe = () => {
           <CardHeader>
             <CardTitle>Indique e ganhe</CardTitle>
             <CardDescription>
-              Indique o DentAlerta para outras clínicas e ganhe descontos na sua mensalidade (dados simulados).
+              Indique o DentOS para outras clínicas e ganhe descontos na sua mensalidade (dados simulados).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -79,7 +79,7 @@ const IndiqueEGanhe = () => {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Cada indicação que fecha contrato com o DentAlerta gera R$ {VALOR_POR_INDICACAO.toFixed(2)} de desconto
+              Cada indicação que fecha contrato com o DentOS gera R$ {VALOR_POR_INDICACAO.toFixed(2)} de desconto
               na sua mensalidade (valores de exemplo).
             </p>
           </CardContent>

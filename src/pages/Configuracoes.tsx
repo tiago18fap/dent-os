@@ -128,7 +128,7 @@ const Configuracoes = () => {
   };
 
   useEffect(() => {
-    document.title = "Configurações | DentAlerta";
+    document.title = "Configurações | DentOS";
 
     supabase.auth
       .getUser()

@@ -247,7 +247,7 @@ export function Campanhas() {
 
   useEffect(() => {
     if (loading) return;
-    document.title = "Campanhas DentAlerta";
+    document.title = "Campanhas DentOS";
 
     const carregarProcedimentos = async () => {
       try {

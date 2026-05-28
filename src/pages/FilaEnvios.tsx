@@ -73,7 +73,7 @@ const FilaEnvios = () => {
   const pageSize = 20;
 
   useEffect(() => {
-    document.title = "Fila de Envios | DentAlerta";
+    document.title = "Fila de Envios | DentOS";
   }, []);
 
   const dateRange = useMemo(() => getDateRange(periodo, customRange), [periodo, customRange]);

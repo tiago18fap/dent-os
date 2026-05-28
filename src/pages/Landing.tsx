@@ -12,7 +12,7 @@ const Landing = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    document.title = "DentAlerta | Alertas por WhatsApp para dentistas";
+    document.title = "DentOS | Alertas por WhatsApp para dentistas";
   }, []);
 
   const handleStartTrial = () => {
@@ -88,7 +88,7 @@ const Landing = () => {
              </h1>
 
             <p className="max-w-xl text-sm text-primary-foreground md:text-base">
-              O DentAlerta agenda mensagens automáticas por procedimento e data de retorno, lembrando seus pacientes na
+              O DentOS agenda mensagens automáticas por procedimento e data de retorno, lembrando seus pacientes na
               hora certa para voltarem à clínica, enquanto você foca apenas no atendimento.
             </p>
 
@@ -146,7 +146,7 @@ const Landing = () => {
 
                 <div className="space-y-1.5">
                   <div className="inline-flex max-w-[90%] flex-col rounded-2xl rounded-bl-sm bg-muted/80 px-3 py-2 text-left text-[11px] text-foreground shadow-sm">
-                    <span className="mb-1 text-[11px] font-medium text-foreground">DentAlerta · Clínica Sorriso</span>
+                    <span className="mb-1 text-[11px] font-medium text-foreground">DentOS · Clínica Sorriso</span>
                     <span>
                       Olá, João! Tudo bem? 😊
                       <br />
@@ -171,7 +171,7 @@ const Landing = () => {
                   Alertas inteligentes por procedimento
                 </p>
                 <p className="text-muted-foreground">
-                  O DentAlerta agenda mensagens de retorno por procedimento e lembra seus pacientes após alguns dias.
+                  O DentOS agenda mensagens de retorno por procedimento e lembra seus pacientes após alguns dias.
                 </p>
               </div>
               <MessageCircle className="hidden h-9 w-9 text-secondary sm:block" />
@@ -306,7 +306,7 @@ const Landing = () => {
         {/* Testimonials */}
         <section className="mt-16 space-y-6">
           <div className="space-y-2 text-center">
-            <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Dentistas que já contam com o DentAlerta</h2>
+            <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Dentistas que já contam com o DentOS</h2>
             <p className="text-sm text-muted-foreground md:text-base">
               Veja como os lembretes automáticos de retorno ajudam no dia a dia do consultório.
             </p>
@@ -391,7 +391,7 @@ const Landing = () => {
             <div className="space-y-3 md:max-w-xs">
               <div className="flex items-center gap-2">
                 <img src={logoDentos} alt="Logo DentOS" className="h-8 w-auto object-contain" />
-                <span className="text-sm font-semibold text-foreground">DentAlerta</span>
+                <span className="text-sm font-semibold text-foreground">DentOS</span>
               </div>
               <p className="text-[11px] leading-relaxed">
                 SaaS especializado em lembretes por WhatsApp para clínicas odontológicas, focado em retornos de
@@ -402,7 +402,7 @@ const Landing = () => {
                   href="https://instagram.com"
                   target="_blank"
                   rel="noreferrer"
-                  aria-label="Instagram DentAlerta"
+                  aria-label="Instagram DentOS"
                   className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/80 hover:bg-accent hover:text-accent-foreground transition-colors"
                 >
                   <Instagram className="h-4 w-4" />
@@ -411,7 +411,7 @@ const Landing = () => {
                   href="https://facebook.com"
                   target="_blank"
                   rel="noreferrer"
-                  aria-label="Facebook DentAlerta"
+                  aria-label="Facebook DentOS"
                   className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/80 hover:bg-accent hover:text-accent-foreground transition-colors"
                 >
                   <Facebook className="h-4 w-4" />
@@ -420,7 +420,7 @@ const Landing = () => {
                   href="https://linkedin.com"
                   target="_blank"
                   rel="noreferrer"
-                  aria-label="LinkedIn DentAlerta"
+                  aria-label="LinkedIn DentOS"
                   className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/80 hover:bg-accent hover:text-accent-foreground transition-colors"
                 >
                   <Linkedin className="h-4 w-4" />
@@ -467,7 +467,7 @@ const Landing = () => {
             <div className="space-y-3 md:max-w-xs">
               <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/80">Política de privacidade</h3>
               <p className="text-[11px] leading-relaxed">
-                O DentAlerta armazena apenas os dados necessários para o envio de lembretes, campanhas e registro de
+                O DentOS armazena apenas os dados necessários para o envio de lembretes, campanhas e registro de
                 retornos. As informações dos pacientes são protegidas, não são compartilhadas com terceiros não
                 autorizados e podem ser removidas a qualquer momento mediante solicitação da clínica.
               </p>
