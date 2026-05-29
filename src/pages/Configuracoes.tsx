@@ -17,7 +17,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, Loader2, Wifi, WifiOff, Send, Settings2 } from "lucide-react";
+import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, EyeOff, Loader2, Wifi, WifiOff, Send, Settings2, Monitor, Lock } from "lucide-react";
 import { createInstance, connectInstance, getConnectionState, disconnectAndDelete, fetchInstanceInfo, sendTextMessage, configureWebhook } from "@/services/evolutionApi";
 
 interface ImportLogItem {
@@ -127,6 +127,14 @@ const Configuracoes = () => {
   const [savingQueueConfig, setSavingQueueConfig] = useState(false);
   const [hasInitializedQueueConfig, setHasInitializedQueueConfig] = useState(false);
 
+  // Estados para integração Easy Dental
+  const [easydentalUrl, setEasydentalUrl] = useState("");
+  const [easydentalUsuario, setEasydentalUsuario] = useState("");
+  const [easydentalSenha, setEasydentalSenha] = useState("");
+  const [showEasydentalSenha, setShowEasydentalSenha] = useState(false);
+  const [savingEasydental, setSavingEasydental] = useState(false);
+  const [hasInitializedEasydental, setHasInitializedEasydental] = useState(false);
+
   useEffect(() => {
     if (whatsappStatus.data && !hasInitializedRedirect) {
       setRedirecionarAtivo(whatsappStatus.data.redirecionar_ativo ?? false);
@@ -149,8 +157,18 @@ const Configuracoes = () => {
   }, [whatsappStatus.data, hasInitializedQueueConfig]);
 
   useEffect(() => {
+    if (whatsappStatus.data && !hasInitializedEasydental) {
+      setEasydentalUrl(whatsappStatus.data.easydental_url ?? "");
+      setEasydentalUsuario(whatsappStatus.data.easydental_usuario ?? "");
+      setEasydentalSenha(whatsappStatus.data.easydental_senha ?? "");
+      setHasInitializedEasydental(true);
+    }
+  }, [whatsappStatus.data, hasInitializedEasydental]);
+
+  useEffect(() => {
     setHasInitializedRedirect(false);
     setHasInitializedQueueConfig(false);
+    setHasInitializedEasydental(false);
   }, [clinica?.id]);
 
   const handleLogout = async () => {
@@ -1581,6 +1599,9 @@ const Configuracoes = () => {
             <TabsTrigger value="logs" disabled={!isSuperAdmin}>
               Logs de importação (admin)
             </TabsTrigger>
+            <TabsTrigger value="sistema">
+              Sistema
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="perfil" className="mt-4">
@@ -2206,6 +2227,140 @@ const Configuracoes = () => {
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          <TabsContent value="sistema" className="mt-4">
+            <Card className="border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-300">
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Monitor className="h-4 w-4 text-primary" />
+                  <span>Integração Easy Dental</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border border-primary/10 bg-primary/5 p-3 space-y-1">
+                  <p className="text-xs font-medium text-primary flex items-center gap-1.5">
+                    <Lock className="h-3.5 w-3.5" />
+                    Conexão segura
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Suas credenciais são armazenadas de forma segura e utilizadas apenas para baixar automaticamente os relatórios de clientes e procedimentos do Easy Dental.
+                  </p>
+                </div>
+
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!clinica?.id) {
+                    toast({ variant: "destructive", title: "Erro", description: "Clínica não identificada." });
+                    return;
+                  }
+                  try {
+                    setSavingEasydental(true);
+                    const { error } = await (supabase as any)
+                      .from("whatsapp_config")
+                      .upsert({
+                        clinica_id: clinica.id,
+                        easydental_url: easydentalUrl.trim() || null,
+                        easydental_usuario: easydentalUsuario.trim() || null,
+                        easydental_senha: easydentalSenha || null,
+                        updated_at: new Date().toISOString()
+                      }, { onConflict: "clinica_id" });
+                    if (error) throw error;
+                    toast({ title: "Credenciais salvas!", description: "Dados do Easy Dental salvos com sucesso." });
+                    queryClient.invalidateQueries({ queryKey: ["whatsapp_status"] });
+                  } catch (err: any) {
+                    console.error("Erro ao salvar Easy Dental:", err);
+                    toast({ variant: "destructive", title: "Erro ao salvar", description: err.message ?? "Não foi possível salvar." });
+                  } finally {
+                    setSavingEasydental(false);
+                  }
+                }} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="easydental-url" className="text-sm font-medium">
+                      URL do Easy Dental
+                    </Label>
+                    <Input
+                      id="easydental-url"
+                      type="url"
+                      placeholder="https://seuservidor.easydental.com.br"
+                      value={easydentalUrl}
+                      onChange={(e) => setEasydentalUrl(e.target.value)}
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Endereço completo de acesso ao Easy Dental (ex: https://app.easydental.com.br)
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="easydental-usuario" className="text-sm font-medium">
+                        Usuário
+                      </Label>
+                      <Input
+                        id="easydental-usuario"
+                        type="text"
+                        placeholder="seu.usuario"
+                        value={easydentalUsuario}
+                        onChange={(e) => setEasydentalUsuario(e.target.value)}
+                        autoComplete="off"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="easydental-senha" className="text-sm font-medium">
+                        Senha
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          id="easydental-senha"
+                          type={showEasydentalSenha ? "text" : "password"}
+                          placeholder="••••••••"
+                          value={easydentalSenha}
+                          onChange={(e) => setEasydentalSenha(e.target.value)}
+                          autoComplete="new-password"
+                          className="pr-10"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                          onClick={() => setShowEasydentalSenha(!showEasydentalSenha)}
+                        >
+                          {showEasydentalSenha ? (
+                            <EyeOff className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <Eye className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <Button type="submit" disabled={savingEasydental} size="sm">
+                      {savingEasydental ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          <span>Salvando...</span>
+                        </>
+                      ) : (
+                        <span>Salvar Credenciais</span>
+                      )}
+                    </Button>
+                  </div>
+                </form>
+
+                {easydentalUrl && easydentalUsuario && easydentalSenha && (
+                  <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 p-3 mt-2">
+                    <p className="text-xs text-green-700 dark:text-green-400 flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Credenciais configuradas. A automação utilizará esses dados para baixar os relatórios.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </section>

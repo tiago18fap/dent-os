@@ -14,6 +14,9 @@ export interface WhatsappConfig {
   dedup_dias?: number;
   horario_inicio?: string | null;
   horario_fim?: string | null;
+  easydental_url?: string | null;
+  easydental_usuario?: string | null;
+  easydental_senha?: string | null;
 }
 
 export const useWhatsappStatus = () => {
@@ -63,7 +66,7 @@ export const useWhatsappStatus = () => {
 
       const { data, error } = await (supabase as any)
         .from("whatsapp_config")
-        .select("id, clinica_id, numero, conectado, updated_at, redirecionar_ativo, redirecionar_numero, redirecionar_mensagem, dedup_dias, horario_inicio, horario_fim")
+        .select("id, clinica_id, numero, conectado, updated_at, redirecionar_ativo, redirecionar_numero, redirecionar_mensagem, dedup_dias, horario_inicio, horario_fim, easydental_url, easydental_usuario, easydental_senha")
         .eq("clinica_id", targetClinicaId)
         .maybeSingle();
 
@@ -139,6 +142,9 @@ export const useWhatsappStatus = () => {
         dedup_dias: data ? (data as any).dedup_dias ?? 30 : 30,
         horario_inicio: data ? (data as any).horario_inicio ?? '08:00' : '08:00',
         horario_fim: data ? (data as any).horario_fim ?? '20:00' : '20:00',
+        easydental_url: data ? (data as any).easydental_url ?? null : null,
+        easydental_usuario: data ? (data as any).easydental_usuario ?? null : null,
+        easydental_senha: data ? (data as any).easydental_senha ?? null : null,
       };
     },
   });
