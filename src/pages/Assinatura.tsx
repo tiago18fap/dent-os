@@ -1,13 +1,15 @@
+import { useState } from "react";
 import { AppLayout } from "@/layouts/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useClinica } from "@/contexts/ClinicaContext";
 import { supabase } from "@/integrations/supabase/client";
-import { Check, CreditCard, ShieldAlert } from "lucide-react";
+import { Check, CreditCard, ShieldAlert, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 const PLANOS = [
   {
@@ -15,7 +17,7 @@ const PLANOS = [
     nome: "Bronze",
     preco: "R$ 89,00",
     mensagens: "100 mensagens/mês",
-    procedimentos: "Até 5 campanhas de procedimento",
+    procedimentos: "Até 10 campanhas de procedimento",
     suporte: "Suporte em até 48h",
     destaque: false,
   },
@@ -23,8 +25,8 @@ const PLANOS = [
     id: "prata",
     nome: "Prata",
     preco: "R$ 139,00",
-    mensagens: "2.500 mensagens/mês",
-    procedimentos: "Até 10 campanhas de procedimento",
+    mensagens: "1.000 mensagens/mês",
+    procedimentos: "Até 30 campanhas de procedimento",
     suporte: "Suporte em até 24h",
     destaque: true,
   },
@@ -43,6 +45,10 @@ const Assinatura = () => {
   const { clinica, loading, isSuperAdmin, isImpersonating } = useClinica();
   const { toast } = useToast();
 
+  const [selectedPlanoForCheckout, setSelectedPlanoForCheckout] = useState<string | null>(null);
+  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
+  const [processandoCheckout, setProcessandoCheckout] = useState(false);
+
   const adminClinicasQuery = useQuery({
     queryKey: ["admin_assinaturas_clinicas"],
     enabled: isSuperAdmin && !isImpersonating && !loading,
@@ -57,29 +63,34 @@ const Assinatura = () => {
     }
   });
 
-  const handleMudarPlano = async (planoId: string) => {
+  const iniciarCheckoutMP = async (tipo: 'assinatura' | 'avulso') => {
+    if (!selectedPlanoForCheckout) return;
     try {
+      setProcessandoCheckout(true);
       toast({
         title: "Aguarde...",
-        description: "Redirecionando para a página de pagamento seguro.",
+        description: "Redirecionando para o pagamento seguro do Mercado Pago.",
       });
 
-      const { data, error } = await supabase.functions.invoke("create-checkout", {
-        body: { planoId },
+      const { data, error } = await supabase.functions.invoke("mercadopago-checkout", {
+        body: { planoId: selectedPlanoForCheckout, tipo },
       });
 
       if (error) throw error;
       if (data?.url) {
         window.location.href = data.url;
       } else {
-        throw new Error("URL de checkout não retornada.");
+        throw new Error("URL de checkout não retornada pelo Mercado Pago.");
       }
     } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Erro ao iniciar checkout",
-        description: error.message || "Não foi possível conectar ao gateway de pagamento.",
+        description: error.message || "Não foi possível conectar ao Mercado Pago.",
       });
+    } finally {
+      setProcessandoCheckout(false);
+      setCheckoutDialogOpen(false);
     }
   };
 
@@ -324,7 +335,17 @@ const Assinatura = () => {
                   <Button 
                     variant={plano.destaque ? "default" : "outline"} 
                     className="w-full"
-                    onClick={() => handleMudarPlano(plano.id)}
+                    onClick={() => {
+                      if (plano.id === 'ouro') {
+                        toast({
+                          title: "Plano Ouro",
+                          description: "Fale com nosso suporte em contato@dentos.com.br para um plano personalizado.",
+                        });
+                        return;
+                      }
+                      setSelectedPlanoForCheckout(plano.id);
+                      setCheckoutDialogOpen(true);
+                    }}
                     disabled={clinica?.plano === plano.id}
                   >
                     {clinica?.plano === plano.id ? "Seu Plano Atual" : "Escolher " + plano.nome}
@@ -336,6 +357,51 @@ const Assinatura = () => {
           </div>
         </div>
       </div>
+
+      <Dialog open={checkoutDialogOpen} onOpenChange={setCheckoutDialogOpen}>
+        <DialogContent className="sm:max-w-[450px] border-primary/20">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+              <CreditCard className="h-5 w-5 text-primary" />
+              <span>Escolha a forma de pagamento</span>
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground mt-1">
+              Selecione como deseja assinar o plano <strong className="capitalize">{selectedPlanoForCheckout}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-4 pt-4">
+            <Button
+              className="h-24 flex flex-col items-start p-4 hover:border-primary border border-muted bg-card hover:bg-primary/5 transition-all text-left group"
+              variant="outline"
+              disabled={processandoCheckout}
+              onClick={() => iniciarCheckoutMP("assinatura")}
+            >
+              <div className="flex items-center justify-between w-full">
+                <span className="font-bold text-foreground group-hover:text-primary transition-colors">Assinatura Mensal Automática</span>
+                <Badge className="bg-primary/20 text-primary border-0 hover:bg-primary/20 text-[10px]">Recomendado</Badge>
+              </div>
+              <span className="text-xs text-muted-foreground font-normal mt-1 whitespace-normal">
+                Cobrança recorrente no Cartão de Crédito. Sem preocupações com renovação mensal.
+              </span>
+            </Button>
+
+            <Button
+              className="h-24 flex flex-col items-start p-4 hover:border-primary border border-muted bg-card hover:bg-primary/5 transition-all text-left group"
+              variant="outline"
+              disabled={processandoCheckout}
+              onClick={() => iniciarCheckoutMP("avulso")}
+            >
+              <div className="flex items-center justify-between w-full">
+                <span className="font-bold text-foreground group-hover:text-primary transition-colors">Pagamento Avulso Mensal</span>
+                <Badge variant="outline" className="text-[10px]">Pix ou Cartão</Badge>
+              </div>
+              <span className="text-xs text-muted-foreground font-normal mt-1 whitespace-normal">
+                Gere um Pix ou pague com cartão de crédito manualmente a cada mês para renovar sua conta.
+              </span>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 };

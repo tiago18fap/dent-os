@@ -136,6 +136,14 @@ const Configuracoes = () => {
   const [hasInitializedEasydental, setHasInitializedEasydental] = useState(false);
   const hasSavedPassword = easydentalSenha === SENHA_PLACEHOLDER;
 
+  // Estados para Mercado Pago (Super Admin)
+  const [mpPublicKey, setMpPublicKey] = useState("");
+  const [mpAccessToken, setMpAccessToken] = useState("");
+  const [mpClientId, setMpClientId] = useState("");
+  const [mpClientSecret, setMpClientSecret] = useState("");
+  const [hasInitializedMp, setHasInitializedMp] = useState(false);
+  const [savingMp, setSavingMp] = useState(false);
+
   useEffect(() => {
     if (whatsappStatus.data && !hasInitializedRedirect) {
       setRedirecionarAtivo(whatsappStatus.data.redirecionar_ativo ?? false);
@@ -992,6 +1000,103 @@ const Configuracoes = () => {
 
   const clientesData = (clientesQuery.data ?? []) as ClinicaAdminItem[];
 
+  const mpConfigQuery = useQuery({
+    queryKey: ["mp_config"],
+    enabled: isSuperAdmin,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sistema_pagamento_config")
+        .select("*")
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data || {
+        mercado_pago_public_key: "",
+        mercado_pago_access_token: "",
+        mercado_pago_client_id: "",
+        mercado_pago_client_secret: ""
+      };
+    }
+  });
+
+  const pedidosQuery = useQuery({
+    queryKey: ["admin_pedidos"],
+    enabled: isSuperAdmin,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("pedidos_assinaturas")
+        .select("*, clinicas(nome)")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  useEffect(() => {
+    if (mpConfigQuery.data && !hasInitializedMp) {
+      setMpPublicKey(mpConfigQuery.data.mercado_pago_public_key ?? "");
+      setMpAccessToken(mpConfigQuery.data.mercado_pago_access_token ?? "");
+      setMpClientId(mpConfigQuery.data.mercado_pago_client_id ?? "");
+      setMpClientSecret(mpConfigQuery.data.mercado_pago_client_secret ?? "");
+      setHasInitializedMp(true);
+    }
+  }, [mpConfigQuery.data, hasInitializedMp]);
+
+  const handleSaveMpConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setSavingMp(true);
+      const { data: currentRows } = await supabase
+        .from("sistema_pagamento_config")
+        .select("id")
+        .limit(1);
+      
+      const rowId = currentRows?.[0]?.id;
+
+      let error;
+      if (rowId) {
+        const { error: err } = await supabase
+          .from("sistema_pagamento_config")
+          .update({
+            mercado_pago_public_key: mpPublicKey.trim(),
+            mercado_pago_access_token: mpAccessToken.trim(),
+            mercado_pago_client_id: mpClientId.trim(),
+            mercado_pago_client_secret: mpClientSecret.trim(),
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", rowId);
+        error = err;
+      } else {
+        const { error: err } = await supabase
+          .from("sistema_pagamento_config")
+          .insert({
+            mercado_pago_public_key: mpPublicKey.trim(),
+            mercado_pago_access_token: mpAccessToken.trim(),
+            mercado_pago_client_id: mpClientId.trim(),
+            mercado_pago_client_secret: mpClientSecret.trim(),
+          });
+        error = err;
+      }
+
+      if (error) throw error;
+      toast({
+        title: "Configurações salvas!",
+        description: "As chaves do Mercado Pago foram atualizadas no banco de dados."
+      });
+      mpConfigQuery.refetch();
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao salvar",
+        description: err.message ?? "Não foi possível salvar as configurações do Mercado Pago."
+      });
+    } finally {
+      setSavingMp(false);
+    }
+  };
+
   return (
     <AppLayout>
       <section className="space-y-4">
@@ -1608,6 +1713,16 @@ const Configuracoes = () => {
             <TabsTrigger value="sistema">
               Sistema
             </TabsTrigger>
+            {isSuperAdmin && (
+              <TabsTrigger value="mercado-pago">
+                Configuração Mercado Pago
+              </TabsTrigger>
+            )}
+            {isSuperAdmin && (
+              <TabsTrigger value="pedidos">
+                Pedidos & Cobrança
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="perfil" className="mt-4">
@@ -2361,6 +2476,189 @@ const Configuracoes = () => {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {isSuperAdmin && (
+            <TabsContent value="mercado-pago" className="mt-4">
+              <Card className="border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-300">
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Key className="h-4 w-4 text-primary" />
+                    <span>Configuração do Mercado Pago (Gateway)</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="rounded-lg border border-primary/10 bg-primary/5 p-3 space-y-1">
+                    <p className="text-xs font-medium text-primary flex items-center gap-1.5">
+                      <Lock className="h-3.5 w-3.5" />
+                      Credenciais da Plataforma
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Estas credenciais são usadas para receber pagamentos de assinaturas mensais e pagamentos avulsos das clínicas.
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleSaveMpConfig} className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="mp-public-key" className="text-sm font-medium">
+                          Public Key
+                        </Label>
+                        <Input
+                          id="mp-public-key"
+                          placeholder="APP_USR-..."
+                          value={mpPublicKey}
+                          onChange={(e) => setMpPublicKey(e.target.value)}
+                          autoComplete="off"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="mp-access-token" className="text-sm font-medium">
+                          Access Token
+                        </Label>
+                        <Input
+                          id="mp-access-token"
+                          type="password"
+                          placeholder="APP_USR-..."
+                          value={mpAccessToken}
+                          onChange={(e) => setMpAccessToken(e.target.value)}
+                          autoComplete="off"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="mp-client-id" className="text-sm font-medium">
+                          Client ID (Opcional)
+                        </Label>
+                        <Input
+                          id="mp-client-id"
+                          placeholder="ID do cliente"
+                          value={mpClientId}
+                          onChange={(e) => setMpClientId(e.target.value)}
+                          autoComplete="off"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="mp-client-secret" className="text-sm font-medium">
+                          Client Secret (Opcional)
+                        </Label>
+                        <Input
+                          id="mp-client-secret"
+                          type="password"
+                          placeholder="Secret do cliente"
+                          value={mpClientSecret}
+                          onChange={(e) => setMpClientSecret(e.target.value)}
+                          autoComplete="off"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <Button type="submit" disabled={savingMp} size="sm">
+                        {savingMp ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            <span>Salvando...</span>
+                          </>
+                        ) : (
+                          <span>Salvar Configurações</span>
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+
+          {isSuperAdmin && (
+            <TabsContent value="pedidos" className="mt-4">
+              <Card className="border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-300">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Settings2 className="h-4 w-4 text-primary" />
+                    <span>Pedidos e Faturamento Geral</span>
+                  </CardTitle>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 text-xs"
+                    onClick={() => pedidosQuery.refetch()}
+                  >
+                    <RefreshCcw className="mr-2 h-3.5 w-3.5" />
+                    Atualizar
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {pedidosQuery.isLoading ? (
+                    <div className="flex justify-center p-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    </div>
+                  ) : (
+                    <div className="overflow-hidden rounded-md border bg-card">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Clínica</TableHead>
+                            <TableHead>Plano</TableHead>
+                            <TableHead>Valor</TableHead>
+                            <TableHead>Método</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>IDs Mercado Pago</TableHead>
+                            <TableHead>Data Pagamento</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {pedidosQuery.data?.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={7} className="text-center text-xs text-muted-foreground p-8">
+                                Nenhum pedido encontrado no sistema.
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            pedidosQuery.data?.map((p: any) => (
+                              <TableRow key={p.id}>
+                                <TableCell className="font-medium text-xs">
+                                  {p.clinicas?.nome || "Desconhecida"}
+                                </TableCell>
+                                <TableCell className="text-xs capitalize">{p.plano}</TableCell>
+                                <TableCell className="text-xs font-semibold">
+                                  {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(p.valor)}
+                                </TableCell>
+                                <TableCell className="text-xs capitalize">{p.metodo_pagamento || "—"}</TableCell>
+                                <TableCell>
+                                  <Badge 
+                                    className="text-[10px]"
+                                    variant={p.status === "pago" || p.status === "approved" ? "default" : "destructive"}
+                                  >
+                                    {p.status === "pago" || p.status === "approved" ? "Pago" : p.status}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-[10px] font-mono max-w-[200px] truncate">
+                                  <div className="flex flex-col gap-0.5">
+                                    {p.id_transacao_mp && (
+                                      <div><span className="text-muted-foreground">Trans:</span> {p.id_transacao_mp}</div>
+                                    )}
+                                    {p.id_assinatura_mp && (
+                                      <div><span className="text-muted-foreground">Assin:</span> {p.id_assinatura_mp}</div>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground">
+                                  {p.data_pagamento ? new Date(p.data_pagamento).toLocaleString("pt-BR") : new Date(p.created_at).toLocaleString("pt-BR")}
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </Tabs>
       </section>
     </AppLayout>

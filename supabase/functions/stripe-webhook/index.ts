@@ -43,8 +43,8 @@ serve(async (req) => {
              status_pagamento: 'ativo', 
              stripe_customer_id: customerId,
              plano: 'prata', // TODO: Fazer match com o priceId da session
-             limite_mensagens: 2500,
-             limite_procedimentos: 10
+             limite_mensagens: 1000,
+             limite_procedimentos: 30
           })
           .eq('id', clinicaId)
       }
