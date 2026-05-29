@@ -45,6 +45,14 @@ interface ClinicaAdminItem {
   cnpj?: string | null;
 }
 
+interface AdminItem {
+  id: string;
+  full_name: string | null;
+  email: string;
+  role: string;
+  created_at: string;
+}
+
 // Lista simples de e-mails de super admin.
 const SUPER_ADMIN_EMAILS: string[] = ["tiago@dentos.com.br", "admin@dentos.com.br", "tiago18fap@gmail.com", "contato@dentos.com.br", "victorpconti@gmail.com"];
 
@@ -100,6 +108,22 @@ const Configuracoes = () => {
   const [editClinicaLimiteProc, setEditClinicaLimiteProc] = useState(5);
   const [editClinicaDataFimTeste, setEditClinicaDataFimTeste] = useState("");
   const [editClinicaLoading, setEditClinicaLoading] = useState(false);
+
+  // Estados de gerenciamento de Super Administradores do Sistema
+  const [createSystemAdminOpen, setCreateSystemAdminOpen] = useState(false);
+  const [editSystemAdminOpen, setEditSystemAdminOpen] = useState(false);
+  const [selectedSystemAdmin, setSelectedSystemAdmin] = useState<AdminItem | null>(null);
+  const [sysAdminEmail, setSysAdminEmail] = useState("");
+  const [sysAdminPassword, setSysAdminPassword] = useState("");
+  const [sysAdminName, setSysAdminName] = useState("");
+  const [editingSystemAdminPasswordId, setEditingSystemAdminPasswordId] = useState<string | null>(null);
+  const [newPasswordForSystemAdmin, setNewPasswordForSystemAdmin] = useState("");
+  const [addingSystemAdmin, setAddingSystemAdmin] = useState(false);
+  const [changingSystemAdminPassword, setChangingSystemAdminPassword] = useState(false);
+  const [deleteSystemAdminOpen, setDeleteSystemAdminOpen] = useState(false);
+  const [deleteSystemAdminTarget, setDeleteSystemAdminTarget] = useState<AdminItem | null>(null);
+  const [deleteSystemAdminConfirmInput, setDeleteSystemAdminConfirmInput] = useState("");
+  const [deleteSystemAdminLoading, setDeleteSystemAdminLoading] = useState(false);
 
   // Estados de exclusão de clínica
   const [deleteClinicaOpen, setDeleteClinicaOpen] = useState(false);
@@ -268,7 +292,7 @@ const Configuracoes = () => {
         .select("id, full_name, role")
         .eq("clinica_id", clinicaId);
       if (error) throw error;
-      setClinicaUsers(data || []);
+      setClinicaUsers((data || []).filter(u => u.role !== 'super_admin' && u.role !== 'admin_master'));
     } catch (error: any) {
       console.error("Erro ao carregar usuários da clínica:", error);
       toast({
@@ -453,6 +477,198 @@ const Configuracoes = () => {
       });
     } finally {
       setDeleteClinicaLoading(false);
+    }
+  };
+
+  const handleCreateSystemAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sysAdminEmail || !sysAdminPassword || !sysAdminName) {
+      toast({
+        variant: "destructive",
+        title: "Campos obrigatórios",
+        description: "Preencha todos os campos do novo administrador."
+      });
+      return;
+    }
+
+    try {
+      setAddingSystemAdmin(true);
+      const { error } = await supabase.rpc("create_auth_user", {
+        _email: sysAdminEmail.trim(),
+        _password: sysAdminPassword,
+        _full_name: sysAdminName.trim(),
+        _clinica_id: null,
+        _role: 'super_admin'
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Administrador criado",
+        description: "Novo administrador do sistema cadastrado com sucesso!"
+      });
+
+      await gravarLogAuditoria(
+        clinica?.id,
+        "criar_admin",
+        `Criou o administrador do sistema '${sysAdminName.trim()}' (${sysAdminEmail.trim()})`
+      );
+
+      setSysAdminEmail("");
+      setSysAdminPassword("");
+      setSysAdminName("");
+      setCreateSystemAdminOpen(false);
+      adminsQuery.refetch();
+    } catch (error: any) {
+      console.error("Erro ao criar admin:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao criar administrador",
+        description: error.message ?? "Não foi possível criar o administrador."
+      });
+    } finally {
+      setAddingSystemAdmin(false);
+    }
+  };
+
+  const handleSaveSystemAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSystemAdmin || !sysAdminName) return;
+
+    try {
+      setEditClinicaLoading(true);
+      const { error } = await supabase
+        .from("perfis")
+        .update({
+          full_name: sysAdminName.trim()
+        })
+        .eq("id", selectedSystemAdmin.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Administrador atualizado",
+        description: "Nome do administrador atualizado com sucesso!"
+      });
+
+      await gravarLogAuditoria(
+        clinica?.id,
+        "editar_admin",
+        `Atualizou nome do administrador (ID: ${selectedSystemAdmin.id}) para '${sysAdminName.trim()}'`
+      );
+
+      setEditSystemAdminOpen(false);
+      adminsQuery.refetch();
+    } catch (error: any) {
+      console.error("Erro ao atualizar admin:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao salvar alterações",
+        description: error.message ?? "Não foi possível atualizar o administrador."
+      });
+    } finally {
+      setEditClinicaLoading(false);
+    }
+  };
+
+  const handleChangeSystemAdminPassword = async (adminId: string) => {
+    if (!newPasswordForSystemAdmin || newPasswordForSystemAdmin.length < 6) {
+      toast({
+        variant: "destructive",
+        title: "Senha inválida",
+        description: "A senha deve ter no mínimo 6 caracteres."
+      });
+      return;
+    }
+
+    try {
+      setChangingSystemAdminPassword(true);
+      const { error } = await supabase.rpc("change_user_password", {
+        _user_id: adminId,
+        _new_password: newPasswordForSystemAdmin
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Senha redefinida",
+        description: "Senha do administrador alterada com sucesso!"
+      });
+
+      await gravarLogAuditoria(
+        clinica?.id,
+        "alterar_senha_admin",
+        `Alterou a senha do administrador (ID: ${adminId})`
+      );
+
+      setEditingSystemAdminPasswordId(null);
+      setNewPasswordForSystemAdmin("");
+    } catch (error: any) {
+      console.error("Erro ao alterar senha do admin:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao alterar senha",
+        description: error.message ?? "Não foi possível redefinir a senha do administrador."
+      });
+    } finally {
+      setChangingSystemAdminPassword(false);
+    }
+  };
+
+  const handleDeleteSystemAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deleteSystemAdminTarget) return;
+
+    if (deleteSystemAdminTarget.id === perfil?.id) {
+      toast({
+        variant: "destructive",
+        title: "Ação não permitida",
+        description: "Você não pode excluir o seu próprio usuário administrador."
+      });
+      return;
+    }
+
+    if (deleteSystemAdminConfirmInput.trim().toUpperCase() !== "EXCLUIR") {
+      toast({
+        variant: "destructive",
+        title: "Confirmação incorreta",
+        description: "Digite EXCLUIR para confirmar a exclusão do administrador."
+      });
+      return;
+    }
+
+    try {
+      setDeleteSystemAdminLoading(true);
+      const { error } = await supabase.rpc("delete_auth_user", {
+        _user_id: deleteSystemAdminTarget.id
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Administrador excluído",
+        description: "O administrador foi excluído com sucesso."
+      });
+
+      await gravarLogAuditoria(
+        clinica?.id,
+        "deletar_admin",
+        `Excluiu permanentemente o administrador '${deleteSystemAdminTarget.full_name}' (ID: ${deleteSystemAdminTarget.id})`
+      );
+
+      setDeleteSystemAdminOpen(false);
+      setDeleteSystemAdminTarget(null);
+      setDeleteSystemAdminConfirmInput("");
+      adminsQuery.refetch();
+    } catch (error: any) {
+      console.error("Erro ao excluir admin:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao excluir administrador",
+        description: error.message ?? "Não foi possível excluir o administrador."
+      });
+    } finally {
+      setDeleteSystemAdminLoading(false);
     }
   };
 
@@ -1209,6 +1425,20 @@ const Configuracoes = () => {
 
   const clientesData = (clientesQuery.data ?? []) as ClinicaAdminItem[];
 
+  const adminsQuery = useQuery({
+    queryKey: ["admin_super_admins"],
+    enabled: isSuperAdmin,
+    queryFn: async (): Promise<AdminItem[]> => {
+      const { data, error } = await supabase.rpc("get_super_admins");
+      if (error) {
+        throw error;
+      }
+      return data || [];
+    },
+  });
+
+  const adminsData = (adminsQuery.data ?? []) as AdminItem[];
+
   const mpConfigQuery = useQuery({
     queryKey: ["mp_config"],
     enabled: isSuperAdmin,
@@ -1941,6 +2171,158 @@ const Configuracoes = () => {
           </Dialog>
         )}
 
+        {createSystemAdminOpen && (
+          <Dialog open={createSystemAdminOpen} onOpenChange={setCreateSystemAdminOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  Novo Administrador do Sistema
+                </DialogTitle>
+                <DialogDescription>
+                  Cadastre um novo usuário com acesso total e irrestrito ao sistema.
+                </DialogDescription>
+              </DialogHeader>
+
+              <form onSubmit={handleCreateSystemAdmin} className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <Label htmlFor="sysAdminName">Nome Completo</Label>
+                  <Input
+                    id="sysAdminName"
+                    value={sysAdminName}
+                    onChange={(e) => setSysAdminName(e.target.value)}
+                    placeholder="Ex: Victor Conti"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sysAdminEmail">E-mail de Acesso</Label>
+                  <Input
+                    id="sysAdminEmail"
+                    type="email"
+                    value={sysAdminEmail}
+                    onChange={(e) => setSysAdminEmail(e.target.value)}
+                    placeholder="email@dentos.com.br"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sysAdminPassword">Senha Inicial</Label>
+                  <Input
+                    id="sysAdminPassword"
+                    type="password"
+                    value={sysAdminPassword}
+                    onChange={(e) => setSysAdminPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    minLength={6}
+                    required
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setCreateSystemAdminOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={addingSystemAdmin}>
+                    {addingSystemAdmin ? "Criando..." : "Criar Administrador"}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {editSystemAdminOpen && selectedSystemAdmin && (
+          <Dialog open={editSystemAdminOpen} onOpenChange={setEditSystemAdminOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Edit className="h-5 w-5 text-primary" />
+                  Editar Administrador
+                </DialogTitle>
+                <DialogDescription>
+                  Altere o nome do administrador do sistema.
+                </DialogDescription>
+              </DialogHeader>
+
+              <form onSubmit={handleSaveSystemAdmin} className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <Label htmlFor="editSysAdminName">Nome Completo</Label>
+                  <Input
+                    id="editSysAdminName"
+                    value={sysAdminName}
+                    onChange={(e) => setSysAdminName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setEditSystemAdminOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={editClinicaLoading}>
+                    {editClinicaLoading ? "Salvando..." : "Salvar Alterações"}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {deleteSystemAdminOpen && deleteSystemAdminTarget && (
+          <Dialog open={deleteSystemAdminOpen} onOpenChange={setDeleteSystemAdminOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-destructive flex items-center gap-2">
+                  <Trash2 className="h-5 w-5" />
+                  Excluir Administrador
+                </DialogTitle>
+                <DialogDescription>
+                  Esta ação é irreversível e excluirá permanentemente a conta de <strong>{deleteSystemAdminTarget.full_name || deleteSystemAdminTarget.email}</strong> como administrador do sistema.
+                </DialogDescription>
+              </DialogHeader>
+
+              <form onSubmit={handleDeleteSystemAdmin} className="space-y-4 pt-2">
+                <div className="space-y-2 text-sm">
+                  <p>Para confirmar a exclusão do administrador, digite a palavra abaixo:</p>
+                  <p className="font-mono bg-muted p-2 rounded text-center select-none text-foreground font-semibold tracking-wider">
+                    EXCLUIR
+                  </p>
+                  <Input
+                    placeholder="Digite EXCLUIR para confirmar"
+                    value={deleteSystemAdminConfirmInput}
+                    onChange={(e) => setDeleteSystemAdminConfirmInput(e.target.value)}
+                    required
+                    className="bg-background text-center font-semibold"
+                  />
+                </div>
+
+                <div className="flex gap-2 justify-end pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setDeleteSystemAdminOpen(false);
+                      setDeleteSystemAdminTarget(null);
+                      setDeleteSystemAdminConfirmInput("");
+                    }}
+                    disabled={deleteSystemAdminLoading}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="destructive"
+                    disabled={deleteSystemAdminLoading || deleteSystemAdminConfirmInput.trim().toUpperCase() !== "EXCLUIR"}
+                  >
+                    {deleteSystemAdminLoading ? "Excluindo..." : "Confirmar Exclusão"}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
+
         <Tabs
           defaultValue={(new URLSearchParams(location.search).get("tab") as "perfil" | "geral" | "logs") ?? "perfil"}
           className="w-full"
@@ -2494,6 +2876,148 @@ const Configuracoes = () => {
                           </TableBody>
                         </Table>
                       </ScrollArea>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="mt-6">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <div>
+                      <CardTitle className="text-sm">Super Administradores do Sistema</CardTitle>
+                      <CardDescription className="text-xs">
+                        Usuários com acesso administrativo global e sem vinculação a clínicas.
+                      </CardDescription>
+                    </div>
+                    <Button 
+                      size="sm" 
+                      className="flex items-center gap-1 text-xs px-3 h-8 bg-primary text-primary-foreground"
+                      onClick={() => {
+                        setSysAdminName("");
+                        setSysAdminEmail("");
+                        setSysAdminPassword("");
+                        setCreateSystemAdminOpen(true);
+                      }}
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>Novo Administrador</span>
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto rounded-md border bg-card">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Nome</TableHead>
+                            <TableHead>E-mail</TableHead>
+                            <TableHead className="hidden sm:table-cell">Cadastro</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {adminsQuery.isLoading && (
+                            <TableRow>
+                              <TableCell colSpan={4} className="text-center text-xs text-muted-foreground">
+                                Carregando administradores...
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          {!adminsQuery.isLoading && adminsData.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={4} className="text-center text-xs text-muted-foreground">
+                                Nenhum administrador cadastrado.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          {!adminsQuery.isLoading &&
+                            adminsData.map((admin) => (
+                              <TableRow key={admin.id}>
+                                <TableCell className="font-medium text-xs">
+                                  <p>{admin.full_name || "(Sem nome)"}</p>
+                                  <span className="text-[9px] text-muted-foreground font-mono block mt-0.5">ID: {admin.id}</span>
+                                </TableCell>
+                                <TableCell className="text-xs">{admin.email}</TableCell>
+                                <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
+                                  {admin.created_at ? new Date(admin.created_at).toLocaleDateString("pt-BR") : "-"}
+                                </TableCell>
+                                <TableCell className="text-right whitespace-nowrap">
+                                  {editingSystemAdminPasswordId === admin.id ? (
+                                    <div className="inline-flex gap-1.5 items-center justify-end">
+                                      <Input
+                                        type="password"
+                                        placeholder="Nova senha"
+                                        value={newPasswordForSystemAdmin}
+                                        onChange={(e) => setNewPasswordForSystemAdmin(e.target.value)}
+                                        className="h-7 w-28 text-xs bg-background"
+                                        minLength={6}
+                                      />
+                                      <Button
+                                        size="sm"
+                                        className="h-7 px-2 text-[10px] bg-primary text-primary-foreground"
+                                        onClick={() => handleChangeSystemAdminPassword(admin.id)}
+                                        disabled={changingSystemAdminPassword}
+                                      >
+                                        Salvar
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 px-2 text-[10px]"
+                                        onClick={() => {
+                                          setEditingSystemAdminPasswordId(null);
+                                          setNewPasswordForSystemAdmin("");
+                                        }}
+                                      >
+                                        Cancelar
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex gap-1 justify-end">
+                                      <Button
+                                        size="icon"
+                                        variant="outline"
+                                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                        title="Editar Nome"
+                                        onClick={() => {
+                                          setSelectedSystemAdmin(admin);
+                                          setSysAdminName(admin.full_name || "");
+                                          setEditSystemAdminOpen(true);
+                                        }}
+                                      >
+                                        <Edit className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <Button
+                                        size="icon"
+                                        variant="outline"
+                                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                        title="Alterar Senha"
+                                        onClick={() => {
+                                          setEditingSystemAdminPasswordId(admin.id);
+                                          setNewPasswordForSystemAdmin("");
+                                        }}
+                                      >
+                                        <Key className="h-3.5 w-3.5" />
+                                      </Button>
+                                      <Button
+                                        size="icon"
+                                        variant="destructive"
+                                        className="h-7 w-7"
+                                        title="Excluir Administrador"
+                                        disabled={admin.id === perfil?.id}
+                                        onClick={() => {
+                                          setDeleteSystemAdminTarget(admin);
+                                          setDeleteSystemAdminConfirmInput("");
+                                          setDeleteSystemAdminOpen(true);
+                                        }}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
                     </div>
                   </CardContent>
                 </Card>
