@@ -484,7 +484,7 @@ function ClienteDetailDialog({
                     aniversario_mes: "🎂 Aniversário",
                     aniversario_dia: "🎂 Aniv. Dia",
                     procedimento: "🦷 Procedimento",
-                    massa: "📢 Disparo em massa",
+                    massa: "📢 Disparo Geral",
                     manual: "✍️ Manual",
                   };
 
