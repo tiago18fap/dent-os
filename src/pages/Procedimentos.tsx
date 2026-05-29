@@ -326,11 +326,21 @@ function ProcedimentoDetailDialog({
         entry.pacientes.push(p.nome_paciente);
       }
     });
-    return Array.from(map.entries()).map(([data, info]) => ({
-      data,
-      pacientes: info.pacientes,
-      prestador: info.prestador,
-    }));
+    return Array.from(map.entries())
+      .map(([data, info]) => ({
+        data,
+        pacientes: info.pacientes,
+        prestador: info.prestador,
+      }))
+      .sort((a, b) => {
+        // Ordenar por data crescente (dd/MM/yyyy)
+        const parseDate = (d: string) => {
+          const parts = d.split("/");
+          if (parts.length === 3) return new Date(+parts[2], +parts[1] - 1, +parts[0]).getTime();
+          return 0;
+        };
+        return parseDate(a.data) - parseDate(b.data);
+      });
   }, [pacientes]);
 
   const totalPacientes = useMemo(() => {

@@ -296,7 +296,7 @@ function ClienteDetailDialog({
         .select("procedimento, data_finalizacao, prestador")
         .eq("clinica_id", clinicaId)
         .eq("nome_paciente", cliente.paciente)
-        .order("data_finalizacao", { ascending: false });
+        .order("data_finalizacao", { ascending: true });
 
       if (error) throw error;
       return data ?? [];
