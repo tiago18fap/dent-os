@@ -108,7 +108,7 @@ export function Campanhas() {
   const { toast } = useToast();
   const { clinica, loading, isSuperAdmin, isImpersonating } = useClinica();
 
-  // Disparo em massa
+  // Disparo Geral
   const [mensagemMassa, setMensagemMassa] = useState("");
   const [enviandoMassa, setEnviandoMassa] = useState(false);
   const [historicoDisparosMassa, setHistoricoDisparosMassa] = useState<DisparoMassaHistoricoItem[]>([]);
@@ -123,6 +123,15 @@ export function Campanhas() {
   const [pacientesSelecionadosIds, setPacientesSelecionadosIds] = useState<string[]>([]);
   const [paginaPacientes, setPaginaPacientes] = useState(1);
   const PACIENTES_POR_PAGINA = 50;
+
+  // Disparo Geral — modo procedimento
+  const [modoSelecao, setModoSelecao] = useState<"paciente" | "procedimento">("paciente");
+  const [procsSelecionadosGeral, setProcsSelecionadosGeral] = useState<string[]>([]);
+  const [buscaProcGeral, setBuscaProcGeral] = useState("");
+  const [dataInicioGeral, setDataInicioGeral] = useState("");
+  const [dataFimGeral, setDataFimGeral] = useState("");
+  const [buscandoPacientesProc, setBuscandoPacientesProc] = useState(false);
+  const [resumoLote, setResumoLote] = useState<{ total: number; nomes: string[] } | null>(null);
 
   // Disparo por procedimento
   const [procedimentos, setProcedimentos] = useState<ProcedimentoDb[]>([]);
@@ -613,7 +622,9 @@ export function Campanhas() {
       toast({
         variant: "destructive",
         title: "Selecione os pacientes",
-        description: "Escolha ao menos um paciente para receber o disparo em massa.",
+        description: modoSelecao === "procedimento"
+          ? "Use o botão 'Buscar pacientes' para encontrar os destinatários por procedimento."
+          : "Escolha ao menos um paciente para receber o disparo.",
       });
       return;
     }
@@ -955,28 +966,62 @@ export function Campanhas() {
           className="w-full"
         >
           <TabsList className="mb-3 flex w-full justify-start gap-2 overflow-x-auto flex-nowrap rounded-lg bg-card/80 p-1 shadow-sm">
-            <TabsTrigger value="massa">Disparo em massa</TabsTrigger>
+            <TabsTrigger value="massa">Disparo Geral</TabsTrigger>
             <TabsTrigger value="procedimento">Disparo por procedimento</TabsTrigger>
             <TabsTrigger value="aniversario">Disparo de aniversário</TabsTrigger>
           </TabsList>
 
           <TabsContent value="massa" className="mt-0">
-            {/* Disparo em massa */}
+            {/* Disparo Geral */}
             <Card className="w-full">
               <CardHeader>
-                <CardTitle>Disparo em massa</CardTitle>
+                <CardTitle>Disparo Geral</CardTitle>
                 <CardDescription>
-                  Envie uma mensagem personalizada para toda a base de clientes em poucos cliques.
+                  Envie uma mensagem personalizada selecionando por paciente ou por procedimentos realizados.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {/* Destinatários */}
+                {/* Modo de seleção */}
+                <div className="space-y-2 rounded-md border bg-card/60 p-3 text-xs">
+                  <p className="font-medium text-foreground">Modo de seleção de destinatários</p>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={modoSelecao === "paciente" ? "default" : "outline"}
+                      className="h-8 px-4 text-xs"
+                      onClick={() => {
+                        setModoSelecao("paciente");
+                        setPacientesSelecionadosIds([]);
+                        setResumoLote(null);
+                      }}
+                    >
+                      Por paciente
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={modoSelecao === "procedimento" ? "default" : "outline"}
+                      className="h-8 px-4 text-xs"
+                      onClick={() => {
+                        setModoSelecao("procedimento");
+                        setPacientesSelecionadosIds([]);
+                        setResumoLote(null);
+                      }}
+                    >
+                      Por procedimento
+                    </Button>
+                  </div>
+                </div>
+
+                {/* ═══ MODO PACIENTE ═══ */}
+                {modoSelecao === "paciente" && (
                 <div className="space-y-2 rounded-md border bg-card/60 p-3 text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <div className="space-y-0.5">
                       <p className="font-medium text-foreground">Destinatários</p>
                       <p className="text-[11px] text-muted-foreground">
-                        Selecione os pacientes que devem receber esta mensagem em massa.
+                        Selecione os pacientes que devem receber esta mensagem.
                       </p>
                     </div>
                     <div className="flex flex-col items-end gap-1 text-right">
@@ -1225,6 +1270,225 @@ export function Campanhas() {
                     </div>
                   </div>
                 </div>
+                )}
+
+                {/* ═══ MODO PROCEDIMENTO ═══ */}
+                {modoSelecao === "procedimento" && (
+                <div className="space-y-3 rounded-md border bg-card/60 p-3 text-xs">
+                  <div className="space-y-0.5">
+                    <p className="font-medium text-foreground">Seleção por procedimento</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Selecione os procedimentos e defina o período de finalização para encontrar os pacientes.
+                    </p>
+                  </div>
+
+                  {/* Busca e seleção de procedimentos */}
+                  <div className="space-y-2">
+                    <Label htmlFor="busca-proc-geral" className="text-[11px]">Procedimentos</Label>
+                    <Input
+                      id="busca-proc-geral"
+                      placeholder="Buscar procedimento..."
+                      value={buscaProcGeral}
+                      onChange={(e) => setBuscaProcGeral(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                    <div className="max-h-[150px] overflow-y-auto rounded-md border bg-background p-1">
+                      {procedimentos
+                        .filter((p) => {
+                          const termo = buscaProcGeral.trim().toLowerCase();
+                          if (!termo) return true;
+                          return p.procedimento.toLowerCase().includes(termo);
+                        })
+                        .map((proc) => {
+                          const selecionado = procsSelecionadosGeral.includes(proc.procedimento);
+                          return (
+                            <label
+                              key={proc.id}
+                              className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted/50 ${
+                                selecionado ? "bg-primary/5 font-medium" : ""
+                              }`}
+                            >
+                              <Checkbox
+                                checked={selecionado}
+                                onCheckedChange={(checked) => {
+                                  setProcsSelecionadosGeral((prev) =>
+                                    checked
+                                      ? [...prev, proc.procedimento]
+                                      : prev.filter((n) => n !== proc.procedimento)
+                                  );
+                                  setResumoLote(null);
+                                }}
+                              />
+                              <span className="truncate">{proc.procedimento}</span>
+                            </label>
+                          );
+                        })}
+                    </div>
+                    {procsSelecionadosGeral.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {procsSelecionadosGeral.map((nome) => (
+                          <span
+                            key={nome}
+                            className="inline-flex items-center gap-1 rounded-full border bg-primary/5 px-2 py-0.5 text-[10px]"
+                          >
+                            {nome}
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-destructive"
+                              onClick={() => {
+                                setProcsSelecionadosGeral((prev) => prev.filter((n) => n !== nome));
+                                setResumoLote(null);
+                              }}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Range de datas */}
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="data-inicio-geral" className="text-[11px]">Período início (finalização)</Label>
+                      <Input
+                        id="data-inicio-geral"
+                        type="date"
+                        value={dataInicioGeral}
+                        onChange={(e) => { setDataInicioGeral(e.target.value); setResumoLote(null); }}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="data-fim-geral" className="text-[11px]">Período fim (finalização)</Label>
+                      <Input
+                        id="data-fim-geral"
+                        type="date"
+                        value={dataFimGeral}
+                        onChange={(e) => { setDataFimGeral(e.target.value); setResumoLote(null); }}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Seleciona pacientes que finalizaram os procedimentos entre essas datas.
+                  </p>
+
+                  {/* Botão buscar */}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="w-full h-8 text-xs"
+                    disabled={buscandoPacientesProc || procsSelecionadosGeral.length === 0 || !dataInicioGeral || !dataFimGeral}
+                    onClick={async () => {
+                      try {
+                        setBuscandoPacientesProc(true);
+                        setResumoLote(null);
+                        setPacientesSelecionadosIds([]);
+
+                        // Parse date range
+                        const dtInicio = new Date(dataInicioGeral + "T00:00:00");
+                        const dtFim = new Date(dataFimGeral + "T23:59:59");
+
+                        // Fetch procedures in date range
+                        let procQuery = (supabase as any)
+                          .from("procedimentos")
+                          .select("nome_paciente, data_finalizacao, procedimento")
+                          .in("procedimento", procsSelecionadosGeral);
+
+                        if (!isSuperAdmin || isImpersonating) {
+                          if (clinica?.id) procQuery = procQuery.eq("clinica_id", clinica.id);
+                        }
+
+                        const { data: procs, error: erroProcs } = await procQuery;
+                        if (erroProcs) throw erroProcs;
+
+                        // Filter by date range (data_finalizacao is dd/MM/yyyy)
+                        const nomesPacientes = new Set<string>();
+                        for (const proc of (procs ?? [])) {
+                          const dfStr = (proc.data_finalizacao ?? "").trim();
+                          if (!dfStr) continue;
+                          const parts = dfStr.split("/");
+                          if (parts.length !== 3) continue;
+                          const d = new Date(
+                            parseInt(parts[2], 10),
+                            parseInt(parts[1], 10) - 1,
+                            parseInt(parts[0], 10)
+                          );
+                          if (isNaN(d.getTime())) continue;
+                          if (d >= dtInicio && d <= dtFim) {
+                            const nome = (proc.nome_paciente ?? "").trim();
+                            if (nome) nomesPacientes.add(nome);
+                          }
+                        }
+
+                        if (nomesPacientes.size === 0) {
+                          setResumoLote({ total: 0, nomes: [] });
+                          toast({ variant: "destructive", title: "Nenhum paciente encontrado", description: "Nenhum paciente realizou esses procedimentos no período selecionado." });
+                          return;
+                        }
+
+                        // Fetch matching clients
+                        const nomesArray = Array.from(nomesPacientes);
+                        const BATCH = 100;
+                        const clientesEncontrados: { id: string; paciente: string }[] = [];
+                        for (let i = 0; i < nomesArray.length; i += BATCH) {
+                          const batch = nomesArray.slice(i, i + BATCH);
+                          let cliQuery = (supabase as any)
+                            .from("clientes")
+                            .select("id, paciente")
+                            .ilike("situacao", "Ativo")
+                            .not("telefone", "is", null)
+                            .in("paciente", batch);
+                          if (!isSuperAdmin || isImpersonating) {
+                            if (clinica?.id) cliQuery = cliQuery.eq("clinica_id", clinica.id);
+                          }
+                          const { data: clis } = await cliQuery;
+                          if (clis) clientesEncontrados.push(...clis);
+                        }
+
+                        // Deduplicate by id
+                        const idsUnicos = Array.from(new Set(clientesEncontrados.map((c) => c.id)));
+                        setPacientesSelecionadosIds(idsUnicos);
+                        setResumoLote({
+                          total: idsUnicos.length,
+                          nomes: procsSelecionadosGeral,
+                        });
+
+                        if (idsUnicos.length > 0) {
+                          toast({ title: "Pacientes encontrados!", description: `${idsUnicos.length} paciente(s) encontrado(s).` });
+                        }
+                      } catch (err: any) {
+                        console.error("Erro ao buscar pacientes por procedimento:", err);
+                        toast({ variant: "destructive", title: "Erro na busca", description: err.message ?? "Não foi possível buscar os pacientes." });
+                      } finally {
+                        setBuscandoPacientesProc(false);
+                      }
+                    }}
+                  >
+                    {buscandoPacientesProc ? "Buscando…" : "Buscar pacientes"}
+                  </Button>
+
+                  {/* Resumo do lote */}
+                  {resumoLote && (
+                    <div className="rounded-md border bg-muted/30 p-3 space-y-1">
+                      <p className="text-xs font-medium text-foreground">📋 Resumo do lote</p>
+                      <div className="text-[11px] text-muted-foreground space-y-0.5">
+                        <p>• Pacientes encontrados: <span className="font-semibold text-foreground">{resumoLote.total}</span></p>
+                        <p>• Procedimentos: <span className="font-semibold text-foreground">{resumoLote.nomes.join(", ")}</span></p>
+                        <p>• Período: <span className="font-semibold text-foreground">
+                          {new Date(dataInicioGeral + "T00:00:00").toLocaleDateString("pt-BR")} a {new Date(dataFimGeral + "T00:00:00").toLocaleDateString("pt-BR")}
+                        </span></p>
+                        {resumoLote.total > 0 && (
+                          <p>• Créditos necessários: <span className="font-semibold text-foreground">{resumoLote.total}</span></p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                )}
 
                 <div className="space-y-2 rounded-md border bg-card/60 p-3 text-xs">
                   <div className="flex items-center justify-between gap-2">
@@ -1241,7 +1505,7 @@ export function Campanhas() {
                       <Switch
                         checked={enviarMassaAgora}
                         onCheckedChange={(checked) => setEnviarMassaAgora(checked)}
-                        aria-label="Definir envio do disparo em massa para agora"
+                        aria-label="Definir envio do disparo geral para agora"
                       />
                     </div>
                   </div>

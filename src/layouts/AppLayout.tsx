@@ -152,7 +152,7 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
                         isActive={location.pathname === "/campanhas" && currentCampanhasTab === "massa"}
                         className="rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-secondary/10 hover:text-secondary-foreground/90 data-[active=true]:bg-secondary/15 data-[active=true]:text-secondary-foreground"
                       >
-                        <NavLink to="/campanhas?tab=massa">Disparo em massa</NavLink>
+                        <NavLink to="/campanhas?tab=massa">Disparo Geral</NavLink>
                       </SidebarMenuSubButton>
                     </SidebarMenuSubItem>
                     <SidebarMenuSubItem>
