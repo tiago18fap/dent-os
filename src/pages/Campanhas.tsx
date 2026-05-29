@@ -48,7 +48,7 @@ import { useClinica } from "@/contexts/ClinicaContext";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import { Cake, Zap, Loader2 } from "lucide-react";
+import { Cake, Zap, Loader2, Plus } from "lucide-react";
 
 type ProcedimentoId = string;
 
@@ -919,9 +919,46 @@ export function Campanhas() {
       }
 
       if (pacientesParaEnviar.size === 0) {
+        // Calcular previstos para os próximos 30 dias
+        const amanha = new Date(hojeNorm.getFullYear(), hojeNorm.getMonth(), hojeNorm.getDate() + 1);
+        const fim30 = new Date(hojeNorm.getFullYear(), hojeNorm.getMonth(), hojeNorm.getDate() + 30);
+        const pacientesProximos = new Map<string, Date>();
+
+        for (const proc of procs) {
+          const nome = (proc.nome_paciente ?? "").trim();
+          if (!nome) continue;
+
+          const dataFin = parseDateBRLocal(proc.data_finalizacao);
+          if (!dataFin) continue;
+
+          const dataEnvio = new Date(dataFin.getFullYear(), dataFin.getMonth(), dataFin.getDate());
+          dataEnvio.setDate(dataEnvio.getDate() + diasEntreEnvios);
+
+          if (dataEnvio.getTime() >= amanha.getTime() && dataEnvio.getTime() <= fim30.getTime()) {
+            // Verificar se há outro mais recente
+            const temMaisRecente = procs.some((other) => {
+              if ((other.nome_paciente ?? "").trim().toLowerCase() !== nome.toLowerCase()) return false;
+              if (!nomesProc.map(n => n.toLowerCase()).includes((other.procedimento ?? "").toLowerCase())) return false;
+              
+              const otherDate = parseDateBRLocal(other.data_finalizacao);
+              if (!otherDate) return false;
+              return otherDate.getTime() > dataFin.getTime();
+            });
+
+            if (temMaisRecente) continue;
+
+            const existing = pacientesProximos.get(nome);
+            if (!existing || dataEnvio.getTime() < existing.getTime()) {
+              pacientesProximos.set(nome, dataEnvio);
+            }
+          }
+        }
+
+        const totalProximos = pacientesProximos.size;
+
         toast({
           title: "Nenhum disparo pendente para hoje",
-          description: `Nenhum paciente atingiu a data de aniversário do procedimento hoje (${diasEntreEnvios} dias pós-procedimento).`,
+          description: `Nenhum paciente atinge a data do disparo hoje (${diasEntreEnvios} dias pós-procedimento). Nos próximos 30 dias, há ${totalProximos} paciente(s) previsto(s) para entrar na fila.`,
         });
         return;
       }
@@ -2073,6 +2110,19 @@ export function Campanhas() {
                             <div className="flex items-center justify-between">
                               <p className="text-[11px] font-medium text-foreground">Procedimentos desta campanha</p>
                               <div className="flex items-center gap-1">
+                                {disponiveisParaAdicionar.length > 0 && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() => setAddProcAberto((prev) => ({ ...prev, [chaveGrupo]: !prev[chaveGrupo] }))}
+                                    title="Adicionar procedimento"
+                                  >
+                                    <Plus className={`h-3.5 w-3.5 transition-transform ${addProcAberto[chaveGrupo] ? 'rotate-45' : ''}`} />
+                                  </Button>
+                                )}
+
                                 {grupo.procedimentoIds.length > 0 && (
                                   <Button
                                     type="button"
@@ -2088,19 +2138,6 @@ export function Campanhas() {
                                     ) : (
                                       <Zap className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
                                     )}
-                                  </Button>
-                                )}
-
-                                {disponiveisParaAdicionar.length > 0 && (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6"
-                                    onClick={() => setAddProcAberto((prev) => ({ ...prev, [chaveGrupo]: !prev[chaveGrupo] }))}
-                                    title="Adicionar procedimento"
-                                  >
-                                    <span className={`text-base transition-transform ${addProcAberto[chaveGrupo] ? 'rotate-45' : ''}`}>+</span>
                                   </Button>
                                 )}
                               </div>
