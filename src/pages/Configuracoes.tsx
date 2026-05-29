@@ -1034,6 +1034,20 @@ const Configuracoes = () => {
     }
   });
 
+  const sistemaClinicasQuery = useQuery({
+    queryKey: ["admin_sistema_clinicas"],
+    enabled: isSuperAdmin,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("clinicas")
+        .select("id, nome, whatsapp_config(*)")
+        .order("nome", { ascending: true });
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
   useEffect(() => {
     if (mpConfigQuery.data && !hasInitializedMp) {
       setMpPublicKey(mpConfigQuery.data.mercado_pago_public_key ?? "");
@@ -2354,127 +2368,214 @@ const Configuracoes = () => {
           </TabsContent>
 
           <TabsContent value="sistema" className="mt-4">
-            <Card className="border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-300">
-              <CardHeader>
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Monitor className="h-4 w-4 text-primary" />
-                  <span>Integração Easy Dental</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="rounded-lg border border-primary/10 bg-primary/5 p-3 space-y-1">
-                  <p className="text-xs font-medium text-primary flex items-center gap-1.5">
-                    <Lock className="h-3.5 w-3.5" />
-                    Conexão segura com Easy Dental Cloud
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Suas credenciais são armazenadas de forma segura e utilizadas apenas para baixar automaticamente os relatórios de clientes e procedimentos do Easy Dental.
-                  </p>
-                </div>
-
-                <form onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (!clinica?.id) {
-                    toast({ variant: "destructive", title: "Erro", description: "Clínica não identificada." });
-                    return;
-                  }
-                  if (!easydentalUsuario.trim() || !easydentalSenha) {
-                    toast({ variant: "destructive", title: "Campos obrigatórios", description: "Preencha o email e a senha do Easy Dental." });
-                    return;
-                  }
-                  try {
-                    setSavingEasydental(true);
-                    const updateData: any = {
-                      clinica_id: clinica.id,
-                      easydental_url: "https://app.easydentalcloud.com.br/",
-                      easydental_usuario: easydentalUsuario.trim(),
-                      updated_at: new Date().toISOString()
-                    };
-                    // Só envia a senha se foi alterada (não é o placeholder)
-                    if (easydentalSenha !== SENHA_PLACEHOLDER) {
-                      updateData.easydental_senha = easydentalSenha;
-                    }
-                    const { error } = await (supabase as any)
-                      .from("whatsapp_config")
-                      .upsert(updateData, { onConflict: "clinica_id" });
-                    if (error) throw error;
-                    toast({ title: "Credenciais salvas!", description: "Dados do Easy Dental salvos com sucesso." });
-                    // Resetar para placeholder após salvar
-                    if (easydentalSenha !== SENHA_PLACEHOLDER) {
-                      setEasydentalSenha(SENHA_PLACEHOLDER);
-                    }
-                    queryClient.invalidateQueries({ queryKey: ["whatsapp_status"] });
-                  } catch (err: any) {
-                    console.error("Erro ao salvar Easy Dental:", err);
-                    toast({ variant: "destructive", title: "Erro ao salvar", description: err.message ?? "Não foi possível salvar." });
-                  } finally {
-                    setSavingEasydental(false);
-                  }
-                }} className="space-y-4">
-
-                  <div className="text-xs text-muted-foreground flex items-center gap-1.5 bg-muted/50 rounded-md px-3 py-2">
-                    <Monitor className="h-3.5 w-3.5" />
-                    <span className="font-mono">https://app.easydentalcloud.com.br/</span>
+            {isSuperAdmin ? (
+              <Card className="border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-300">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Monitor className="h-4 w-4 text-primary" />
+                    <span>Sistemas Integrados por Clínica</span>
+                  </CardTitle>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 text-xs"
+                    onClick={() => sistemaClinicasQuery.refetch()}
+                  >
+                    <RefreshCcw className="mr-2 h-3.5 w-3.5" />
+                    Atualizar
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {sistemaClinicasQuery.isLoading ? (
+                    <div className="flex justify-center p-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    </div>
+                  ) : (
+                    <div className="overflow-hidden rounded-md border bg-card">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Clínica</TableHead>
+                            <TableHead>WhatsApp (Instância)</TableHead>
+                            <TableHead>Easy Dental Cloud</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sistemaClinicasQuery.data?.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={3} className="text-center text-xs text-muted-foreground p-8">
+                                Nenhuma clínica cadastrada.
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            sistemaClinicasQuery.data?.map((c: any) => {
+                              const config = Array.isArray(c.whatsapp_config) ? c.whatsapp_config[0] : c.whatsapp_config;
+                              const hasEasyDental = !!config?.easydental_usuario;
+                              const whatsappConectado = !!config?.conectado;
+                              return (
+                                <TableRow key={c.id}>
+                                  <TableCell className="font-medium text-xs">
+                                    {c.nome}
+                                    <span className="block text-[9px] text-muted-foreground font-mono">{c.id}</span>
+                                  </TableCell>
+                                  <TableCell>
+                                    {whatsappConectado ? (
+                                      <Badge className="bg-green-500 hover:bg-green-600 text-[10px] gap-1 font-normal">
+                                        <Wifi className="h-3 w-3" />
+                                        <span>Conectado ({config?.numero || "—"})</span>
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="secondary" className="text-[10px] gap-1 font-normal text-muted-foreground bg-muted">
+                                        <WifiOff className="h-3 w-3 text-muted-foreground" />
+                                        <span>Desconectado</span>
+                                      </Badge>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    {hasEasyDental ? (
+                                      <Badge className="bg-primary/20 text-primary border-0 hover:bg-primary/20 text-[10px] font-normal gap-1">
+                                        <CheckCircle2 className="h-3 w-3 text-primary" />
+                                        <span>Ativo ({config?.easydental_usuario})</span>
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">
+                                        Não Configurado
+                                      </Badge>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-300">
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Monitor className="h-4 w-4 text-primary" />
+                    <span>Integração Easy Dental</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="rounded-lg border border-primary/10 bg-primary/5 p-3 space-y-1">
+                    <p className="text-xs font-medium text-primary flex items-center gap-1.5">
+                      <Lock className="h-3.5 w-3.5" />
+                      Conexão segura com Easy Dental Cloud
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Suas credenciais são armazenadas de forma segura e utilizadas apenas para baixar automaticamente os relatórios de clientes e procedimentos do Easy Dental.
+                    </p>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="easydental-email" className="text-sm font-medium">
-                        Email
-                      </Label>
-                      <Input
-                        id="easydental-email"
-                        type="email"
-                        placeholder="seuemail@clinica.com.br"
-                        value={easydentalUsuario}
-                        onChange={(e) => setEasydentalUsuario(e.target.value)}
-                        autoComplete="off"
-                      />
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!clinica?.id) {
+                      toast({ variant: "destructive", title: "Erro", description: "Clínica não identificada." });
+                      return;
+                    }
+                    if (!easydentalUsuario.trim() || !easydentalSenha) {
+                      toast({ variant: "destructive", title: "Campos obrigatórios", description: "Preencha o email e a senha do Easy Dental." });
+                      return;
+                    }
+                    try {
+                      setSavingEasydental(true);
+                      const updateData: any = {
+                        clinica_id: clinica.id,
+                        easydental_url: "https://app.easydentalcloud.com.br/",
+                        easydental_usuario: easydentalUsuario.trim(),
+                        updated_at: new Date().toISOString()
+                      };
+                      // Só envia a senha se foi alterada (não é o placeholder)
+                      if (easydentalSenha !== SENHA_PLACEHOLDER) {
+                        updateData.easydental_senha = easydentalSenha;
+                      }
+                      const { error } = await (supabase as any)
+                        .from("whatsapp_config")
+                        .upsert(updateData, { onConflict: "clinica_id" });
+                      if (error) throw error;
+                      toast({ title: "Credenciais salvas!", description: "Dados do Easy Dental salvos com sucesso." });
+                      // Resetar para placeholder após salvar
+                      if (easydentalSenha !== SENHA_PLACEHOLDER) {
+                        setEasydentalSenha(SENHA_PLACEHOLDER);
+                      }
+                      queryClient.invalidateQueries({ queryKey: ["whatsapp_status"] });
+                    } catch (err: any) {
+                      console.error("Erro ao salvar Easy Dental:", err);
+                      toast({ variant: "destructive", title: "Erro ao salvar", description: err.message ?? "Não foi possível salvar." });
+                    } finally {
+                      setSavingEasydental(false);
+                    }
+                  }} className="space-y-4">
+
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5 bg-muted/50 rounded-md px-3 py-2">
+                      <Monitor className="h-3.5 w-3.5" />
+                      <span className="font-mono">https://app.easydentalcloud.com.br/</span>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="easydental-senha" className="text-sm font-medium">
-                        Senha
-                      </Label>
-                      <Input
-                        id="easydental-senha"
-                        type="password"
-                        placeholder={hasSavedPassword ? "Senha salva — clique para alterar" : "••••••••"}
-                        value={hasSavedPassword ? "" : easydentalSenha}
-                        onChange={(e) => setEasydentalSenha(e.target.value)}
-                        onFocus={() => { if (hasSavedPassword) setEasydentalSenha(""); }}
-                        autoComplete="new-password"
-                      />
-                      {hasSavedPassword && (
-                        <p className="text-[10px] text-muted-foreground">✓ Senha salva. Digite uma nova senha apenas se quiser alterá-la.</p>
-                      )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="easydental-email" className="text-sm font-medium">
+                          Email
+                        </Label>
+                        <Input
+                          id="easydental-email"
+                          type="email"
+                          placeholder="seuemail@clinica.com.br"
+                          value={easydentalUsuario}
+                          onChange={(e) => setEasydentalUsuario(e.target.value)}
+                          autoComplete="off"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="easydental-senha" className="text-sm font-medium">
+                          Senha
+                        </Label>
+                        <Input
+                          id="easydental-senha"
+                          type="password"
+                          placeholder={hasSavedPassword ? "Senha salva — clique para alterar" : "••••••••"}
+                          value={hasSavedPassword ? "" : easydentalSenha}
+                          onChange={(e) => setEasydentalSenha(e.target.value)}
+                          onFocus={() => { if (hasSavedPassword) setEasydentalSenha(""); }}
+                          autoComplete="new-password"
+                        />
+                        {hasSavedPassword && (
+                          <p className="text-[10px] text-muted-foreground">✓ Senha salva. Digite uma nova senha apenas se quiser alterá-la.</p>
+                        )}
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="flex justify-end gap-2 pt-2">
-                    <Button type="submit" disabled={savingEasydental} size="sm">
-                      {savingEasydental ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          <span>Salvando...</span>
-                        </>
-                      ) : (
-                        <span>Salvar Credenciais</span>
-                      )}
-                    </Button>
-                  </div>
-                </form>
+                    <div className="flex justify-end gap-2 pt-2">
+                      <Button type="submit" disabled={savingEasydental} size="sm">
+                        {savingEasydental ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            <span>Salvando...</span>
+                          </>
+                        ) : (
+                          <span>Salvar Credenciais</span>
+                        )}
+                      </Button>
+                    </div>
+                  </form>
 
-                {easydentalUsuario && easydentalSenha && (
-                  <SyncNowSection clinicaId={whatsappStatus.data?.clinica_id} ultimaSync={whatsappStatus.data?.ultima_sync_sucesso} />
-                )}
+                  {easydentalUsuario && easydentalSenha && (
+                    <SyncNowSection clinicaId={whatsappStatus.data?.clinica_id} ultimaSync={whatsappStatus.data?.ultima_sync_sucesso} />
+                  )}
 
-                {/* ═══ LOGS DE INTEGRAÇÃO ═══ */}
-                {easydentalUsuario && easydentalSenha && (
-                  <SyncLogsSection clinicaId={whatsappStatus.data?.clinica_id} ultimaSync={whatsappStatus.data?.ultima_sync_sucesso} />
-                )}
-              </CardContent>
-            </Card>
+                  {/* ═══ LOGS DE INTEGRAÇÃO ═══ */}
+                  {easydentalUsuario && easydentalSenha && (
+                    <SyncLogsSection clinicaId={whatsappStatus.data?.clinica_id} ultimaSync={whatsappStatus.data?.ultima_sync_sucesso} />
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {isSuperAdmin && (
