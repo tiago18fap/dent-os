@@ -555,13 +555,14 @@ const FilaEnvios = () => {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        {isSuperAdmin && !isImpersonating && (
-                          <TableHead>Clínica</TableHead>
-                        )}
                         <TableHead>Data Programada</TableHead>
                         <TableHead>Paciente</TableHead>
                         <TableHead className="hidden sm:table-cell">Telefone</TableHead>
-                        <TableHead className="hidden sm:table-cell">Mensagem</TableHead>
+                        {isSuperAdmin && !isImpersonating ? (
+                          <TableHead>Clínica</TableHead>
+                        ) : (
+                          <TableHead className="hidden sm:table-cell">Mensagem</TableHead>
+                        )}
                         <TableHead>Origem</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="hidden sm:table-cell text-right">Custo</TableHead>
@@ -581,13 +582,14 @@ const FilaEnvios = () => {
                         
                         return (
                           <TableRow key={item.id}>
-                            {isSuperAdmin && !isImpersonating && (
-                              <TableCell className="text-xs font-semibold text-primary">{item.clinica_nome}</TableCell>
-                            )}
                             <TableCell className="whitespace-nowrap font-medium text-xs">{dataFormatada}</TableCell>
                             <TableCell className="text-xs">{item.paciente_nome ?? "—"}</TableCell>
                             <TableCell className="hidden sm:table-cell text-xs">{item.telefone ?? "—"}</TableCell>
-                            <TableCell className="hidden sm:table-cell text-xs text-muted-foreground max-w-[200px] truncate" title={item.mensagem}>{previewMsg}</TableCell>
+                            {isSuperAdmin && !isImpersonating ? (
+                              <TableCell className="text-xs font-semibold text-primary">{item.clinica_nome}</TableCell>
+                            ) : (
+                              <TableCell className="hidden sm:table-cell text-xs text-muted-foreground max-w-[200px] truncate" title={item.mensagem}>{previewMsg}</TableCell>
+                            )}
                             <TableCell>{getOrigemBadge(item.origem, item.campanha_ref)}</TableCell>
                             <TableCell>{getStatusBadge(item.status)}</TableCell>
                             <TableCell className="hidden sm:table-cell text-right text-destructive font-medium text-xs">-{item.custo ?? 1}</TableCell>
