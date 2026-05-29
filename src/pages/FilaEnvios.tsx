@@ -73,7 +73,21 @@ const FilaEnvios = () => {
   const [customRange, setCustomRange] = useState<DateRange | undefined>(undefined);
   const [filtroOrigem, setFiltroOrigem] = useState<string>("todas");
   const [filtroProcedimento, setFiltroProcedimento] = useState<string>("todos");
+  const [filtroClinica, setFiltroClinica] = useState<string>("todas");
   const pageSize = 20;
+
+  const { data: filterClinicas } = useQuery({
+    queryKey: ["filter_clinicas_fila"],
+    enabled: isSuperAdmin && !isImpersonating,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("clinicas")
+        .select("id, nome")
+        .order("nome", { ascending: true });
+      if (error) throw error;
+      return data || [];
+    }
+  });
 
   useEffect(() => {
     document.title = "Fila de Envios | DentOS";
@@ -110,7 +124,7 @@ const FilaEnvios = () => {
     queryFn: async () => {
       let query = (supabase as any)
         .from("fila_envios")
-        .select("*");
+        .select("*, clinicas(nome)");
 
       if (!isSuperAdmin || isImpersonating) {
         if (clinica?.id) {
@@ -127,7 +141,10 @@ const FilaEnvios = () => {
       const { data, error } = await query.order("data_programada", { ascending: false });
 
       if (error) throw error;
-      return data ?? [];
+      return (data || []).map((item: any) => ({
+        ...item,
+        clinica_nome: item.clinicas?.nome || "—"
+      }));
     },
     enabled: !loading,
     refetchInterval: 30000,
@@ -188,8 +205,13 @@ const FilaEnvios = () => {
       });
     }
 
+    // 3. Filtrar por clínica (para super admin)
+    if (isSuperAdmin && !isImpersonating && filtroClinica !== "todas") {
+      dados = dados.filter((item) => item.clinica_id === filtroClinica);
+    }
+
     return dados;
-  }, [fila, filtroOrigem, filtroProcedimento, campanhas]);
+  }, [fila, filtroOrigem, filtroProcedimento, campanhas, filtroClinica, isSuperAdmin, isImpersonating]);
 
   const filteredData = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -200,6 +222,7 @@ const FilaEnvios = () => {
       const status = (item.status ?? "").toLowerCase();
       const origem = (item.origem ?? "").toLowerCase();
       const mensagem = (item.mensagem ?? "").toLowerCase();
+      const clinicaNome = (item.clinica_nome ?? "").toLowerCase();
 
       let matchesProcedimento = false;
       if ((item.origem ?? "").toLowerCase() === "procedimento" && campanhas) {
@@ -210,7 +233,7 @@ const FilaEnvios = () => {
         }
       }
 
-      return nome.includes(term) || status.includes(term) || origem.includes(term) || mensagem.includes(term) || matchesProcedimento;
+      return nome.includes(term) || status.includes(term) || origem.includes(term) || mensagem.includes(term) || matchesProcedimento || clinicaNome.includes(term);
     });
   }, [filteredByOriginAndProc, searchTerm, campanhas]);
 
@@ -449,6 +472,26 @@ const FilaEnvios = () => {
                   />
                 </div>
 
+                {isSuperAdmin && !isImpersonating && (
+                  <div className="w-full sm:w-48">
+                    <select
+                      value={filtroClinica}
+                      onChange={(e) => {
+                        setFiltroClinica(e.target.value);
+                        setPage(1);
+                      }}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                    >
+                      <option value="todas">Todas as clínicas</option>
+                      {filterClinicas?.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div className="w-full sm:w-48">
                   <select
                     value={filtroOrigem}
@@ -512,6 +555,9 @@ const FilaEnvios = () => {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        {isSuperAdmin && !isImpersonating && (
+                          <TableHead>Clínica</TableHead>
+                        )}
                         <TableHead>Data Programada</TableHead>
                         <TableHead>Paciente</TableHead>
                         <TableHead className="hidden sm:table-cell">Telefone</TableHead>
@@ -535,6 +581,9 @@ const FilaEnvios = () => {
                         
                         return (
                           <TableRow key={item.id}>
+                            {isSuperAdmin && !isImpersonating && (
+                              <TableCell className="text-xs font-semibold text-primary">{item.clinica_nome}</TableCell>
+                            )}
                             <TableCell className="whitespace-nowrap font-medium text-xs">{dataFormatada}</TableCell>
                             <TableCell className="text-xs">{item.paciente_nome ?? "—"}</TableCell>
                             <TableCell className="hidden sm:table-cell text-xs">{item.telefone ?? "—"}</TableCell>
