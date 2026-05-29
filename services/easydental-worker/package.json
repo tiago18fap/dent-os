@@ -1,0 +1,13 @@
+{
+  "name": "dentos-easydental-worker",
+  "version": "1.0.0",
+  "description": "DentOS — Serviço de automação Easy Dental Cloud",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "sync": "node sync.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.52.0"
+  }
+}
