@@ -691,23 +691,40 @@ export function Campanhas() {
         .map((id) => procedimentos.find((p) => p.id === id)?.procedimento)
         .filter(Boolean) as string[];
 
-      const { error } = await (supabase as any)
-        .from(TABELA_CAMPANHAS_PROCEDIMENTO)
-        .upsert(
-          {
-            group_id: groupId,
-            ativo: config.ativo,
-            limite_envios: config.limiteEnvios,
-            dias_entre_envios: config.diasEntreEnvios,
-            mensagem: config.mensagem,
-            procedimentos_ids: procedimentoIds,
-            procedimentos_nomes: nomesProcedimentos,
-            clinica_id: clinica?.id,
-          },
-          { onConflict: "clinica_id,group_id" },
-        );
+      const payload = {
+        group_id: groupId,
+        ativo: config.ativo,
+        limite_envios: config.limiteEnvios,
+        dias_entre_envios: config.diasEntreEnvios,
+        mensagem: config.mensagem,
+        procedimentos_ids: procedimentoIds,
+        procedimentos_nomes: nomesProcedimentos,
+        clinica_id: clinica?.id,
+      };
 
-      if (error) throw error;
+      // Check if exists
+      const { data: existing } = await (supabase as any)
+        .from(TABELA_CAMPANHAS_PROCEDIMENTO)
+        .select("group_id")
+        .eq("clinica_id", clinica?.id)
+        .eq("group_id", groupId)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        // Update
+        const { error } = await (supabase as any)
+          .from(TABELA_CAMPANHAS_PROCEDIMENTO)
+          .update(payload)
+          .eq("clinica_id", clinica?.id)
+          .eq("group_id", groupId);
+        if (error) throw error;
+      } else {
+        // Insert
+        const { error } = await (supabase as any)
+          .from(TABELA_CAMPANHAS_PROCEDIMENTO)
+          .insert(payload);
+        if (error) throw error;
+      }
     } catch (error) {
       console.error("Erro ao sincronizar campanha por procedimento", error);
       toast({
