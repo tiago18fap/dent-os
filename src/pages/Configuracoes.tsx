@@ -2349,12 +2349,12 @@ const Configuracoes = () => {
                 </form>
 
                 {easydentalUsuario && easydentalSenha && (
-                  <SyncNowSection clinicaId={config?.clinica_id} ultimaSync={config?.ultima_sync_sucesso} />
+                  <SyncNowSection clinicaId={whatsappStatus.data?.clinica_id} ultimaSync={whatsappStatus.data?.ultima_sync_sucesso} />
                 )}
 
                 {/* ═══ LOGS DE INTEGRAÇÃO ═══ */}
                 {easydentalUsuario && easydentalSenha && (
-                  <SyncLogsSection clinicaId={config?.clinica_id} ultimaSync={config?.ultima_sync_sucesso} />
+                  <SyncLogsSection clinicaId={whatsappStatus.data?.clinica_id} ultimaSync={whatsappStatus.data?.ultima_sync_sucesso} />
                 )}
               </CardContent>
             </Card>
