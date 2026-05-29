@@ -48,7 +48,7 @@ import { useClinica } from "@/contexts/ClinicaContext";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import { Cake } from "lucide-react";
+import { Cake, Zap, Loader2 } from "lucide-react";
 
 type ProcedimentoId = string;
 
@@ -141,6 +141,7 @@ export function Campanhas() {
   const [configsProcedimentos, setConfigsProcedimentos] = useState<Record<ProcedimentoId, ConfigProcedimento>>({});
   const [novoProcedimentoPorGrupo, setNovoProcedimentoPorGrupo] = useState<Record<string, ProcedimentoId | "">>({});
   const [addProcAberto, setAddProcAberto] = useState<Record<string, boolean>>({});
+  const [forcandoFila, setForcandoFila] = useState<Record<string, boolean>>({});
 
   // Disparo de aniversário
   const [aniversarioDiaAtivo, setAniversarioDiaAtivo] = useState(true);
@@ -807,6 +808,211 @@ export function Campanhas() {
         ...partial,
       },
     }));
+  };
+
+  const forcarFilaProcedimento = async (groupId: string, nomesProc: string[]) => {
+    if (nomesProc.length === 0) return;
+    try {
+      setForcandoFila((prev) => ({ ...prev, [groupId]: true }));
+      
+      const hoje = new Date();
+      const hojeNorm = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+      
+      const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 0, 0, 0).toISOString();
+      const fimHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 23, 59, 59, 999).toISOString();
+
+      // 1. Carregar a configuração da campanha de procedimento específica
+      const { data: campanha, error: erroCamp } = await (supabase as any)
+        .from("campanhas_procedimento")
+        .select("*")
+        .eq("group_id", groupId)
+        .maybeSingle();
+
+      if (erroCamp || !campanha) {
+        throw new Error(erroCamp?.message || "Configuração da campanha não encontrada.");
+      }
+
+      if (!campanha.ativo) {
+        toast({
+          variant: "destructive",
+          title: "Campanha inativa",
+          description: "Ative a campanha antes de forçar o envio para a fila.",
+        });
+        return;
+      }
+
+      const diasEntreEnvios: number = campanha.dias_entre_envios ?? 30;
+      const mensagemTemplate: string = campanha.mensagem ?? "";
+
+      if (!mensagemTemplate.trim() || diasEntreEnvios <= 0) {
+        throw new Error("Configuração da campanha está incompleta (mensagem vazia ou dias inválidos).");
+      }
+
+      // 2. Buscar procedimentos da clínica que combinem com os nomes da campanha
+      let procQuery = (supabase as any)
+        .from("procedimentos")
+        .select("nome_paciente, data_finalizacao, procedimento")
+        .in("procedimento", nomesProc);
+
+      if (!isSuperAdmin || isImpersonating) {
+        if (clinica?.id) procQuery = procQuery.eq("clinica_id", clinica.id);
+      }
+
+      const { data: procs, error: erroProcs } = await procQuery;
+      if (erroProcs) throw erroProcs;
+
+      if (!procs || procs.length === 0) {
+        toast({
+          title: "Nenhum procedimento encontrado",
+          description: "Não foram encontrados procedimentos registrados com estes nomes.",
+        });
+        return;
+      }
+
+      // 3. Filtrar procedimentos elegíveis para hoje
+      const pacientesParaEnviar = new Map<string, { procedimento: string; dataFinalizacao: Date }>();
+      
+      const parseDateBRLocal = (dateStr: string | null | undefined): Date | null => {
+        if (!dateStr) return null;
+        const parts = dateStr.trim().split("/");
+        if (parts.length !== 3) return null;
+        const day = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const year = parseInt(parts[2], 10);
+        if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+        return new Date(year, month, day);
+      };
+
+      for (const proc of procs) {
+        const nome = (proc.nome_paciente ?? "").trim();
+        if (!nome) continue;
+
+        const dataFin = parseDateBRLocal(proc.data_finalizacao);
+        if (!dataFin) continue;
+
+        const dataEnvio = new Date(dataFin.getFullYear(), dataFin.getMonth(), dataFin.getDate());
+        dataEnvio.setDate(dataEnvio.getDate() + diasEntreEnvios);
+
+        if (dataEnvio.getTime() === hojeNorm.getTime()) {
+          if (!pacientesParaEnviar.has(nome)) {
+            pacientesParaEnviar.set(nome, {
+              procedimento: proc.procedimento,
+              dataFinalizacao: dataFin,
+            });
+          }
+        }
+      }
+
+      if (pacientesParaEnviar.size === 0) {
+        toast({
+          title: "Nenhum disparo pendente para hoje",
+          description: `Nenhum paciente atingiu a data de aniversário do procedimento hoje (${diasEntreEnvios} dias pós-procedimento).`,
+        });
+        return;
+      }
+
+      // 4. Carregar clientes
+      const nomesPacientes = Array.from(pacientesParaEnviar.keys());
+      let clientesQuery = (supabase as any)
+        .from("clientes")
+        .select("id, paciente, telefone")
+        .ilike("situacao", "Ativo")
+        .in("paciente", nomesPacientes);
+
+      if (!isSuperAdmin || isImpersonating) {
+        if (clinica?.id) clientesQuery = clientesQuery.eq("clinica_id", clinica.id);
+      }
+
+      const { data: clientes, error: erroClientes } = await clientesQuery;
+      if (erroClientes) throw erroClientes;
+
+      if (!clientes || clientes.length === 0) {
+        toast({
+          title: "Clientes inativos ou sem telefone",
+          description: "Os pacientes elegíveis não possuem cadastro ativo ou telefone cadastrado.",
+        });
+        return;
+      }
+
+      // 5. Inserir na fila prevenindo duplicados
+      let inseridos = 0;
+      let duplicados = 0;
+
+      for (const cliente of clientes) {
+        const nomePaciente = (cliente.paciente ?? "").trim();
+        const telefone = (cliente.telefone ?? "").trim();
+        if (!telefone) continue;
+
+        const dadosEnvio = pacientesParaEnviar.get(nomePaciente);
+        if (!dadosEnvio) continue;
+
+        // Verificar duplicata hoje
+        const { count: dupCount, error: erroDup } = await (supabase as any)
+          .from("fila_envios")
+          .select("id", { count: "exact", head: true })
+          .eq("clinica_id", clinica?.id)
+          .eq("paciente_id", cliente.id)
+          .eq("origem", "procedimento")
+          .eq("campanha_ref", groupId)
+          .gte("data_programada", inicioHoje)
+          .lte("data_programada", fimHoje);
+
+        if (erroDup) throw erroDup;
+
+        if ((dupCount ?? 0) > 0) {
+          duplicados++;
+          continue;
+        }
+
+        // Substituir variáveis
+        const primeiroNome = nomePaciente.split(" ")[0];
+        const nomeFormatado = primeiroNome.charAt(0).toUpperCase() + primeiroNome.slice(1).toLowerCase();
+        
+        const mensagemFinal = mensagemTemplate
+          .replace(/\{nome\}/gi, nomeFormatado)
+          .replace(/\{procedimento\}/gi, dadosEnvio.procedimento);
+
+        const { error: erroInsert } = await (supabase as any)
+          .from("fila_envios")
+          .insert({
+            paciente_id: cliente.id,
+            paciente_nome: nomePaciente,
+            telefone: telefone,
+            mensagem: mensagemFinal,
+            data_programada: new Date().toISOString(),
+            status: "pendente",
+            custo: 1,
+            origem: "procedimento",
+            clinica_id: clinica?.id,
+            campanha_ref: groupId,
+          });
+
+        if (erroInsert) throw erroInsert;
+        inseridos++;
+      }
+
+      if (inseridos > 0) {
+        toast({
+          title: "Fila atualizada com sucesso",
+          description: `${inseridos} mensagem(ns) foram adicionadas à fila de envios.${duplicados > 0 ? ` (${duplicados} já estavam na fila)` : ""}`,
+        });
+      } else {
+        toast({
+          title: "Nenhum novo disparo adicionado",
+          description: `Todos os ${duplicados} paciente(s) elegíveis de hoje já estavam na fila.`,
+        });
+      }
+
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        variant: "destructive",
+        title: "Erro ao forçar fila",
+        description: err.message || "Ocorreu um erro inesperado ao gerar a fila.",
+      });
+    } finally {
+      setForcandoFila((prev) => ({ ...prev, [groupId]: false }));
+    }
   };
 
   const removerProcedimento = async (id: ProcedimentoId) => {
@@ -1839,18 +2045,38 @@ export function Campanhas() {
                           <div className="space-y-1">
                             <div className="flex items-center justify-between">
                               <p className="text-[11px] font-medium text-foreground">Procedimentos desta campanha</p>
-                              {disponiveisParaAdicionar.length > 0 && (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6"
-                                  onClick={() => setAddProcAberto((prev) => ({ ...prev, [chaveGrupo]: !prev[chaveGrupo] }))}
-                                  title="Adicionar procedimento"
-                                >
-                                  <span className={`text-base transition-transform ${addProcAberto[chaveGrupo] ? 'rotate-45' : ''}`}>+</span>
-                                </Button>
-                              )}
+                              <div className="flex items-center gap-1">
+                                {grupo.procedimentoIds.length > 0 && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-amber-500 hover:text-amber-600 hover:bg-amber-50"
+                                    onClick={() => void forcarFilaProcedimento(chaveGrupo, nomesProcedimentos)}
+                                    disabled={forcandoFila[chaveGrupo]}
+                                    title="Forçar ida para a fila agora (evita duplicados)"
+                                  >
+                                    {forcandoFila[chaveGrupo] ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Zap className="h-3.5 w-3.5 fill-amber-500 text-amber-500" />
+                                    )}
+                                  </Button>
+                                )}
+
+                                {disponiveisParaAdicionar.length > 0 && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() => setAddProcAberto((prev) => ({ ...prev, [chaveGrupo]: !prev[chaveGrupo] }))}
+                                    title="Adicionar procedimento"
+                                  >
+                                    <span className={`text-base transition-transform ${addProcAberto[chaveGrupo] ? 'rotate-45' : ''}`}>+</span>
+                                  </Button>
+                                )}
+                              </div>
                             </div>
                             <div className="flex flex-wrap gap-2">
                               {grupo.procedimentoIds.map((idProcedimento) => {

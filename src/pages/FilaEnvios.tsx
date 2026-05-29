@@ -71,6 +71,8 @@ const FilaEnvios = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [periodo, setPeriodo] = useState<PeriodoFiltro>("hoje");
   const [customRange, setCustomRange] = useState<DateRange | undefined>(undefined);
+  const [filtroOrigem, setFiltroOrigem] = useState<string>("todas");
+  const [filtroProcedimento, setFiltroProcedimento] = useState<string>("todos");
   const pageSize = 20;
 
   useEffect(() => {
@@ -131,31 +133,97 @@ const FilaEnvios = () => {
     refetchInterval: 30000,
   });
 
-  const filteredData = useMemo(() => {
-    if (!fila) return [];
-    const term = searchTerm.trim().toLowerCase();
-    
-    if (!term) return fila;
+  // Carregar campanhas de procedimento para obter nomes e associar nos filtros/lista
+  const { data: campanhas } = useQuery({
+    queryKey: ["campanhas_procedimento_fila", clinica?.id, isSuperAdmin, isImpersonating],
+    queryFn: async () => {
+      let query = supabase
+        .from("campanhas_procedimento")
+        .select("group_id, procedimentos_nomes, mensagem");
+      
+      if (!isSuperAdmin || isImpersonating) {
+        if (clinica?.id) {
+          query = query.eq("clinica_id", clinica.id);
+        } else {
+          return [];
+        }
+      }
 
-    return (fila as any[]).filter((item) => {
+      const { data, error } = await query;
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !loading,
+  });
+
+  const procedimentosDisponiveis = useMemo(() => {
+    if (!campanhas) return [];
+    const nomes = new Set<string>();
+    for (const camp of campanhas) {
+      const procs: string[] = camp.procedimentos_nomes ?? [];
+      for (const p of procs) {
+        if (p) nomes.add(p.trim());
+      }
+    }
+    return Array.from(nomes).sort();
+  }, [campanhas]);
+
+  // Lógica de filtragem por origem e procedimento (usada tanto para os cards quanto para a tabela)
+  const filteredByOriginAndProc = useMemo(() => {
+    if (!fila) return [];
+    let dados = fila as any[];
+
+    // 1. Filtrar por origem
+    if (filtroOrigem !== "todas") {
+      dados = dados.filter((item) => (item.origem ?? "").toLowerCase() === filtroOrigem.toLowerCase());
+    }
+
+    // 2. Filtrar por procedimento (apenas se origem for procedimento)
+    if (filtroOrigem === "procedimento" && filtroProcedimento !== "todos") {
+      dados = dados.filter((item) => {
+        const campanha = campanhas?.find(c => c.group_id === item.campanha_ref);
+        if (!campanha) return false;
+        const nomes: string[] = campanha.procedimentos_nomes ?? [];
+        return nomes.some(n => n.trim().toLowerCase() === filtroProcedimento.trim().toLowerCase());
+      });
+    }
+
+    return dados;
+  }, [fila, filtroOrigem, filtroProcedimento, campanhas]);
+
+  const filteredData = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return filteredByOriginAndProc;
+
+    return (filteredByOriginAndProc as any[]).filter((item) => {
       const nome = (item.paciente_nome ?? "").toLowerCase();
       const status = (item.status ?? "").toLowerCase();
       const origem = (item.origem ?? "").toLowerCase();
       const mensagem = (item.mensagem ?? "").toLowerCase();
-      return nome.includes(term) || status.includes(term) || origem.includes(term) || mensagem.includes(term);
-    });
-  }, [fila, searchTerm]);
 
-  // Contagens baseadas nos dados filtrados por período (não pelo search)
+      let matchesProcedimento = false;
+      if ((item.origem ?? "").toLowerCase() === "procedimento" && campanhas) {
+        const campanha = campanhas.find(c => c.group_id === item.campanha_ref);
+        if (campanha) {
+          const nomes: string[] = campanha.procedimentos_nomes ?? [];
+          matchesProcedimento = nomes.some(n => n.toLowerCase().includes(term));
+        }
+      }
+
+      return nome.includes(term) || status.includes(term) || origem.includes(term) || mensagem.includes(term) || matchesProcedimento;
+    });
+  }, [filteredByOriginAndProc, searchTerm, campanhas]);
+
+  // Contagens baseadas nos dados filtrados (mas sem considerar o termo de busca textual)
   const contagens = useMemo(() => {
-    const dados = (fila ?? []) as any[];
+    const dados = filteredByOriginAndProc;
     return {
       pendentes: dados.filter(f => f.status === "pendente").length,
       enviados: dados.filter(f => f.status === "enviado").length,
       falhas: dados.filter(f => f.status === "falha").length,
       total: dados.length,
     };
-  }, [fila]);
+  }, [filteredByOriginAndProc]);
 
   const totalItems = filteredData.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
@@ -197,13 +265,28 @@ const FilaEnvios = () => {
     }
   };
 
-  const getOrigemBadge = (origem: string | null | undefined) => {
+  const getOrigemBadge = (origem: string | null | undefined, campanhaRef?: string | null) => {
     const o = (origem ?? "").toLowerCase();
     switch (o) {
       case 'massa':
-        return <Badge variant="outline" className="border-blue-400 text-blue-600 bg-blue-50 flex items-center gap-1 text-[10px]"><Send className="w-3 h-3" /> Massa</Badge>;
-      case 'procedimento':
-        return <Badge variant="outline" className="border-purple-400 text-purple-600 bg-purple-50 flex items-center gap-1 text-[10px]"><Megaphone className="w-3 h-3" /> Procedimento</Badge>;
+        return <Badge variant="outline" className="border-blue-400 text-blue-600 bg-blue-50 flex items-center gap-1 text-[10px]"><Send className="w-3 h-3" /> Disparo Geral</Badge>;
+      case 'procedimento': {
+        const campanha = campanhas?.find(c => c.group_id === campanhaRef);
+        const nomesProc = campanha?.procedimentos_nomes;
+        const textoProcedimentos = nomesProc && nomesProc.length > 0 ? nomesProc.join(", ") : "";
+        return (
+          <div className="flex flex-col gap-0.5">
+            <Badge variant="outline" className="border-purple-400 text-purple-600 bg-purple-50 flex items-center gap-1 text-[10px] w-fit">
+              <Megaphone className="w-3 h-3" /> Procedimento
+            </Badge>
+            {textoProcedimentos && (
+              <span className="text-[9px] text-muted-foreground font-medium pl-1 truncate max-w-[130px]" title={textoProcedimentos}>
+                {textoProcedimentos}
+              </span>
+            )}
+          </div>
+        );
+      }
       case 'aniversario_dia':
         return <Badge variant="outline" className="border-amber-400 text-amber-600 bg-amber-50 flex items-center gap-1 text-[10px]"><Cake className="w-3 h-3" /> Aniversário</Badge>;
       case 'aniversario_mes':
@@ -301,63 +384,107 @@ const FilaEnvios = () => {
 
         {/* Filtros de período */}
         <Card>
-          <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pb-4">
-            <div className="flex flex-wrap items-center gap-2">
-              {(["hoje", "semanal", "mensal", "personalizado"] as PeriodoFiltro[]).map((p) => (
-                <Button
-                  key={p}
-                  variant={periodo === p ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    setPeriodo(p);
-                    setPage(1);
-                  }}
-                  className="text-xs"
-                >
-                  <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
-                  {periodoLabel(p)}
-                </Button>
-              ))}
+          <CardHeader className="flex flex-col gap-4 pb-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              {/* Período de envio */}
+              <div className="flex flex-wrap items-center gap-2">
+                {(["hoje", "semanal", "mensal", "personalizado"] as PeriodoFiltro[]).map((p) => (
+                  <Button
+                    key={p}
+                    variant={periodo === p ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setPeriodo(p);
+                      setPage(1);
+                    }}
+                    className="text-xs"
+                  >
+                    <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
+                    {periodoLabel(p)}
+                  </Button>
+                ))}
 
-              {periodo === "personalizado" && (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="text-xs gap-1.5">
-                      <CalendarDays className="h-3.5 w-3.5" />
-                      {customRange?.from
-                        ? customRange.to
-                          ? `${format(customRange.from, "dd/MM/yy", { locale: ptBR })} — ${format(customRange.to, "dd/MM/yy", { locale: ptBR })}`
-                          : format(customRange.from, "dd/MM/yyyy", { locale: ptBR })
-                        : "Selecionar datas"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      initialFocus
-                      mode="range"
-                      defaultMonth={customRange?.from || new Date()}
-                      selected={customRange}
-                      onSelect={(d) => {
-                        setCustomRange(d);
+                {periodo === "personalizado" && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="text-xs gap-1.5">
+                        <CalendarDays className="h-3.5 w-3.5" />
+                        {customRange?.from
+                          ? customRange.to
+                            ? `${format(customRange.from, "dd/MM/yy", { locale: ptBR })} — ${format(customRange.to, "dd/MM/yy", { locale: ptBR })}`
+                            : format(customRange.from, "dd/MM/yyyy", { locale: ptBR })
+                          : "Selecionar datas"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        initialFocus
+                        mode="range"
+                        defaultMonth={customRange?.from || new Date()}
+                        selected={customRange}
+                        onSelect={(d) => {
+                          setCustomRange(d);
+                          setPage(1);
+                        }}
+                        numberOfMonths={isMobile ? 1 : 2}
+                        locale={ptBR}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                )}
+              </div>
+
+              {/* Filtros e Busca */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto">
+                <div className="w-full sm:w-64">
+                  <Input
+                    placeholder="Buscar por paciente, mensagem..."
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setPage(1);
+                      setSearchTerm(e.target.value);
+                    }}
+                  />
+                </div>
+
+                <div className="w-full sm:w-48">
+                  <select
+                    value={filtroOrigem}
+                    onChange={(e) => {
+                      setFiltroOrigem(e.target.value);
+                      setFiltroProcedimento("todos");
+                      setPage(1);
+                    }}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                  >
+                    <option value="todas">Todas as origens</option>
+                    <option value="massa">📢 Disparo Geral</option>
+                    <option value="procedimento">🔊 Disparo por Procedimento</option>
+                    <option value="aniversario_dia">🎂 Aniversário (Dia)</option>
+                    <option value="aniversario_mes">🎂 Aniversário (Mês)</option>
+                  </select>
+                </div>
+
+                {filtroOrigem === "procedimento" && (
+                  <div className="w-full sm:w-48 animate-in fade-in-50 duration-200">
+                    <select
+                      value={filtroProcedimento}
+                      onChange={(e) => {
+                        setFiltroProcedimento(e.target.value);
                         setPage(1);
                       }}
-                      numberOfMonths={isMobile ? 1 : 2}
-                      locale={ptBR}
-                    />
-                  </PopoverContent>
-                </Popover>
-              )}
-            </div>
-
-            <div className="w-full sm:max-w-xs">
-              <Input
-                placeholder="Buscar por paciente, status ou origem..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setPage(1);
-                  setSearchTerm(e.target.value);
-                }}
-              />
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                    >
+                      <option value="todos">Todos os procedimentos</option>
+                      {procedimentosDisponiveis.map((procName) => (
+                        <option key={procName} value={procName}>
+                          {procName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
             </div>
           </CardHeader>
 
@@ -410,7 +537,7 @@ const FilaEnvios = () => {
                             <TableCell className="text-xs">{item.paciente_nome ?? "—"}</TableCell>
                             <TableCell className="hidden sm:table-cell text-xs">{item.telefone ?? "—"}</TableCell>
                             <TableCell className="hidden sm:table-cell text-xs text-muted-foreground max-w-[200px] truncate" title={item.mensagem}>{previewMsg}</TableCell>
-                            <TableCell>{getOrigemBadge(item.origem)}</TableCell>
+                            <TableCell>{getOrigemBadge(item.origem, item.campanha_ref)}</TableCell>
                             <TableCell>{getStatusBadge(item.status)}</TableCell>
                             <TableCell className="hidden sm:table-cell text-right text-destructive font-medium text-xs">-{item.custo ?? 1}</TableCell>
                           </TableRow>
