@@ -1,5 +1,4 @@
 import { AppLayout } from "@/layouts/AppLayout";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -12,43 +11,34 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Check, ChevronsUpDown, Calendar as CalendarIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { DateRange } from "react-day-picker";
-import { format, parse } from "date-fns";
-import { ptBR } from "date-fns/locale";
-
+import { Eye, Loader2, Stethoscope, Users, Calendar as CalendarIcon } from "lucide-react";
 import { useClinica } from "@/contexts/ClinicaContext";
 
-const Procedimentos = () => {
-  const isMobile = useIsMobile();
-  const { clinica, loading, isSuperAdmin, isImpersonating } = useClinica();
+interface ProcedimentoAgrupado {
+  nome: string;
+  total: number;
+  prestadores: string[];
+}
 
+const PAGE_SIZE = 25;
+
+const Procedimentos = () => {
+  const { clinica, loading, isSuperAdmin, isImpersonating } = useClinica();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [professionalFilter, setProfessionalFilter] = useState("");
-  const [date, setDate] = useState<DateRange | undefined>(undefined);
   const [page, setPage] = useState(1);
-  const [prestadorOpen, setPrestadorOpen] = useState(false);
-  const pageSize = 25;
+  const [selectedProc, setSelectedProc] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+
+  useEffect(() => {
+    document.title = "Procedimentos | DentOS";
+  }, []);
 
   // Debounce search
   useEffect(() => {
@@ -59,279 +49,215 @@ const Procedimentos = () => {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  const { data: queryResult, isLoading, error } = useQuery({
-    queryKey: ["procedimentos", clinica?.id, isSuperAdmin, isImpersonating, debouncedSearch, professionalFilter, page],
+  // Busca TODOS os procedimentos e agrupa por nome (client-side grouping)
+  const { data: rawData, isLoading, error } = useQuery({
+    queryKey: ["procedimentos-raw", clinica?.id, isSuperAdmin, isImpersonating],
     queryFn: async () => {
-      let query = (supabase as any)
-        .from("procedimentos")
-        .select("id, nome_paciente, procedimento, prestador, data_finalizacao", { count: "exact" });
+      // Fetch all using pagination
+      let allData: any[] = [];
+      let from = 0;
+      const batchSize = 1000;
 
-      if (!isSuperAdmin || isImpersonating) {
-        if (clinica?.id) {
-          query = query.eq("clinica_id", clinica.id);
-        } else {
-          return { data: [], count: 0 };
+      while (true) {
+        let query = (supabase as any)
+          .from("procedimentos")
+          .select("procedimento, prestador, nome_paciente, data_finalizacao");
+
+        if (!isSuperAdmin || isImpersonating) {
+          if (clinica?.id) {
+            query = query.eq("clinica_id", clinica.id);
+          } else {
+            return [];
+          }
         }
+
+        const { data, error } = await query
+          .order("procedimento", { ascending: true })
+          .range(from, from + batchSize - 1);
+
+        if (error) throw error;
+        allData = allData.concat(data ?? []);
+        if (!data || data.length < batchSize) break;
+        from += batchSize;
       }
 
-      if (debouncedSearch) {
-        query = query.ilike("nome_paciente", `%${debouncedSearch}%`);
-      }
-
-      if (professionalFilter) {
-        query = query.ilike("prestador", professionalFilter);
-      }
-
-      const from = (page - 1) * pageSize;
-      const to = from + pageSize - 1;
-
-      const { data, error, count } = await query
-        .order("data_finalizacao", { ascending: false })
-        .range(from, to);
-
-      if (error) throw error;
-      return { data: data ?? [], count: count ?? 0 };
+      return allData;
     },
     enabled: !loading,
     retry: 1,
   });
 
-  const procedimentos = queryResult?.data ?? [];
-  const totalItems = queryResult?.count ?? 0;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  // Agrupar por nome do procedimento
+  const agrupados = useMemo(() => {
+    if (!rawData) return [];
+    const map = new Map<string, { total: number; prestadores: Set<string> }>();
 
-  // Fetch unique prestadores (separate lightweight query)
-  const { data: prestadoresData } = useQuery({
-    queryKey: ["prestadores-unicos", clinica?.id],
-    queryFn: async () => {
-      let query = (supabase as any)
-        .from("procedimentos")
-        .select("prestador");
-
-      if (!isSuperAdmin || isImpersonating) {
-        if (clinica?.id) query = query.eq("clinica_id", clinica.id);
+    rawData.forEach((proc: any) => {
+      const nome = proc.procedimento ?? "Sem nome";
+      if (!map.has(nome)) {
+        map.set(nome, { total: 0, prestadores: new Set() });
       }
+      const entry = map.get(nome)!;
+      entry.total++;
+      if (proc.prestador) entry.prestadores.add(proc.prestador);
+    });
 
-      const { data } = await query.not("prestador", "is", null).limit(5000);
-      const set = new Set<string>();
-      (data ?? []).forEach((r: any) => { if (r.prestador) set.add(r.prestador); });
-      return Array.from(set).sort();
-    },
-    enabled: !loading,
-  });
+    return Array.from(map.entries())
+      .map(([nome, info]) => ({
+        nome,
+        total: info.total,
+        prestadores: Array.from(info.prestadores).sort(),
+      }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [rawData]);
 
-  const uniquePrestadores = prestadoresData ?? [];
+  // Filtrar por busca
+  const filtered = useMemo(() => {
+    if (!debouncedSearch) return agrupados;
+    const term = debouncedSearch.toLowerCase();
+    return agrupados.filter(
+      (p) =>
+        p.nome.toLowerCase().includes(term) ||
+        p.prestadores.some((pr) => pr.toLowerCase().includes(term))
+    );
+  }, [agrupados, debouncedSearch]);
 
+  const totalItems = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+
+  const paginatedData = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, page]);
 
   const pagesToShow = useMemo(() => {
-    if (totalPages <= 7) {
-      return Array.from({ length: totalPages }, (_, index) => index + 1);
-    }
-
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
     const pages: (number | "ellipsis")[] = [1];
     const startPage = Math.max(2, page - 1);
     const endPage = Math.min(totalPages - 1, page + 1);
-
-    if (startPage > 2) {
-      pages.push("ellipsis");
-    }
-
-    for (let p = startPage; p <= endPage; p++) {
-      pages.push(p);
-    }
-
-    if (endPage < totalPages - 1) {
-      pages.push("ellipsis");
-    }
-
+    if (startPage > 2) pages.push("ellipsis");
+    for (let p = startPage; p <= endPage; p++) pages.push(p);
+    if (endPage < totalPages - 1) pages.push("ellipsis");
     pages.push(totalPages);
     return pages;
   }, [page, totalPages]);
+
+  const handleOpenDetail = (procNome: string) => {
+    setSelectedProc(procNome);
+    setDetailOpen(true);
+  };
 
   return (
     <AppLayout>
       <section className="space-y-4" aria-label="Lista de procedimentos">
         <Card>
-          <CardHeader className="flex flex-col gap-4">
-            <CardTitle>Procedimentos</CardTitle>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <Stethoscope className="h-5 w-5 text-primary" />
+              <CardTitle>Procedimentos</CardTitle>
+              {!isLoading && (
+                <Badge variant="secondary" className="ml-2 text-xs">
+                  {agrupados.length} tipos
+                </Badge>
+              )}
+            </div>
+            <div className="w-full max-w-xs">
               <Input
-                placeholder="Buscar por paciente..."
+                type="search"
+                placeholder="Buscar procedimento ou prestador..."
                 value={searchTerm}
-                onChange={(e) => {
-                  setPage(1);
-                  setSearchTerm(e.target.value);
-                }}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="h-9 bg-background"
+                aria-label="Buscar procedimentos"
               />
-              
-              <Popover open={prestadorOpen} onOpenChange={setPrestadorOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={prestadorOpen}
-                    className="w-full justify-between font-normal"
-                  >
-                    {professionalFilter
-                      ? professionalFilter
-                      : "Filtrar por Prestador..."}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[300px] md:w-[400px] p-0">
-                  <Command>
-                    <CommandInput placeholder="Buscar prestador pelo nome..." />
-                    <CommandList>
-                      <CommandEmpty>Nenhum prestador encontrado.</CommandEmpty>
-                      <CommandGroup>
-                        <CommandItem
-                          onSelect={() => {
-                            setProfessionalFilter("");
-                            setPrestadorOpen(false);
-                            setPage(1);
-                          }}
-                        >
-                          <Check
-                            className={cn(
-                              "mr-2 h-4 w-4",
-                              professionalFilter === "" ? "opacity-100" : "opacity-0"
-                            )}
-                          />
-                          Todos os Prestadores
-                        </CommandItem>
-                        {uniquePrestadores.map((prestador) => (
-                          <CommandItem
-                            key={prestador}
-                            value={prestador}
-                            onSelect={(currentValue) => {
-                              const original = uniquePrestadores.find(p => p.toLowerCase() === currentValue.toLowerCase());
-                              setProfessionalFilter(original === professionalFilter ? "" : (original || ""));
-                              setPrestadorOpen(false);
-                              setPage(1);
-                            }}
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                professionalFilter === prestador ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            {prestador}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    id="date"
-                    variant={"outline"}
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !date && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {date?.from ? (
-                      date.to ? (
-                        <>
-                          {format(date.from, "dd/MM/yyyy", { locale: ptBR })} -{" "}
-                          {format(date.to, "dd/MM/yyyy", { locale: ptBR })}
-                        </>
-                      ) : (
-                        format(date.from, "dd/MM/yyyy", { locale: ptBR })
-                      )
-                    ) : (
-                      <span>Filtrar por data...</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    initialFocus
-                    mode="range"
-                    defaultMonth={date?.from || new Date()}
-                    selected={date}
-                    onSelect={(d) => {
-                      setPage(1);
-                      setDate(d);
-                    }}
-                    numberOfMonths={isMobile ? 1 : 2}
-                    locale={ptBR}
-                  />
-                </PopoverContent>
-              </Popover>
             </div>
           </CardHeader>
           <CardContent>
-            {isLoading && <p className="text-sm text-muted-foreground">Carregando procedimentos…</p>}
+            {isLoading && (
+              <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm">Carregando procedimentos…</span>
+              </div>
+            )}
             {error && (
               <p className="text-sm text-destructive">
                 Ocorreu um erro ao carregar os procedimentos. Detalhes: {(error as Error).message}
               </p>
             )}
-            {!isLoading && !error && procedimentos.length === 0 && (
-              <p className="text-sm text-muted-foreground">Nenhum procedimento encontrado.</p>
+            {!isLoading && !error && paginatedData.length === 0 && (
+              <p className="text-sm text-muted-foreground py-4 text-center">Nenhum procedimento encontrado.</p>
             )}
-            {!isLoading && !error && procedimentos.length > 0 && (
+            {!isLoading && !error && paginatedData.length > 0 && (
               <div className="space-y-3">
                 <div className="rounded-md border bg-card overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Procedimento</TableHead>
-                        <TableHead className="hidden sm:table-cell">Prestador</TableHead>
-                        <TableHead className="hidden sm:table-cell">Data finalização</TableHead>
+                        <TableHead className="hidden sm:table-cell">Prestador(es)</TableHead>
+                        <TableHead className="text-center w-24">Realizados</TableHead>
+                        <TableHead className="w-10">Detalhes</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {procedimentos.map((proc: any) => (
-                        <TableRow key={proc.id}>
-                          <TableCell>{proc.procedimento}</TableCell>
-                          <TableCell className="hidden sm:table-cell">{proc.prestador ?? "-"}</TableCell>
-                          <TableCell className="hidden sm:table-cell">{proc.data_finalizacao ?? "-"}</TableCell>
+                      {paginatedData.map((proc) => (
+                        <TableRow key={proc.nome} className="group">
+                          <TableCell className="font-medium">{proc.nome}</TableCell>
+                          <TableCell className="hidden sm:table-cell text-xs text-muted-foreground max-w-[250px]">
+                            {proc.prestadores.length > 0
+                              ? proc.prestadores.join(", ")
+                              : "-"}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="outline" className="text-xs tabular-nums">
+                              {proc.total}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 opacity-50 group-hover:opacity-100 transition-opacity"
+                              onClick={() => handleOpenDetail(proc.nome)}
+                              title="Ver pacientes que realizaram este procedimento"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
-                {totalPages > 1 && (
-                  <div className="flex flex-col items-center justify-between gap-3 text-xs text-muted-foreground sm:flex-row">
-                    <span className="w-full text-center sm:w-auto sm:text-left">
-                      Mostrando {totalItems === 0 ? 0 : (page - 1) * pageSize + 1}–
-                      {Math.min(page * pageSize, totalItems)} de {totalItems.toLocaleString("pt-BR")}
-                    </span>
+
+                {/* Paginação */}
+                <div className="flex flex-col items-center justify-between gap-3 text-xs text-muted-foreground sm:flex-row">
+                  <span className="w-full text-center sm:w-auto sm:text-left">
+                    Mostrando {totalItems === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–
+                    {Math.min(page * PAGE_SIZE, totalItems)} de {totalItems}
+                  </span>
+                  {totalPages > 1 && (
                     <Pagination className="w-full justify-center sm:w-auto">
                       <PaginationContent>
                         <PaginationItem>
                           <PaginationPrevious
                             href="#"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              setPage((prev) => Math.max(1, prev - 1));
-                            }}
+                            onClick={(e) => { e.preventDefault(); setPage((p) => Math.max(1, p - 1)); }}
                             aria-disabled={page === 1}
                             className={page === 1 ? "pointer-events-none opacity-50" : ""}
                           />
                         </PaginationItem>
-                        {pagesToShow.map((pageNumber, index) => (
-                          <PaginationItem key={`${pageNumber}-${index}`}>
-                            {pageNumber === "ellipsis" ? (
+                        {pagesToShow.map((pn, i) => (
+                          <PaginationItem key={`${pn}-${i}`}>
+                            {pn === "ellipsis" ? (
                               <PaginationEllipsis />
                             ) : (
                               <PaginationLink
                                 href="#"
-                                isActive={pageNumber === page}
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  setPage(pageNumber as number);
-                                }}
+                                isActive={pn === page}
+                                onClick={(e) => { e.preventDefault(); setPage(pn as number); }}
                               >
-                                {pageNumber}
+                                {pn}
                               </PaginationLink>
                             )}
                           </PaginationItem>
@@ -339,25 +265,191 @@ const Procedimentos = () => {
                         <PaginationItem>
                           <PaginationNext
                             href="#"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              setPage((prev) => Math.min(totalPages, prev + 1));
-                            }}
+                            onClick={(e) => { e.preventDefault(); setPage((p) => Math.min(totalPages, p + 1)); }}
                             aria-disabled={page === totalPages}
                             className={page === totalPages ? "pointer-events-none opacity-50" : ""}
                           />
                         </PaginationItem>
                       </PaginationContent>
                     </Pagination>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             )}
           </CardContent>
         </Card>
       </section>
+
+      {/* Dialog de Detalhes do Procedimento */}
+      <ProcedimentoDetailDialog
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        procedimentoNome={selectedProc}
+        clinicaId={clinica?.id}
+        isSuperAdmin={isSuperAdmin}
+        isImpersonating={isImpersonating}
+      />
     </AppLayout>
   );
 };
+
+// ══════════════════════════════════════════════════════════════
+// Dialog — Detalhes do Procedimento (timeline vertical de pacientes)
+// ══════════════════════════════════════════════════════════════
+
+function ProcedimentoDetailDialog({
+  open,
+  onClose,
+  procedimentoNome,
+  clinicaId,
+  isSuperAdmin,
+  isImpersonating,
+}: {
+  open: boolean;
+  onClose: () => void;
+  procedimentoNome: string | null;
+  clinicaId?: string;
+  isSuperAdmin?: boolean;
+  isImpersonating?: boolean;
+}) {
+  const { data: pacientes, isLoading } = useQuery({
+    queryKey: ["procedimento-pacientes", procedimentoNome, clinicaId],
+    queryFn: async () => {
+      if (!procedimentoNome) return [];
+      let query = (supabase as any)
+        .from("procedimentos")
+        .select("nome_paciente, prestador, data_finalizacao")
+        .eq("procedimento", procedimentoNome);
+
+      if (!isSuperAdmin || isImpersonating) {
+        if (clinicaId) query = query.eq("clinica_id", clinicaId);
+      }
+
+      const { data, error } = await query.order("data_finalizacao", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: open && !!procedimentoNome,
+  });
+
+  if (!procedimentoNome) return null;
+
+  // Agrupar por data para a timeline
+  const porData = useMemo(() => {
+    if (!pacientes) return [];
+    const map = new Map<string, { pacientes: string[]; prestador: string }>();
+    pacientes.forEach((p: any) => {
+      const data = p.data_finalizacao || "Sem data";
+      if (!map.has(data)) {
+        map.set(data, { pacientes: [], prestador: p.prestador || "" });
+      }
+      const entry = map.get(data)!;
+      if (p.nome_paciente && !entry.pacientes.includes(p.nome_paciente)) {
+        entry.pacientes.push(p.nome_paciente);
+      }
+    });
+    return Array.from(map.entries()).map(([data, info]) => ({
+      data,
+      pacientes: info.pacientes,
+      prestador: info.prestador,
+    }));
+  }, [pacientes]);
+
+  const totalPacientes = useMemo(() => {
+    if (!pacientes) return 0;
+    const set = new Set<string>();
+    pacientes.forEach((p: any) => { if (p.nome_paciente) set.add(p.nome_paciente); });
+    return set.size;
+  }, [pacientes]);
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Stethoscope className="h-5 w-5 text-primary shrink-0" />
+            <span className="line-clamp-2">{procedimentoNome}</span>
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Resumo */}
+        <div className="grid grid-cols-2 gap-3 mt-1">
+          <div className="rounded-lg border p-3 text-center">
+            <Users className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
+            <p className="text-lg font-bold">{isLoading ? "..." : totalPacientes}</p>
+            <p className="text-[10px] text-muted-foreground">Pacientes</p>
+          </div>
+          <div className="rounded-lg border p-3 text-center">
+            <CalendarIcon className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
+            <p className="text-lg font-bold">{isLoading ? "..." : (pacientes?.length ?? 0)}</p>
+            <p className="text-[10px] text-muted-foreground">Realizações</p>
+          </div>
+        </div>
+
+        {/* Timeline vertical */}
+        <div className="mt-4">
+          <h3 className="text-sm font-semibold flex items-center gap-1.5 mb-3">
+            <CalendarIcon className="h-4 w-4 text-primary" />
+            Linha do Tempo
+          </h3>
+
+          {isLoading && (
+            <div className="flex items-center justify-center py-6 gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-xs">Carregando...</span>
+            </div>
+          )}
+
+          {!isLoading && porData.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-4">Nenhum registro encontrado.</p>
+          )}
+
+          {!isLoading && porData.length > 0 && (
+            <div className="relative pl-5">
+              {/* Linha vertical */}
+              <div className="absolute left-[7px] top-1 bottom-1 w-0.5 bg-muted-foreground/15" />
+
+              <div className="space-y-3">
+                {porData.map((item, i) => (
+                  <div key={i} className="relative">
+                    {/* Dot */}
+                    <div className={`absolute -left-5 top-1.5 w-2.5 h-2.5 rounded-full border-2 ${
+                      i === 0
+                        ? "bg-primary border-primary"
+                        : "bg-background border-muted-foreground/30"
+                    }`} />
+
+                    {/* Card */}
+                    <div className={`rounded-lg border p-3 ${
+                      i === 0 ? "border-primary/30 bg-primary/5" : "bg-muted/20"
+                    }`}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <p className="text-xs font-semibold text-primary tabular-nums">
+                          {item.data}
+                        </p>
+                        {item.prestador && (
+                          <p className="text-[10px] text-muted-foreground">
+                            Dr(a). {item.prestador}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.pacientes.map((nome, j) => (
+                          <Badge key={j} variant="secondary" className="text-[10px] font-normal">
+                            {nome}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default Procedimentos;
