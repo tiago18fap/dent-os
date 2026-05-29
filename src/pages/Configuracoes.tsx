@@ -2241,7 +2241,7 @@ const Configuracoes = () => {
                 <div className="rounded-lg border border-primary/10 bg-primary/5 p-3 space-y-1">
                   <p className="text-xs font-medium text-primary flex items-center gap-1.5">
                     <Lock className="h-3.5 w-3.5" />
-                    Conexão segura
+                    Conexão segura com Easy Dental Cloud
                   </p>
                   <p className="text-[11px] text-muted-foreground">
                     Suas credenciais são armazenadas de forma segura e utilizadas apenas para baixar automaticamente os relatórios de clientes e procedimentos do Easy Dental.
@@ -2254,15 +2254,19 @@ const Configuracoes = () => {
                     toast({ variant: "destructive", title: "Erro", description: "Clínica não identificada." });
                     return;
                   }
+                  if (!easydentalUsuario.trim() || !easydentalSenha) {
+                    toast({ variant: "destructive", title: "Campos obrigatórios", description: "Preencha o email e a senha do Easy Dental." });
+                    return;
+                  }
                   try {
                     setSavingEasydental(true);
                     const { error } = await (supabase as any)
                       .from("whatsapp_config")
                       .upsert({
                         clinica_id: clinica.id,
-                        easydental_url: easydentalUrl.trim() || null,
-                        easydental_usuario: easydentalUsuario.trim() || null,
-                        easydental_senha: easydentalSenha || null,
+                        easydental_url: "https://app.easydentalcloud.com.br/",
+                        easydental_usuario: easydentalUsuario.trim(),
+                        easydental_senha: easydentalSenha,
                         updated_at: new Date().toISOString()
                       }, { onConflict: "clinica_id" });
                     if (error) throw error;
@@ -2275,31 +2279,21 @@ const Configuracoes = () => {
                     setSavingEasydental(false);
                   }
                 }} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="easydental-url" className="text-sm font-medium">
-                      URL do Easy Dental
-                    </Label>
-                    <Input
-                      id="easydental-url"
-                      type="url"
-                      placeholder="https://seuservidor.easydental.com.br"
-                      value={easydentalUrl}
-                      onChange={(e) => setEasydentalUrl(e.target.value)}
-                    />
-                    <p className="text-[11px] text-muted-foreground">
-                      Endereço completo de acesso ao Easy Dental (ex: https://app.easydental.com.br)
-                    </p>
+
+                  <div className="text-xs text-muted-foreground flex items-center gap-1.5 bg-muted/50 rounded-md px-3 py-2">
+                    <Monitor className="h-3.5 w-3.5" />
+                    <span className="font-mono">https://app.easydentalcloud.com.br/</span>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="easydental-usuario" className="text-sm font-medium">
-                        Usuário
+                      <Label htmlFor="easydental-email" className="text-sm font-medium">
+                        Email
                       </Label>
                       <Input
-                        id="easydental-usuario"
-                        type="text"
-                        placeholder="seu.usuario"
+                        id="easydental-email"
+                        type="email"
+                        placeholder="seuemail@clinica.com.br"
                         value={easydentalUsuario}
                         onChange={(e) => setEasydentalUsuario(e.target.value)}
                         autoComplete="off"
@@ -2351,8 +2345,8 @@ const Configuracoes = () => {
                   </div>
                 </form>
 
-                {easydentalUrl && easydentalUsuario && easydentalSenha && (
-                  <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 p-3 mt-2">
+                {easydentalUsuario && easydentalSenha && (
+                  <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 p-3">
                     <p className="text-xs text-green-700 dark:text-green-400 flex items-center gap-1.5">
                       <CheckCircle2 className="h-3.5 w-3.5" />
                       Credenciais configuradas. A automação utilizará esses dados para baixar os relatórios.
