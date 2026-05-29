@@ -13,7 +13,7 @@ interface Clinica {
 
 interface Perfil {
   id: string;
-  clinica_id: string;
+  clinica_id: string | null;
   role: string;
 }
 
