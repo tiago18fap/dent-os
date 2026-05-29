@@ -285,16 +285,61 @@ function parseDate(dateStr) {
   return null;
 }
 
+// ══════════════════════════════════════════════════════════════
+// Normalização de telefone para WhatsApp (55 + DDD + número)
+// ══════════════════════════════════════════════════════════════
+
+function normalizarTelefone(tel, dddPadrao = '11') {
+  if (!tel) return null;
+  let n = String(tel).replace(/\D/g, '');
+
+  // Remover zero à esquerda do DDD: (011) → 11
+  if (n.length >= 10 && n.startsWith('0')) {
+    n = n.substring(1);
+  }
+
+  // Já tem 55 + DDD + número (13 dígitos celular ou 12 fixo)
+  if (n.startsWith('55') && (n.length === 13 || n.length === 12)) {
+    return n;
+  }
+
+  // DDD + celular (11 dígitos: 2 DDD + 9 número)
+  if (n.length === 11 && /^\d{2}9/.test(n)) {
+    return '55' + n;
+  }
+
+  // DDD + fixo (10 dígitos: 2 DDD + 8 número)
+  if (n.length === 10 && /^\d{2}[2-8]/.test(n)) {
+    return '55' + n;
+  }
+
+  // Celular sem DDD (9 dígitos começando com 9)
+  if (n.length === 9 && n.startsWith('9')) {
+    return '55' + dddPadrao + n;
+  }
+
+  // Fixo sem DDD (8 dígitos)
+  if (n.length === 8) {
+    return '55' + dddPadrao + n;
+  }
+
+  return null; // Não conseguiu normalizar
+}
+
 function mapearPacientes(rawData, clinicaId) {
-  return rawData.map(row => ({
-    paciente: (row['Nome do paciente'] || '').trim().toUpperCase(),
-    telefone: row['Telefone cel - Completo'] || row['Telefone fixo - Completo'] || null,
-    codigo: row['Código formatado'] || String(row['Código'] || '').padStart(6, '0'),
-    nascimento: parseDate(row['Data de nascimento']),
-    situacao: row['Situação'] || 'Ativo',
-    prestador: row['Profissional responsável'] || null,
-    clinica_id: clinicaId,
-  })).filter(p => p.paciente); // Remove linhas sem nome
+  return rawData.map(row => {
+    // Priorizar celular, depois fixo
+    const telRaw = row['Telefone cel - Completo'] || row['Telefone fixo - Completo'] || null;
+    return {
+      paciente: (row['Nome do paciente'] || '').trim().toUpperCase(),
+      telefone: normalizarTelefone(telRaw),
+      codigo: row['Código formatado'] || String(row['Código'] || '').padStart(6, '0'),
+      nascimento: parseDate(row['Data de nascimento']),
+      situacao: row['Situação'] || 'Ativo',
+      prestador: row['Profissional responsável'] || null,
+      clinica_id: clinicaId,
+    };
+  }).filter(p => p.paciente); // Remove linhas sem nome
 }
 
 function mapearProcedimentos(rawData, clinicaId) {
