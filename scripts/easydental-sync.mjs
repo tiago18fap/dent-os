@@ -359,28 +359,59 @@ function mapearProcedimentos(rawData, clinicaId) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// Importação no Supabase (com limpeza prévia por clinica_id)
+// Importação no Supabase (UPSERT — atualiza se existe, insere se novo)
 // ══════════════════════════════════════════════════════════════
+
+async function upsertBatch(table, batch, onConflict) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=headers-only,resolution=merge-duplicates',
+    },
+    body: JSON.stringify(batch),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Upsert ${table}: ${res.status} ${text}`);
+  }
+  return res;
+}
 
 async function importarDados(clinicaId, pacientes, procedimentos) {
   log(`\nImportando dados para clínica ${clinicaId}...`);
+  const result = { pacientesNovos: 0, pacientesAtualizados: 0, procedimentos: 0 };
 
-  // 1. CLIENTES — Limpar existentes desta clínica e inserir novos
+  // 1. CLIENTES — Upsert por (clinica_id, codigo)
+  // Se o código já existe, atualiza telefone, nome, etc. Se não, insere.
   if (pacientes && pacientes.length > 0) {
-    log(`  Removendo clientes antigos da clínica ${clinicaId}...`);
-    await supabaseRequest(`clientes?clinica_id=eq.${clinicaId}`, 'DELETE');
+    // Contar existentes antes do upsert
+    const existentesRes = await supabaseRequest(
+      `clientes?clinica_id=eq.${clinicaId}&select=codigo`,
+    );
+    const codigosExistentes = new Set(existentesRes.map(c => c.codigo));
 
-    log(`  Inserindo ${pacientes.length} pacientes...`);
-    // Inserir em lotes de 500
+    log(`  Clientes existentes: ${codigosExistentes.size}`);
+    log(`  Clientes do Easy Dental: ${pacientes.length}`);
+
+    // Upsert em lotes de 500
     for (let i = 0; i < pacientes.length; i += 500) {
       const batch = pacientes.slice(i, i + 500);
-      await supabaseRequest('clientes', 'POST', batch);
-      log(`    Lote ${Math.floor(i / 500) + 1}: ${batch.length} inseridos`);
+      await upsertBatch('clientes', batch, 'clinica_id,codigo');
+      log(`    Lote ${Math.floor(i / 500) + 1}: ${batch.length} upserted`);
     }
-    log(`  ✅ ${pacientes.length} pacientes importados`);
+
+    // Contar novos vs atualizados
+    const novos = pacientes.filter(p => !codigosExistentes.has(p.codigo));
+    result.pacientesNovos = novos.length;
+    result.pacientesAtualizados = pacientes.length - novos.length;
+
+    log(`  ✅ Pacientes: ${result.pacientesNovos} novos + ${result.pacientesAtualizados} atualizados`);
   }
 
-  // 2. PROCEDIMENTOS — Limpar e inserir
+  // 2. PROCEDIMENTOS — Delete + Insert (sem chave única natural)
   if (procedimentos && procedimentos.length > 0) {
     log(`  Removendo procedimentos antigos da clínica ${clinicaId}...`);
     await supabaseRequest(`procedimentos?clinica_id=eq.${clinicaId}`, 'DELETE');
@@ -391,8 +422,11 @@ async function importarDados(clinicaId, pacientes, procedimentos) {
       await supabaseRequest('procedimentos', 'POST', batch);
       log(`    Lote ${Math.floor(i / 500) + 1}: ${batch.length} inseridos`);
     }
+    result.procedimentos = procedimentos.length;
     log(`  ✅ ${procedimentos.length} procedimentos importados`);
   }
+
+  return result;
 }
 
 // ══════════════════════════════════════════════════════════════

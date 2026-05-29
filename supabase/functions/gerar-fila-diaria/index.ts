@@ -470,9 +470,10 @@ serve(async (req) => {
       // ═══════════════════════════════════════════════════════════════
       // ETAPA C: Campanhas de Aniversário (Mês)
       //
-      // For clients whose birthday MONTH matches the current month,
-      // but NOT the same day (to avoid overlap with day campaign).
-      // Only insert once per month.
+      // Regra: No dia 1 de cada mês, enviar mensagem para TODOS os
+      // aniversariantes daquele mês. Gera fila com 30 dias de
+      // antecedência (mês atual + próximo mês).
+      // data_programada = dia 01 do mês de aniversário às horario_inicio
       // ═══════════════════════════════════════════════════════════════
       try {
         const { data: configMes } = await supabase
@@ -482,16 +483,27 @@ serve(async (req) => {
           .eq("chave", "aniversario_mes")
           .maybeSingle();
 
+        // Verificar se campanha aniversario_dia está ativa (para evitar overlap)
+        const { data: configDiaCheck } = await supabase
+          .from("campanhas_config")
+          .select("ativo")
+          .eq("clinica_id", clinicaId)
+          .eq("chave", "aniversario_dia")
+          .maybeSingle();
+        const diaAtivoCheck = configDiaCheck?.ativo === true;
+
         if (configMes?.ativo && configMes.mensagem) {
           console.log(`[gerar-fila-diaria] Campanha aniversário_mes ativa para ${clinicaId}`);
 
-          const mesAtual = hoje.getMonth() + 1;
+          const mesAtual = hoje.getMonth() + 1; // 1-12
+          const proxMes = mesAtual === 12 ? 1 : mesAtual + 1;
+          const anoProxMes = mesAtual === 12 ? hoje.getFullYear() + 1 : hoje.getFullYear();
 
-          // Month boundaries for duplicate checking
-          const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-          inicioMes.setHours(inicioMes.getHours() + 3); // BRT to UTC
-          const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0, 23, 59, 59);
-          fimMes.setHours(fimMes.getHours() + 3);
+          // Meses a processar: atual + próximo (janela de 30 dias)
+          const mesesParaProcessar = [
+            { mes: mesAtual, ano: hoje.getFullYear() },
+            { mes: proxMes, ano: anoProxMes },
+          ];
 
           const { data: clientesAtivos } = await supabase
             .from("clientes")
@@ -502,59 +514,77 @@ serve(async (req) => {
             .not("telefone", "is", null);
 
           if (clientesAtivos && clientesAtivos.length > 0) {
-            // Filter clients whose birthday month matches current month
-            // Exclude clients whose birthday day matches today (covered by day campaign)
-            const aniversariantesMes = clientesAtivos.filter((c: any) => {
-              if (!c.nascimento || !c.telefone) return false;
-              const nasc = parseDateISO(c.nascimento);
-              if (!nasc) return false;
-              return nasc.getMonth() + 1 === mesAtual && nasc.getDate() !== hoje.getDate();
-            });
-
-            // Schedule for today at horario_inicio (only once per month)
-            const dataProgramada = dateWithTime(hoje, horarioInicio);
-
-            for (const cliente of aniversariantesMes) {
-              // Check if already inserted for this month
-              const { count: dup } = await supabase
-                .from("fila_envios")
-                .select("id", { count: "exact", head: true })
-                .eq("clinica_id", clinicaId)
-                .eq("paciente_id", cliente.id)
-                .eq("origem", "aniversario_mes")
-                .gte("data_programada", inicioMes.toISOString())
-                .lte("data_programada", fimMes.toISOString());
-
-              if ((dup ?? 0) > 0) continue;
-
-              const nomeFormatado = capitalizeName(cliente.paciente ?? "");
-              const mensagemFinal = substituirVariaveis(configMes.mensagem, {
-                nome: nomeFormatado,
+            for (const { mes, ano } of mesesParaProcessar) {
+              // Filtrar aniversariantes deste mês
+              const aniversariantes = clientesAtivos.filter((c: any) => {
+                if (!c.nascimento || !c.telefone) return false;
+                const nasc = parseDateISO(c.nascimento);
+                if (!nasc) return false;
+                const nascMes = nasc.getMonth() + 1;
+                // Se campanha de dia está ativa, excluir overlap do dia
+                // Se não está ativa, incluir TODOS do mês
+                if (diaAtivoCheck && nascMes === mesAtual && nasc.getDate() === hoje.getDate()) {
+                  return false;
+                }
+                return nascMes === mes;
               });
 
-              const insertObj: Record<string, any> = {
-                clinica_id: clinicaId,
-                paciente_id: cliente.id,
-                paciente_nome: cliente.paciente,
-                telefone: cliente.telefone,
-                mensagem: mensagemFinal,
-                data_programada: dataProgramada,
-                status: "pendente",
-                custo: 1,
-                origem: "aniversario_mes",
-              };
-              if (temCampanhaRef) {
-                insertObj.campanha_ref = "aniversario_mes";
-              }
+              if (aniversariantes.length === 0) continue;
 
-              const { error: erroInsert } = await supabase
-                .from("fila_envios")
-                .insert(insertObj);
+              // data_programada = dia 01 do mês de aniversário
+              const dia1 = new Date(ano, mes - 1, 1);
+              const dataProgramada = dateWithTime(dia1, horarioInicio);
 
-              if (!erroInsert) {
-                clinicaResult.aniversario_mes++;
-              } else {
-                clinicaResult.erros.push(`Insert aniv_mes erro: ${erroInsert.message}`);
+              // Boundaries para dedup do mês
+              const inicioMes = new Date(ano, mes - 1, 1);
+              inicioMes.setHours(inicioMes.getHours() + 3);
+              const fimMes = new Date(ano, mes, 0, 23, 59, 59);
+              fimMes.setHours(fimMes.getHours() + 3);
+
+              console.log(`[gerar-fila-diaria] Mês ${mes}/${ano}: ${aniversariantes.length} aniversariantes`);
+
+              for (const cliente of aniversariantes) {
+                // Dedup: já inserido para este mês?
+                const { count: dup } = await supabase
+                  .from("fila_envios")
+                  .select("id", { count: "exact", head: true })
+                  .eq("clinica_id", clinicaId)
+                  .eq("paciente_id", cliente.id)
+                  .eq("origem", "aniversario_mes")
+                  .gte("data_programada", inicioMes.toISOString())
+                  .lte("data_programada", fimMes.toISOString());
+
+                if ((dup ?? 0) > 0) continue;
+
+                const nomeFormatado = capitalizeName(cliente.paciente ?? "");
+                const mensagemFinal = substituirVariaveis(configMes.mensagem, {
+                  nome: nomeFormatado,
+                });
+
+                const insertObj: Record<string, any> = {
+                  clinica_id: clinicaId,
+                  paciente_id: cliente.id,
+                  paciente_nome: cliente.paciente,
+                  telefone: cliente.telefone,
+                  mensagem: mensagemFinal,
+                  data_programada: dataProgramada,
+                  status: "pendente",
+                  custo: 1,
+                  origem: "aniversario_mes",
+                };
+                if (temCampanhaRef) {
+                  insertObj.campanha_ref = "aniversario_mes";
+                }
+
+                const { error: erroInsert } = await supabase
+                  .from("fila_envios")
+                  .insert(insertObj);
+
+                if (!erroInsert) {
+                  clinicaResult.aniversario_mes++;
+                } else {
+                  clinicaResult.erros.push(`Insert aniv_mes erro: ${erroInsert.message}`);
+                }
               }
             }
           }
