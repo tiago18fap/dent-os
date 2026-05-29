@@ -1,5 +1,5 @@
 import { AppLayout } from "@/layouts/AppLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,7 +17,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, EyeOff, Loader2, Wifi, WifiOff, Send, Settings2, Monitor, Lock } from "lucide-react";
+import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, EyeOff, Loader2, Wifi, WifiOff, Send, Settings2, Monitor, Lock, Users } from "lucide-react";
 import { createInstance, connectInstance, getConnectionState, disconnectAndDelete, fetchInstanceInfo, sendTextMessage, configureWebhook } from "@/services/evolutionApi";
 import { gravarLogAuditoria } from "@/utils/auditoria";
 
