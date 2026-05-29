@@ -533,6 +533,14 @@ serve(async (req) => {
 
               // data_programada = dia 01 do mês de aniversário
               const dia1 = new Date(ano, mes - 1, 1);
+
+              // ⛔ Pular meses cujo dia 1 já passou — não faz sentido
+              // enviar "feliz mês de aniversário" retroativamente
+              if (dia1 < hoje) {
+                console.log(`[gerar-fila-diaria] Mês ${mes}/${ano}: PULADO (dia 01 já passou)`);
+                continue;
+              }
+
               const dataProgramada = dateWithTime(dia1, horarioInicio);
 
               // Boundaries para dedup do mês
