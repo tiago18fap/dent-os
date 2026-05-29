@@ -476,8 +476,12 @@ function ClienteDetailDialog({
                 {mensagens.map((msg: any, i: number) => {
                   const statusColor = msg.status === "enviado"
                     ? "border-green-500 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400"
-                    : msg.status === "erro"
+                    : msg.status === "falha" || msg.status === "erro"
                     ? "border-red-400 bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400"
+                    : msg.status === "cancelado"
+                    ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
+                    : msg.status === "dedup_ignorado"
+                    ? "border-slate-400 bg-slate-50 text-slate-600 dark:bg-slate-900/30 dark:text-slate-400"
                     : "border-yellow-400 bg-yellow-50 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-400";
 
                   const origemLabel: Record<string, string> = {
@@ -493,8 +497,12 @@ function ClienteDetailDialog({
                       <div className={`absolute -left-5 top-1.5 w-2.5 h-2.5 rounded-full border-2 ${
                         msg.status === "enviado"
                           ? "bg-green-500 border-green-500"
-                          : msg.status === "erro"
+                          : msg.status === "falha" || msg.status === "erro"
                           ? "bg-red-400 border-red-400"
+                          : msg.status === "cancelado"
+                          ? "bg-amber-400 border-amber-400"
+                          : msg.status === "dedup_ignorado"
+                          ? "bg-slate-400 border-slate-400"
                           : "bg-yellow-400 border-yellow-400"
                       }`} />
                       <div className={`rounded-lg border p-3 ${
@@ -506,7 +514,11 @@ function ClienteDetailDialog({
                           </p>
                           <div className="flex items-center gap-1.5">
                             <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${statusColor}`}>
-                              {msg.status}
+                              {msg.status === "cancelado"
+                                ? "Cancelado"
+                                : msg.status === "dedup_ignorado"
+                                ? "Dedup"
+                                : msg.status}
                             </Badge>
                             <span className="text-[9px] text-muted-foreground">
                               {origemLabel[msg.origem] ?? msg.origem}

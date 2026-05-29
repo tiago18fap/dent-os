@@ -260,6 +260,8 @@ const FilaEnvios = () => {
         return <Badge variant="destructive" className="flex items-center gap-1"><XCircle className="w-3 h-3" /> Falha</Badge>;
       case 'dedup_ignorado':
         return <Badge variant="outline" className="border-slate-400 text-slate-500 flex items-center gap-1"><XCircle className="w-3 h-3" /> Dedup</Badge>;
+      case 'cancelado':
+        return <Badge variant="outline" className="border-amber-400 text-amber-600 bg-amber-50 flex items-center gap-1"><XCircle className="w-3 h-3" /> Cancelado (Retornou)</Badge>;
       default:
         return <Badge variant="outline">{s || "—"}</Badge>;
     }
