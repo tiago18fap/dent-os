@@ -131,6 +131,7 @@ export function Campanhas() {
   const [buscaProcedimento, setBuscaProcedimento] = useState("");
   const [configsProcedimentos, setConfigsProcedimentos] = useState<Record<ProcedimentoId, ConfigProcedimento>>({});
   const [novoProcedimentoPorGrupo, setNovoProcedimentoPorGrupo] = useState<Record<string, ProcedimentoId | "">>({});
+  const [addProcAberto, setAddProcAberto] = useState<Record<string, boolean>>({});
 
   // Disparo de aniversário
   const [aniversarioDiaAtivo, setAniversarioDiaAtivo] = useState(true);
@@ -1541,7 +1542,21 @@ export function Campanhas() {
 
                         {grupo.procedimentoIds.length > 0 && (
                           <div className="space-y-1">
-                            <p className="text-[11px] font-medium text-foreground">Procedimentos desta campanha</p>
+                            <div className="flex items-center justify-between">
+                              <p className="text-[11px] font-medium text-foreground">Procedimentos desta campanha</p>
+                              {disponiveisParaAdicionar.length > 0 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={() => setAddProcAberto((prev) => ({ ...prev, [chaveGrupo]: !prev[chaveGrupo] }))}
+                                  title="Adicionar procedimento"
+                                >
+                                  <span className={`text-base transition-transform ${addProcAberto[chaveGrupo] ? 'rotate-45' : ''}`}>+</span>
+                                </Button>
+                              )}
+                            </div>
                             <div className="flex flex-wrap gap-2">
                               {grupo.procedimentoIds.map((idProcedimento) => {
                                 const procedimento = procedimentos.find((p) => p.id === idProcedimento);
@@ -1575,8 +1590,8 @@ export function Campanhas() {
                           </div>
                         )}
 
-                        {disponiveisParaAdicionar.length > 0 ? (
-                          <div className="space-y-1">
+                        {addProcAberto[chaveGrupo] && disponiveisParaAdicionar.length > 0 ? (
+                          <div className="space-y-1 rounded-md border border-dashed p-3 bg-muted/20">
                             <p className="text-[11px] font-medium text-foreground">
                               Adicionar procedimento a esta campanha
                             </p>
@@ -1677,21 +1692,22 @@ export function Campanhas() {
                           <>
                             <div className="space-y-1">
                               <Label>Tempo de envio</Label>
-                              <div className="flex items-center gap-2">
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  value={grupo.config.diasEntreEnvios}
-                                  onChange={(event) => {
-                                    const novoValor = Number(event.target.value) || 0;
+                              <select
+                                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                                value={
+                                  grupo.config.diasEntreEnvios === 90 ? '90'
+                                  : grupo.config.diasEntreEnvios === 180 ? '180'
+                                  : grupo.config.diasEntreEnvios === 365 ? '365'
+                                  : 'custom'
+                                }
+                                onChange={(event) => {
+                                  const val = event.target.value;
+                                  if (val !== 'custom') {
+                                    const dias = Number(val);
                                     grupo.procedimentoIds.forEach((idProcedimento) => {
-                                      updateProcedimento(idProcedimento, {
-                                        diasEntreEnvios: novoValor,
-                                      });
+                                      updateProcedimento(idProcedimento, { diasEntreEnvios: dias });
                                     });
-                                  }}
-                                  onBlur={() => {
-                                    void sincronizarCampanhaGrupo(chaveGrupo, grupo.procedimentoIds, grupo.config);
+                                    void sincronizarCampanhaGrupo(chaveGrupo, grupo.procedimentoIds, { ...grupo.config, diasEntreEnvios: dias });
                                     grupo.procedimentoIds.forEach((idProcedimento) => {
                                       void salvarCampanhaConfig(
                                         `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${idProcedimento}`,
@@ -1699,12 +1715,45 @@ export function Campanhas() {
                                         grupo.config.ativo,
                                       );
                                     });
-                                  }}
-                                />
-                                <span className="text-sm sm:text-xs text-muted-foreground">dias</span>
-                              </div>
+                                  }
+                                }}
+                              >
+                                <option value="90">3 meses (90 dias)</option>
+                                <option value="180">6 meses (180 dias)</option>
+                                <option value="365">1 ano (365 dias)</option>
+                                <option value="custom">Personalizado</option>
+                              </select>
+                              {![90, 180, 365].includes(grupo.config.diasEntreEnvios) && (
+                                <div className="flex items-center gap-2 mt-1">
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    value={grupo.config.diasEntreEnvios}
+                                    onChange={(event) => {
+                                      const novoValor = Number(event.target.value) || 0;
+                                      grupo.procedimentoIds.forEach((idProcedimento) => {
+                                        updateProcedimento(idProcedimento, {
+                                          diasEntreEnvios: novoValor,
+                                        });
+                                      });
+                                    }}
+                                    onBlur={() => {
+                                      void sincronizarCampanhaGrupo(chaveGrupo, grupo.procedimentoIds, grupo.config);
+                                      grupo.procedimentoIds.forEach((idProcedimento) => {
+                                        void salvarCampanhaConfig(
+                                          `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${idProcedimento}`,
+                                          grupo.config.mensagem,
+                                          grupo.config.ativo,
+                                        );
+                                      });
+                                    }}
+                                    className="w-24"
+                                  />
+                                  <span className="text-sm text-muted-foreground">dias</span>
+                                </div>
+                              )}
                               <p className="text-[11px] text-muted-foreground">
-                                Informe em dias (ex: 30, 120, 365) após a data do procedimento.
+                                Tempo após a data do procedimento para enviar a mensagem.
                               </p>
                             </div>
 
