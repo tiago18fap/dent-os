@@ -17,7 +17,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, Loader2, Wifi, WifiOff, Send } from "lucide-react";
+import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, Loader2, Wifi, WifiOff, Send, Settings2 } from "lucide-react";
 import { createInstance, connectInstance, getConnectionState, disconnectAndDelete, fetchInstanceInfo, sendTextMessage, configureWebhook } from "@/services/evolutionApi";
 
 interface ImportLogItem {
@@ -120,6 +120,13 @@ const Configuracoes = () => {
   const [savingRedirect, setSavingRedirect] = useState(false);
   const [hasInitializedRedirect, setHasInitializedRedirect] = useState(false);
 
+  // Estados para configuração da fila de envios
+  const [dedupDias, setDedupDias] = useState(30);
+  const [horarioInicio, setHorarioInicio] = useState("08:00");
+  const [horarioFim, setHorarioFim] = useState("20:00");
+  const [savingQueueConfig, setSavingQueueConfig] = useState(false);
+  const [hasInitializedQueueConfig, setHasInitializedQueueConfig] = useState(false);
+
   useEffect(() => {
     if (whatsappStatus.data && !hasInitializedRedirect) {
       setRedirecionarAtivo(whatsappStatus.data.redirecionar_ativo ?? false);
@@ -133,7 +140,17 @@ const Configuracoes = () => {
   }, [whatsappStatus.data, hasInitializedRedirect]);
 
   useEffect(() => {
+    if (whatsappStatus.data && !hasInitializedQueueConfig) {
+      setDedupDias(whatsappStatus.data.dedup_dias ?? 30);
+      setHorarioInicio(whatsappStatus.data.horario_inicio ?? "08:00");
+      setHorarioFim(whatsappStatus.data.horario_fim ?? "20:00");
+      setHasInitializedQueueConfig(true);
+    }
+  }, [whatsappStatus.data, hasInitializedQueueConfig]);
+
+  useEffect(() => {
     setHasInitializedRedirect(false);
+    setHasInitializedQueueConfig(false);
   }, [clinica?.id]);
 
   const handleLogout = async () => {
@@ -780,6 +797,82 @@ const Configuracoes = () => {
       });
     } finally {
       setSavingRedirect(false);
+    }
+  };
+
+  const handleSaveQueueConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clinica?.id) {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Clínica não identificada."
+      });
+      return;
+    }
+
+    if (dedupDias < 1 || dedupDias > 365) {
+      toast({
+        variant: "destructive",
+        title: "Valor inválido",
+        description: "O período de deduplicação deve ser entre 1 e 365 dias."
+      });
+      return;
+    }
+
+    // Validar horários
+    const inicioMatch = horarioInicio.match(/^(\d{2}):(\d{2})$/);
+    const fimMatch = horarioFim.match(/^(\d{2}):(\d{2})$/);
+    if (!inicioMatch || !fimMatch) {
+      toast({
+        variant: "destructive",
+        title: "Horário inválido",
+        description: "Use o formato HH:MM para os horários."
+      });
+      return;
+    }
+
+    const inicioMinutos = parseInt(inicioMatch[1]) * 60 + parseInt(inicioMatch[2]);
+    const fimMinutos = parseInt(fimMatch[1]) * 60 + parseInt(fimMatch[2]);
+    if (inicioMinutos >= fimMinutos) {
+      toast({
+        variant: "destructive",
+        title: "Horário inválido",
+        description: "O horário de início deve ser antes do horário de fim."
+      });
+      return;
+    }
+
+    try {
+      setSavingQueueConfig(true);
+
+      const { error } = await (supabase as any)
+        .from("whatsapp_config")
+        .upsert({
+          clinica_id: clinica.id,
+          dedup_dias: dedupDias,
+          horario_inicio: horarioInicio,
+          horario_fim: horarioFim,
+          updated_at: new Date().toISOString()
+        }, { onConflict: "clinica_id" });
+
+      if (error) throw error;
+
+      toast({
+        title: "Configurações salvas!",
+        description: "Configurações da fila de envios atualizadas com sucesso."
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["whatsapp_status"] });
+    } catch (err: any) {
+      console.error("Erro ao salvar configurações da fila:", err);
+      toast({
+        variant: "destructive",
+        title: "Erro ao salvar",
+        description: err.message ?? "Não foi possível salvar as configurações da fila."
+      });
+    } finally {
+      setSavingQueueConfig(false);
     }
   };
 
@@ -1735,7 +1828,100 @@ const Configuracoes = () => {
               </CardContent>
             </Card>
 
-            <span />
+            <Card className="border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-300">
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Settings2 className="h-4 w-4 text-primary" />
+                  <span>Configurações da Fila de Envios</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  Configure as regras de envio automático de mensagens. O sistema gera a fila de envios automaticamente todos os dias às 7h da manhã e inicia o disparo às 8h, com intervalo de 1 a 2 minutos entre cada mensagem para evitar bloqueios.
+                </p>
+
+                <form onSubmit={handleSaveQueueConfig} className="space-y-5">
+                  {/* Dedup */}
+                  <div className="space-y-2">
+                    <Label htmlFor="dedup-dias" className="text-sm font-medium">
+                      Período de proteção contra duplicatas
+                    </Label>
+                    <div className="flex items-center gap-2 max-w-xs">
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">Não enviar para a mesma pessoa dentro de</span>
+                      <Input
+                        id="dedup-dias"
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={dedupDias}
+                        onChange={(e) => setDedupDias(parseInt(e.target.value) || 30)}
+                        className="w-20 text-center"
+                      />
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">dias</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Impede que o mesmo paciente receba múltiplas mensagens dentro do período definido, independente da campanha.
+                    </p>
+                  </div>
+
+                  {/* Janela de horário */}
+                  <div className="space-y-2 border-t pt-4">
+                    <Label className="text-sm font-medium">
+                      Janela de horário para envios
+                    </Label>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-muted-foreground">Enviar mensagens apenas entre</span>
+                      <Input
+                        id="horario-inicio"
+                        type="time"
+                        value={horarioInicio}
+                        onChange={(e) => setHorarioInicio(e.target.value)}
+                        className="w-28 text-center"
+                      />
+                      <span className="text-xs text-muted-foreground">e</span>
+                      <Input
+                        id="horario-fim"
+                        type="time"
+                        value={horarioFim}
+                        onChange={(e) => setHorarioFim(e.target.value)}
+                        className="w-28 text-center"
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Mensagens programadas fora desta janela serão enviadas automaticamente quando o horário permitido iniciar no próximo dia.
+                    </p>
+                  </div>
+
+                  {/* Info box */}
+                  <div className="rounded-lg border border-primary/10 bg-primary/5 p-3 space-y-1">
+                    <p className="text-xs font-medium text-primary flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5" />
+                      Como funciona o agendamento automático
+                    </p>
+                    <ul className="text-[11px] text-muted-foreground space-y-0.5 list-disc list-inside">
+                      <li>Todos os dias às <strong>7h da manhã</strong>, o sistema verifica campanhas ativas e agenda envios para os próximos 30 dias</li>
+                      <li>O disparo inicia às <strong>{horarioInicio || "08:00"}</strong> e encerra às <strong>{horarioFim || "20:00"}</strong></li>
+                      <li>Cada mensagem é enviada com intervalo de <strong>1 a 2 minutos</strong> para evitar bloqueios do WhatsApp</li>
+                      <li>Pacientes que receberam mensagem nos últimos <strong>{dedupDias} dias</strong> são ignorados automaticamente</li>
+                    </ul>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <Button type="submit" disabled={savingQueueConfig} size="sm">
+                      {savingQueueConfig ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          <span>Salvando...</span>
+                        </>
+                      ) : (
+                        <span>Salvar Configurações da Fila</span>
+                      )}
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+
           </TabsContent>
 
           <TabsContent value="clientes" className="mt-4">

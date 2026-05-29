@@ -22,7 +22,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Wallet, Clock, CheckCircle2, XCircle, RefreshCcw, CalendarDays, Megaphone, Cake, Send, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useClinica } from "@/contexts/ClinicaContext";
-import { gerarFilaDiaria } from "@/utils/gerarFilaDiaria";
 import { DateRange } from "react-day-picker";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -38,14 +37,17 @@ function getDateRange(periodo: PeriodoFiltro, customRange?: DateRange): { start:
     case "hoje":
       return { start: inicioHoje, end: fimHoje };
     case "semanal": {
-      const inicio = new Date(inicioHoje);
-      inicio.setDate(inicio.getDate() - 6);
-      return { start: inicio, end: fimHoje };
+      // Esta semana: de hoje até 6 dias para frente
+      const fim = new Date(inicioHoje);
+      fim.setDate(fim.getDate() + 6);
+      fim.setHours(23, 59, 59, 999);
+      return { start: inicioHoje, end: fim };
     }
     case "mensal": {
-      const inicio = new Date(inicioHoje);
-      inicio.setDate(inicio.getDate() - 29);
-      return { start: inicio, end: fimHoje };
+      // Este mês: do 1o dia até o último dia do mês atual
+      const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1, 0, 0, 0);
+      const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0, 23, 59, 59, 999);
+      return { start: inicioMes, end: fimMes };
     }
     case "personalizado": {
       if (customRange?.from) {
@@ -69,7 +71,6 @@ const FilaEnvios = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [periodo, setPeriodo] = useState<PeriodoFiltro>("hoje");
   const [customRange, setCustomRange] = useState<DateRange | undefined>(undefined);
-  const [gerandoFila, setGerandoFila] = useState(false);
   const pageSize = 20;
 
   useEffect(() => {
@@ -189,6 +190,8 @@ const FilaEnvios = () => {
         return <Badge className="bg-green-500 hover:bg-green-600 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> Enviado</Badge>;
       case 'falha':
         return <Badge variant="destructive" className="flex items-center gap-1"><XCircle className="w-3 h-3" /> Falha</Badge>;
+      case 'dedup_ignorado':
+        return <Badge variant="outline" className="border-slate-400 text-slate-500 flex items-center gap-1"><XCircle className="w-3 h-3" /> Dedup</Badge>;
       default:
         return <Badge variant="outline">{s || "—"}</Badge>;
     }
@@ -210,53 +213,12 @@ const FilaEnvios = () => {
     }
   };
 
-  const handleGerarFila = async () => {
-    if (!clinica?.id) {
-      toast({ variant: "destructive", title: "Erro", description: "Selecione uma clínica primeiro." });
-      return;
-    }
-    setGerandoFila(true);
-    try {
-      console.log("[GerarFila] Iniciando para clínica:", clinica.id);
-      const resultado = await gerarFilaDiaria(clinica.id);
-      console.log("[GerarFila] Resultado:", JSON.stringify(resultado, null, 2));
-      
-      if (resultado.erros.length > 0) {
-        console.warn("[GerarFila] Erros:", resultado.erros);
-      }
-
-      const hasErros = resultado.erros.length > 0;
-
-      toast({
-        title: resultado.total > 0 ? "Fila gerada com sucesso!" : "Nenhuma mensagem nova",
-        description: resultado.total > 0
-          ? `${resultado.procedimentos} por procedimento, ${resultado.aniversarios} por aniversário. Total: ${resultado.total} novas mensagens.${hasErros ? ` (${resultado.erros.length} avisos)` : ""}`
-          : hasErros
-            ? `Nenhuma mensagem gerada. Avisos: ${resultado.erros[0]}`
-            : "Todas as mensagens elegíveis já estão na fila ou não há campanhas ativas.",
-        variant: hasErros && resultado.total === 0 ? "destructive" : "default",
-      });
-
-      // Refetch data
-      refetch();
-      queryClient.invalidateQueries({ queryKey: ["carteira_envios"] });
-    } catch (err: any) {
-      console.error("[GerarFila] Erro fatal:", err);
-      toast({
-        variant: "destructive",
-        title: "Erro ao gerar fila",
-        description: err?.message ?? "Não foi possível gerar a fila de envios.",
-      });
-    } finally {
-      setGerandoFila(false);
-    }
-  };
 
   const periodoLabel = (p: PeriodoFiltro) => {
     switch (p) {
       case "hoje": return "Hoje";
-      case "semanal": return "7 dias";
-      case "mensal": return "30 dias";
+      case "semanal": return "Esta Semana";
+      case "mensal": return "Este Mês";
       case "personalizado": return "Personalizado";
     }
   };
@@ -264,22 +226,14 @@ const FilaEnvios = () => {
   return (
     <AppLayout>
       <div className="space-y-6">
-        {/* Header com botão de gerar fila */}
+        {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-foreground">Fila de Envios</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Acompanhe e gerencie as mensagens programadas para envio via WhatsApp.
+              Acompanhe as mensagens programadas para envio via WhatsApp. A fila é gerada automaticamente todos os dias às 7h.
             </p>
           </div>
-          <Button
-            onClick={handleGerarFila}
-            disabled={gerandoFila || !clinica?.id}
-            className="gap-2"
-          >
-            <RefreshCcw className={`h-4 w-4 ${gerandoFila ? "animate-spin" : ""}`} />
-            {gerandoFila ? "Gerando..." : "Gerar Fila do Dia"}
-          </Button>
         </div>
 
         {/* Cards de resumo */}

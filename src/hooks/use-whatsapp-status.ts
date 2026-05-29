@@ -11,6 +11,9 @@ export interface WhatsappConfig {
   redirecionar_ativo?: boolean;
   redirecionar_numero?: string | null;
   redirecionar_mensagem?: string | null;
+  dedup_dias?: number;
+  horario_inicio?: string | null;
+  horario_fim?: string | null;
 }
 
 export const useWhatsappStatus = () => {
@@ -23,6 +26,9 @@ export const useWhatsappStatus = () => {
       redirecionar_ativo: boolean;
       redirecionar_numero: string | null;
       redirecionar_mensagem: string | null;
+      dedup_dias: number;
+      horario_inicio: string;
+      horario_fim: string;
     } | null> => {
       const { data: userData, error: userError } = await supabase.auth.getUser();
 
@@ -57,7 +63,7 @@ export const useWhatsappStatus = () => {
 
       const { data, error } = await (supabase as any)
         .from("whatsapp_config")
-        .select("id, clinica_id, numero, conectado, updated_at, redirecionar_ativo, redirecionar_numero, redirecionar_mensagem")
+        .select("id, clinica_id, numero, conectado, updated_at, redirecionar_ativo, redirecionar_numero, redirecionar_mensagem, dedup_dias, horario_inicio, horario_fim")
         .eq("clinica_id", targetClinicaId)
         .maybeSingle();
 
@@ -130,6 +136,9 @@ export const useWhatsappStatus = () => {
         redirecionar_ativo: data ? (data as any).redirecionar_ativo ?? false : false,
         redirecionar_numero: data ? (data as any).redirecionar_numero ?? null : null,
         redirecionar_mensagem: data ? (data as any).redirecionar_mensagem ?? null : null,
+        dedup_dias: data ? (data as any).dedup_dias ?? 30 : 30,
+        horario_inicio: data ? (data as any).horario_inicio ?? '08:00' : '08:00',
+        horario_fim: data ? (data as any).horario_fim ?? '20:00' : '20:00',
       };
     },
   });
