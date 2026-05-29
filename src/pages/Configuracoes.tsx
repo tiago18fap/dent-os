@@ -1590,15 +1590,19 @@ const Configuracoes = () => {
           defaultValue={(new URLSearchParams(location.search).get("tab") as "perfil" | "geral" | "logs") ?? "perfil"}
           className="w-full"
         >
-          <TabsList className="flex w-full overflow-x-auto">
+          <TabsList className="flex w-full justify-start overflow-x-auto">
             <TabsTrigger value="perfil">Dados de perfil</TabsTrigger>
             <TabsTrigger value="geral">WhatsApp</TabsTrigger>
-            <TabsTrigger value="clientes" disabled={!isSuperAdmin}>
-              Gerenciar Clientes
-            </TabsTrigger>
-            <TabsTrigger value="logs" disabled={!isSuperAdmin}>
-              Logs de importação (admin)
-            </TabsTrigger>
+            {isSuperAdmin && (
+              <TabsTrigger value="clientes">
+                Gerenciar Clientes
+              </TabsTrigger>
+            )}
+            {isSuperAdmin && (
+              <TabsTrigger value="logs">
+                Logs de importação
+              </TabsTrigger>
+            )}
             <TabsTrigger value="sistema">
               Sistema
             </TabsTrigger>
