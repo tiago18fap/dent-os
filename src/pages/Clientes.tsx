@@ -166,8 +166,12 @@ const Clientes = () => {
                           </TableCell>
                           <TableCell className="hidden sm:table-cell">
                             <Badge
-                              variant={cliente.situacao === "Ativo" ? "default" : "secondary"}
-                              className="text-[10px]"
+                              variant="outline"
+                              className={`text-[10px] ${
+                                cliente.situacao === "Ativo"
+                                  ? "border-green-500 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 dark:border-green-700"
+                                  : "border-gray-200 bg-gray-50 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500 dark:border-gray-700"
+                              }`}
                             >
                               {cliente.situacao ?? "-"}
                             </Badge>
@@ -329,7 +333,14 @@ function ClienteDetailDialog({
             <p className="text-[10px] text-muted-foreground">Nascimento</p>
           </div>
           <div className="rounded-lg border p-3 text-center">
-            <Badge variant={cliente.situacao === "Ativo" ? "default" : "secondary"} className="text-[10px]">
+            <Badge
+              variant="outline"
+              className={`text-[10px] ${
+                cliente.situacao === "Ativo"
+                  ? "border-green-500 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400"
+                  : "border-gray-200 bg-gray-50 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500"
+              }`}
+            >
               {cliente.situacao ?? "-"}
             </Badge>
             <p className="text-[10px] text-muted-foreground mt-1">Situação</p>
