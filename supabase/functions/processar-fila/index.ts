@@ -42,6 +42,22 @@ function parseTime(timeStr: string): { hours: number; minutes: number } {
 }
 
 /**
+ * Parses a date in "dd/MM/yyyy" format (used in procedimentos.data_finalizacao).
+ */
+function parseDateBR(dateStr: string | null | undefined): Date | null {
+  if (!dateStr) return null;
+  const parts = dateStr.trim().split("/");
+  if (parts.length !== 3) return null;
+  const day = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const year = parseInt(parts[2], 10);
+  if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+  const d = new Date(year, month, day);
+  if (isNaN(d.getTime())) return null;
+  return d;
+}
+
+/**
  * Checks if the current Brazil time is within the sending window.
  */
 function isWithinWindow(
@@ -141,6 +157,70 @@ serve(async (req) => {
       // Process each pending message for this clinic
       for (const msg of mensagens) {
         console.log(`[processar-fila] Mensagem ${msg.id} para ${msg.paciente_nome} (${msg.telefone})`);
+
+        // Regra de Retorno de Paciente: se o paciente realizou o procedimento mais recentemente, cancela o envio.
+        if (msg.origem === "procedimento" && msg.campanha_ref) {
+          try {
+            const { data: campanha, error: campanhaError } = await supabase
+              .from("campanhas_procedimento")
+              .select("procedimentos_nomes, dias_entre_envios")
+              .eq("group_id", msg.campanha_ref)
+              .eq("clinica_id", clinicaId)
+              .maybeSingle();
+
+            if (campanha && !campanhaError) {
+              const nomesProc: string[] = campanha.procedimentos_nomes ?? [];
+              const diasEntreEnvios = campanha.dias_entre_envios ?? 30;
+
+              if (nomesProc.length > 0 && diasEntreEnvios > 0) {
+                // Determinar a data do procedimento que disparou este envio
+                const dataProg = new Date(msg.data_programada);
+                const dataOriginal = new Date(dataProg.getTime());
+                dataOriginal.setDate(dataOriginal.getDate() - diasEntreEnvios);
+                const timeOriginal = new Date(dataOriginal.getFullYear(), dataOriginal.getMonth(), dataOriginal.getDate()).getTime();
+
+                // Buscar todos os procedimentos do paciente
+                const { data: procs, error: procsError } = await supabase
+                  .from("procedimentos")
+                  .select("data_finalizacao, procedimento")
+                  .eq("clinica_id", clinicaId)
+                  .ilike("nome_paciente", msg.paciente_nome);
+
+                if (procs && !procsError) {
+                  const nomesProcLower = nomesProc.map((n) => n.toLowerCase());
+                  const temMaisRecente = procs.some((proc: any) => {
+                    const pNome = (proc.procedimento ?? "").toLowerCase();
+                    if (!nomesProcLower.includes(pNome)) return false;
+
+                    const procDate = parseDateBR(proc.data_finalizacao);
+                    if (!procDate) return false;
+
+                    const timeProc = new Date(procDate.getFullYear(), procDate.getMonth(), procDate.getDate()).getTime();
+                    return timeProc > timeOriginal;
+                  });
+
+                  if (temMaisRecente) {
+                    console.log(`[processar-fila] Mensagem ${msg.id} cancelada: o paciente ${msg.paciente_nome} realizou o procedimento de ${nomesProc.join(", ")} mais recentemente`);
+                    
+                    const { error: cancelError } = await supabase
+                      .from("fila_envios")
+                      .update({ status: "cancelado", updated_at: new Date().toISOString() })
+                      .eq("id", msg.id);
+
+                    if (cancelError) {
+                      console.error(`[processar-fila] Erro ao marcar mensagem como cancelada:`, cancelError);
+                    }
+
+                    summary.push({ clinica_id: clinicaId, status: "cancelado", detail: `msg ${msg.id} (paciente retornou)` });
+                    continue;
+                  }
+                }
+              }
+            }
+          } catch (checkErr) {
+            console.error(`[processar-fila] Erro na verificação de retorno de paciente para msg ${msg.id}:`, checkErr);
+          }
+        }
 
         // 2c. Dedup check: has this paciente_id been sent in the last dedup_dias?
         const dedupCutoff = new Date();

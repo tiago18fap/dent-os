@@ -1626,9 +1626,12 @@ export function Campanhas() {
                         const { data: procs, error: erroProcs } = await procQuery;
                         if (erroProcs) throw erroProcs;
 
-                        // Filter by date range (data_finalizacao is dd/MM/yyyy)
-                        const nomesPacientes = new Set<string>();
+                        // Group by patient to keep only the latest procedure of the selected type
+                        const latestProcMap = new Map<string, Date>();
                         for (const proc of (procs ?? [])) {
+                          const nome = (proc.nome_paciente ?? "").trim();
+                          if (!nome) continue;
+
                           const dfStr = (proc.data_finalizacao ?? "").trim();
                           if (!dfStr) continue;
                           const parts = dfStr.split("/");
@@ -1639,9 +1642,18 @@ export function Campanhas() {
                             parseInt(parts[0], 10)
                           );
                           if (isNaN(d.getTime())) continue;
-                          if (d >= dtInicio && d <= dtFim) {
-                            const nome = (proc.nome_paciente ?? "").trim();
-                            if (nome) nomesPacientes.add(nome);
+
+                          const existingDate = latestProcMap.get(nome);
+                          if (!existingDate || d.getTime() > existingDate.getTime()) {
+                            latestProcMap.set(nome, d);
+                          }
+                        }
+
+                        // Filter by date range (only patients whose LATEST procedure falls in the range)
+                        const nomesPacientes = new Set<string>();
+                        for (const [nome, latestDate] of latestProcMap.entries()) {
+                          if (latestDate >= dtInicio && latestDate <= dtFim) {
+                            nomesPacientes.add(nome);
                           }
                         }
 
