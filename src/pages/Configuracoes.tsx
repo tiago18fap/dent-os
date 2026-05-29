@@ -2525,33 +2525,6 @@ const Configuracoes = () => {
                           autoComplete="off"
                         />
                       </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="mp-client-id" className="text-sm font-medium">
-                          Client ID (Opcional)
-                        </Label>
-                        <Input
-                          id="mp-client-id"
-                          placeholder="ID do cliente"
-                          value={mpClientId}
-                          onChange={(e) => setMpClientId(e.target.value)}
-                          autoComplete="off"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="mp-client-secret" className="text-sm font-medium">
-                          Client Secret (Opcional)
-                        </Label>
-                        <Input
-                          id="mp-client-secret"
-                          type="password"
-                          placeholder="Secret do cliente"
-                          value={mpClientSecret}
-                          onChange={(e) => setMpClientSecret(e.target.value)}
-                          autoComplete="off"
-                        />
-                      </div>
                     </div>
 
                     <div className="flex justify-end pt-2">
