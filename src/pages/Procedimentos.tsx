@@ -283,24 +283,19 @@ const Procedimentos = () => {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Nome do paciente</TableHead>
                         <TableHead>Procedimento</TableHead>
                         <TableHead className="hidden sm:table-cell">Prestador</TableHead>
                         <TableHead className="hidden sm:table-cell">Data finalização</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {procedimentos.map((proc: any) => {
-                        const nomePaciente = proc.nome_paciente ?? "-";
-                        return (
-                          <TableRow key={proc.id}>
-                            <TableCell>{nomePaciente}</TableCell>
-                            <TableCell>{proc.procedimento}</TableCell>
-                            <TableCell className="hidden sm:table-cell">{proc.prestador ?? "-"}</TableCell>
-                            <TableCell className="hidden sm:table-cell">{proc.data_finalizacao ?? "-"}</TableCell>
-                          </TableRow>
-                        );
-                      })}
+                      {procedimentos.map((proc: any) => (
+                        <TableRow key={proc.id}>
+                          <TableCell>{proc.procedimento}</TableCell>
+                          <TableCell className="hidden sm:table-cell">{proc.prestador ?? "-"}</TableCell>
+                          <TableCell className="hidden sm:table-cell">{proc.data_finalizacao ?? "-"}</TableCell>
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
                 </div>
