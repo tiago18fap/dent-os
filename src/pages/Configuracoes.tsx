@@ -1940,6 +1940,9 @@ const Configuracoes = () => {
                     </Button>
                   </div>
                 </form>
+
+                {/* ═══ BOTÃO GERAR FILA AGORA ═══ */}
+                <GerarFilaSection />
               </CardContent>
             </Card>
 
@@ -2361,6 +2364,136 @@ const Configuracoes = () => {
     </AppLayout>
   );
 };
+
+// ══════════════════════════════════════════════════════════════
+// Componente — Botão Gerar Fila Agora
+// ══════════════════════════════════════════════════════════════
+
+interface FilaResult {
+  status: 'idle' | 'generating' | 'success' | 'error';
+  message?: string;
+  procedimentos?: number;
+  aniversario_dia?: number;
+  aniversario_mes?: number;
+  total?: number;
+}
+
+function GerarFilaSection() {
+  const [result, setResult] = useState<FilaResult>({ status: 'idle' });
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const handleGerar = async () => {
+    if (result.status === 'generating') return;
+    setResult({ status: 'generating', message: 'Analisando campanhas ativas...' });
+
+    try {
+      const session = await supabase.auth.getSession();
+      const res = await fetch(
+        'https://dzbeorfkualalocrvobe.supabase.co/functions/v1/gerar-fila-diaria',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.data.session?.access_token || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6YmVvcmZrdWFsYWxvY3J2b2JlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2MjIyMTUsImV4cCI6MjA4MjE5ODIxNX0.CbV28UokExWE0XtqJx-fwgdMN7qtd-x_-K77j2bBeqc'}`,
+          },
+          body: JSON.stringify({}),
+        }
+      );
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        const clinica = data.clinicas?.[0] || {};
+        setResult({
+          status: 'success',
+          procedimentos: clinica.procedimentos || 0,
+          aniversario_dia: clinica.aniversario_dia || 0,
+          aniversario_mes: clinica.aniversario_mes || 0,
+          total: data.total_mensagens || 0,
+        });
+        toast({ title: `✅ Fila gerada: ${data.total_mensagens} mensagens` });
+        queryClient.invalidateQueries({ queryKey: ['fila_envios'] });
+      } else {
+        setResult({ status: 'error', message: data.error || 'Erro na geração' });
+        toast({ title: '❌ Erro ao gerar fila', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      setResult({ status: 'error', message: err.message });
+      toast({ title: '❌ Falha na conexão', variant: 'destructive' });
+    }
+  };
+
+  return (
+    <div className="space-y-3 border-t pt-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium">Gerar Fila Manualmente</p>
+          <p className="text-[11px] text-muted-foreground">
+            Força a geração de envios para os próximos 30 dias baseado nas campanhas ativas.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant={result.status === 'generating' ? 'secondary' : 'outline'}
+          disabled={result.status === 'generating'}
+          onClick={handleGerar}
+          className="shrink-0"
+        >
+          {result.status === 'generating' ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Gerando...
+            </>
+          ) : (
+            <>
+              <Send className="mr-2 h-4 w-4" />
+              Gerar Fila Agora
+            </>
+          )}
+        </Button>
+      </div>
+
+      {result.status === 'generating' && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/30 p-3 animate-pulse">
+          <p className="text-xs text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {result.message}
+          </p>
+        </div>
+      )}
+
+      {result.status === 'success' && (
+        <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 p-3 space-y-2">
+          <p className="text-sm font-medium text-green-700 dark:text-green-400 flex items-center gap-1.5">
+            <CheckCircle2 className="h-4 w-4" />
+            Fila gerada — {result.total} mensagens agendadas
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-md bg-white dark:bg-green-900/30 border border-green-100 dark:border-green-800 p-2 text-center">
+              <p className="text-lg font-bold text-green-700 dark:text-green-400">{result.procedimentos}</p>
+              <p className="text-[10px] text-green-600/70 dark:text-green-400/60">Procedimentos</p>
+            </div>
+            <div className="rounded-md bg-white dark:bg-green-900/30 border border-green-100 dark:border-green-800 p-2 text-center">
+              <p className="text-lg font-bold text-green-700 dark:text-green-400">{result.aniversario_dia}</p>
+              <p className="text-[10px] text-green-600/70 dark:text-green-400/60">Aniv. Dia</p>
+            </div>
+            <div className="rounded-md bg-white dark:bg-green-900/30 border border-green-100 dark:border-green-800 p-2 text-center">
+              <p className="text-lg font-bold text-green-700 dark:text-green-400">{result.aniversario_mes}</p>
+              <p className="text-[10px] text-green-600/70 dark:text-green-400/60">Aniv. Mês</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {result.status === 'error' && (
+        <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 p-3">
+          <p className="text-xs text-red-700 dark:text-red-400 font-medium">⚠️ Erro: {result.message}</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ══════════════════════════════════════════════════════════════
 // Componente — Botão Sincronizar Agora + Resultado
