@@ -47,12 +47,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useClinica } from "@/contexts/ClinicaContext";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-
-const aniversariantesFake = [
-  { nome: "Ana Paula", data: "10/10", telefone: "(11) 99999-0001", alertado: true },
-  { nome: "Bruno Silva", data: "11/10", telefone: "(11) 99999-0002", alertado: false },
-  { nome: "Carla Souza", data: "15/10", telefone: "(11) 99999-0003", alertado: false },
-];
+import { Badge } from "@/components/ui/badge";
+import { Cake } from "lucide-react";
 
 type ProcedimentoId = string;
 
@@ -150,6 +146,12 @@ export function Campanhas() {
     groupId: string;
     titulo: string;
   } | null>(null);
+
+  // Aniversariantes reais do mês
+  const [aniversariantesMes, setAniversariantesMes] = useState<
+    { id: string; nome: string; data: string; telefone: string; dia: number }[]
+  >([]);
+  const [aniversariantesCarregando, setAniversariantesCarregando] = useState(false);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [tabValue, setTabValue] = useState<"massa" | "procedimento" | "aniversario">(() => {
@@ -410,6 +412,66 @@ export function Campanhas() {
     void carregarConfiguracoes();
     void carregarHistoricoMassa();
   }, [toast, loading, clinica?.id, isSuperAdmin, isImpersonating]);
+
+  // Carregar aniversariantes reais do mês atual
+  useEffect(() => {
+    if (loading) return;
+    const carregarAniversariantes = async () => {
+      try {
+        setAniversariantesCarregando(true);
+        const hoje = new Date();
+        const mesAtual = hoje.getMonth() + 1; // 1-12
+
+        let query = (supabase as any)
+          .from("clientes")
+          .select("id, paciente, telefone, nascimento")
+          .ilike("situacao", "Ativo")
+          .not("nascimento", "is", null)
+          .not("telefone", "is", null);
+
+        if (!isSuperAdmin || isImpersonating) {
+          if (clinica?.id) {
+            query = query.eq("clinica_id", clinica.id);
+          } else {
+            setAniversariantesMes([]);
+            setAniversariantesCarregando(false);
+            return;
+          }
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        const aniversariantes = ((data ?? []) as any[])
+          .filter((c: any) => {
+            if (!c.nascimento) return false;
+            const nasc = new Date(c.nascimento + "T00:00:00");
+            return nasc.getMonth() + 1 === mesAtual;
+          })
+          .map((c: any) => {
+            const nasc = new Date(c.nascimento + "T00:00:00");
+            const dia = nasc.getDate();
+            const mesStr = String(mesAtual).padStart(2, "0");
+            const diaStr = String(dia).padStart(2, "0");
+            return {
+              id: c.id,
+              nome: c.paciente ?? "Sem nome",
+              data: `${diaStr}/${mesStr}`,
+              telefone: c.telefone ?? "—",
+              dia,
+            };
+          })
+          .sort((a: any, b: any) => a.dia - b.dia);
+
+        setAniversariantesMes(aniversariantes);
+      } catch (err) {
+        console.error("Erro ao carregar aniversariantes:", err);
+      } finally {
+        setAniversariantesCarregando(false);
+      }
+    };
+    void carregarAniversariantes();
+  }, [loading, clinica?.id, isSuperAdmin, isImpersonating]);
 
   const requireMensagem = (mensagem: string) => {
     if (!mensagem.trim()) {
@@ -1750,29 +1812,49 @@ export function Campanhas() {
                   </div>
                 </div>
 
-                {/* Lista de aniversariantes do mês (simulação) */}
+                {/* Lista real de aniversariantes do mês */}
                 <div className="space-y-2 border-t pt-3">
-                  <p className="text-xs font-medium text-foreground">Aniversariantes do mês (simulação)</p>
-                  <div className="space-y-1 rounded-md bg-card p-2 text-xs">
-                    <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1.2fr)] gap-2 border-b pb-1 text-[11px] text-muted-foreground">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                      <Cake className="h-3.5 w-3.5 text-amber-500" />
+                      Aniversariantes de {new Date().toLocaleString("pt-BR", { month: "long" })}
+                    </p>
+                    <Badge variant="outline" className="text-[10px]">
+                      {aniversariantesMes.length} paciente{aniversariantesMes.length !== 1 ? "s" : ""}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1 rounded-md bg-card border p-2 text-xs max-h-64 overflow-y-auto">
+                    <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.5fr)] gap-2 border-b pb-1 text-[11px] text-muted-foreground font-medium">
                       <span>Nome</span>
                       <span>Data</span>
                       <span>Telefone</span>
-                      <span className="text-right">Status</span>
                     </div>
-                    {aniversariantesFake.map((paciente) => (
-                      <div
-                        key={`${paciente.nome}-${paciente.data}`}
-                        className="grid grid-cols-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1.2fr)] gap-2 py-1"
-                      >
-                        <span>{paciente.nome}</span>
-                        <span>{paciente.data}</span>
-                        <span>{paciente.telefone}</span>
-                        <span className="text-right">
-                          {paciente.alertado ? "Já alertado" : "Não alertado"}
-                        </span>
-                      </div>
-                    ))}
+                    {aniversariantesCarregando && (
+                      <p className="text-center text-muted-foreground py-3 text-[11px]">Carregando aniversariantes…</p>
+                    )}
+                    {!aniversariantesCarregando && aniversariantesMes.length === 0 && (
+                      <p className="text-center text-muted-foreground py-3 text-[11px]">Nenhum aniversariante encontrado neste mês.</p>
+                    )}
+                    {!aniversariantesCarregando && aniversariantesMes.map((paciente) => {
+                      const hoje = new Date();
+                      const jaPassou = paciente.dia < hoje.getDate();
+                      const ehHoje = paciente.dia === hoje.getDate();
+                      return (
+                        <div
+                          key={paciente.id}
+                          className={`grid grid-cols-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.5fr)] gap-2 py-1 rounded px-1 ${
+                            ehHoje ? "bg-amber-50 dark:bg-amber-950/30 font-medium" : jaPassou ? "opacity-50" : ""
+                          }`}
+                        >
+                          <span className="flex items-center gap-1">
+                            {ehHoje && <span className="text-amber-500">🎂</span>}
+                            {paciente.nome}
+                          </span>
+                          <span>{paciente.data}</span>
+                          <span className="text-muted-foreground">{paciente.telefone}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </CardContent>
