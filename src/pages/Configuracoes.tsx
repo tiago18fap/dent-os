@@ -2353,6 +2353,11 @@ const Configuracoes = () => {
                     </p>
                   </div>
                 )}
+
+                {/* ═══ LOGS DE INTEGRAÇÃO ═══ */}
+                {easydentalUsuario && easydentalSenha && (
+                  <SyncLogsSection clinicaId={config?.clinica_id} ultimaSync={config?.ultima_sync_sucesso} />
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -2362,4 +2367,165 @@ const Configuracoes = () => {
   );
 };
 
+// ══════════════════════════════════════════════════════════════
+// Componente — Logs de Integração Easy Dental
+// ══════════════════════════════════════════════════════════════
+
+interface SyncLog {
+  id: string;
+  tipo: string;
+  status: string;
+  pacientes_importados: number;
+  procedimentos_importados: number;
+  erro_mensagem: string | null;
+  duracao_segundos: number | null;
+  created_at: string;
+}
+
+function SyncLogsSection({ clinicaId, ultimaSync }: { clinicaId?: string; ultimaSync?: string | null }) {
+  const [showLogs, setShowLogs] = useState(false);
+  const [logs, setLogs] = useState<SyncLog[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadLogs = async () => {
+    if (!clinicaId) return;
+    setLoading(true);
+    try {
+      const { data, error } = await (supabase as any)
+        .from("sync_logs")
+        .select("*")
+        .eq("clinica_id", clinicaId)
+        .order("created_at", { ascending: false })
+        .limit(15);
+      if (!error && data) setLogs(data);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggle = () => {
+    if (!showLogs) loadLogs();
+    setShowLogs(!showLogs);
+  };
+
+  // Calcular dias desde última sync
+  const diasSemSync = ultimaSync
+    ? Math.floor((Date.now() - new Date(ultimaSync).getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+
+  const formatDate = (d: string) => {
+    try {
+      return new Date(d).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    } catch { return d; }
+  };
+
+  return (
+    <div className="space-y-3 mt-4 pt-4 border-t border-border/50">
+      {/* Indicador de última sincronização */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <RefreshCcw className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Última sincronização</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {ultimaSync ? (
+            <>
+              <Badge variant={diasSemSync !== null && diasSemSync >= 7 ? "destructive" : "secondary"} className="text-xs">
+                {diasSemSync !== null && diasSemSync >= 7
+                  ? `⚠️ ${diasSemSync} dias atrás`
+                  : diasSemSync === 0
+                    ? "Hoje"
+                    : diasSemSync === 1
+                      ? "Ontem"
+                      : `${diasSemSync} dias atrás`}
+              </Badge>
+              <span className="text-xs text-muted-foreground">{formatDate(ultimaSync)}</span>
+            </>
+          ) : (
+            <Badge variant="outline" className="text-xs">Nunca sincronizado</Badge>
+          )}
+        </div>
+      </div>
+
+      {/* Alerta de integração parada */}
+      {diasSemSync !== null && diasSemSync >= 7 && (
+        <div className="rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30 p-3">
+          <p className="text-xs text-red-700 dark:text-red-400 flex items-center gap-1.5 font-medium">
+            ⚠️ A integração está parada há {diasSemSync} dias. Verifique se as credenciais estão corretas.
+          </p>
+        </div>
+      )}
+
+      {/* Botão Ver Logs */}
+      <Button variant="outline" size="sm" onClick={handleToggle} className="w-full">
+        <Clock className="mr-2 h-4 w-4" />
+        {showLogs ? "Ocultar Logs" : "Ver Logs de Integração"}
+      </Button>
+
+      {/* Tabela de Logs */}
+      {showLogs && (
+        <div className="rounded-lg border border-border/50 overflow-hidden">
+          <ScrollArea className="max-h-[350px]">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs w-[140px]">Data/Hora</TableHead>
+                  <TableHead className="text-xs w-[80px]">Status</TableHead>
+                  <TableHead className="text-xs w-[80px] text-center">Pacientes</TableHead>
+                  <TableHead className="text-xs w-[100px] text-center">Procedimentos</TableHead>
+                  <TableHead className="text-xs w-[60px] text-center">Tempo</TableHead>
+                  <TableHead className="text-xs">Erro</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8">
+                      <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
+                    </TableCell>
+                  </TableRow>
+                ) : logs.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-6 text-xs text-muted-foreground">
+                      Nenhum log de integração encontrado
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  logs.map((log) => (
+                    <TableRow key={log.id}>
+                      <TableCell className="text-xs">{formatDate(log.created_at)}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={log.status === "sucesso" ? "default" : log.status === "parcial" ? "secondary" : "destructive"}
+                          className="text-[10px]"
+                        >
+                          {log.status === "sucesso" ? "✅ Sucesso" : log.status === "parcial" ? "⚠️ Parcial" : "❌ Erro"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-center">{log.pacientes_importados}</TableCell>
+                      <TableCell className="text-xs text-center">{log.procedimentos_importados}</TableCell>
+                      <TableCell className="text-xs text-center">
+                        {log.duracao_segundos ? `${Math.round(log.duracao_segundos)}s` : "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-red-500 max-w-[200px] truncate" title={log.erro_mensagem || ""}>
+                        {log.erro_mensagem || "-"}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+          {logs.length > 0 && (
+            <div className="px-3 py-2 border-t text-[10px] text-muted-foreground bg-muted/30">
+              Mostrando últimos {logs.length} registros • Sincronização automática: diariamente às 6h
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default Configuracoes;
+
