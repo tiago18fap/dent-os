@@ -303,55 +303,80 @@ export function Campanhas() {
     };
     const carregarConfiguracoes = async () => {
       try {
-        let configQuery = (supabase as any)
-          .from("campanhas_config")
-          .select("chave, mensagem, ativo");
+        // ─── 1. Carregar campanhas de procedimento agrupadas ───
+        let procCampQuery = (supabase as any)
+          .from(TABELA_CAMPANHAS_PROCEDIMENTO)
+          .select("group_id, ativo, limite_envios, dias_entre_envios, mensagem, procedimentos_ids");
 
         if (!isSuperAdmin || isImpersonating) {
           if (clinica?.id) {
-            configQuery = configQuery.eq("clinica_id", clinica.id);
+            procCampQuery = procCampQuery.eq("clinica_id", clinica.id);
           } else {
             return;
           }
         }
 
-        const { data, error } = await configQuery;
+        const { data: campanhasProc, error: erroCampProc } = await procCampQuery;
 
-        if (error) throw error;
-        const rows = (data ?? []) as CampanhaConfigRow[];
-        if (rows.length === 0) return;
+        if (erroCampProc) {
+          console.error("Erro ao carregar campanhas_procedimento:", erroCampProc);
+        }
 
-        setConfigsProcedimentos((prev) => {
-          const novo = { ...prev } as Record<ProcedimentoId, ConfigProcedimento>;
+        if (campanhasProc && campanhasProc.length > 0) {
+          setConfigsProcedimentos(() => {
+            const novo = {} as Record<ProcedimentoId, ConfigProcedimento>;
 
-          for (const row of rows) {
-            if (row.chave.startsWith(CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX)) {
-              const id = row.chave.replace(CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX, "");
-              const existente = novo[id];
-
-              novo[id] = {
-                ativo: row.ativo,
-                limiteEnvios: existente?.limiteEnvios ?? 2,
-                diasEntreEnvios: existente?.diasEntreEnvios ?? 30,
-                mensagem: row.mensagem,
-                groupId: existente?.groupId ?? id,
+            for (const camp of campanhasProc) {
+              const groupId: string = camp.group_id;
+              const ids: string[] = camp.procedimentos_ids ?? [];
+              const config: ConfigProcedimento = {
+                ativo: camp.ativo ?? true,
+                limiteEnvios: camp.limite_envios ?? 2,
+                diasEntreEnvios: camp.dias_entre_envios ?? 30,
+                mensagem: camp.mensagem ?? "",
+                groupId,
               };
+
+              // Atribui o mesmo config (com o mesmo groupId) para cada procedimento do grupo
+              for (const id of ids) {
+                novo[id] = { ...config };
+              }
+            }
+
+            return novo;
+          });
+        }
+
+        // ─── 2. Carregar configs de aniversário ───
+        let configQuery = (supabase as any)
+          .from("campanhas_config")
+          .select("chave, mensagem, ativo")
+          .in("chave", [CAMPANHA_CHAVE_ANIVERSARIO_DIA, CAMPANHA_CHAVE_ANIVERSARIO_MES]);
+
+        if (!isSuperAdmin || isImpersonating) {
+          if (clinica?.id) {
+            configQuery = configQuery.eq("clinica_id", clinica.id);
+          }
+        }
+
+        const { data: configRows, error: erroConfig } = await configQuery;
+
+        if (erroConfig) {
+          console.error("Erro ao carregar campanhas_config:", erroConfig);
+        }
+
+        if (configRows) {
+          for (const row of configRows as CampanhaConfigRow[]) {
+            if (row.chave === CAMPANHA_CHAVE_ANIVERSARIO_DIA) {
+              setAniversarioDiaAtivo(row.ativo);
+              setMensagemAniversarioDia(row.mensagem);
+            }
+            if (row.chave === CAMPANHA_CHAVE_ANIVERSARIO_MES) {
+              setAniversarioMesAtivo(row.ativo);
+              setMensagemAniversarioMes(row.mensagem);
             }
           }
-
-          return novo;
-        });
-
-        rows.forEach((row) => {
-          if (row.chave === CAMPANHA_CHAVE_ANIVERSARIO_DIA) {
-            setAniversarioDiaAtivo(row.ativo);
-            setMensagemAniversarioDia(row.mensagem);
-          }
-          if (row.chave === CAMPANHA_CHAVE_ANIVERSARIO_MES) {
-            setAniversarioMesAtivo(row.ativo);
-            setMensagemAniversarioMes(row.mensagem);
-          }
-        });
+        }
       } catch (error) {
         console.error("Erro ao carregar configurações de campanhas", error);
       }
