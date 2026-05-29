@@ -233,6 +233,21 @@ serve(async (req) => {
 
                 // Only consider if within [hoje, hoje+30]
                 if (dataEnvio >= hoje && dataEnvio <= fim30) {
+                  // VERIFICAÇÃO: Existe outro procedimento mais recente deste mesmo paciente para esta campanha?
+                  const temMaisRecente = procs.some((other) => {
+                    if ((other.nome_paciente ?? "").trim().toLowerCase() !== nome.toLowerCase()) return false;
+                    if (!nomesProc.map(n => n.toLowerCase()).includes((other.procedimento ?? "").toLowerCase())) return false;
+                    
+                    const otherDate = parseDateBR(other.data_finalizacao);
+                    if (!otherDate) return false;
+                    return otherDate.getTime() > dataFin.getTime();
+                  });
+
+                  if (temMaisRecente) {
+                    // Pula este procedimento pois o paciente já retornou mais recentemente para fazer um procedimento desta campanha!
+                    continue;
+                  }
+
                   if (!candidatos.has(nome)) {
                     candidatos.set(nome, []);
                   }

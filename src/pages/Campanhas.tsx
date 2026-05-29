@@ -894,6 +894,21 @@ export function Campanhas() {
         dataEnvio.setDate(dataEnvio.getDate() + diasEntreEnvios);
 
         if (dataEnvio.getTime() === hojeNorm.getTime()) {
+          // VERIFICAÇÃO: Existe outro procedimento mais recente deste mesmo paciente para esta campanha?
+          const temMaisRecente = procs.some((other) => {
+            if ((other.nome_paciente ?? "").trim().toLowerCase() !== nome.toLowerCase()) return false;
+            if (!nomesProc.map(n => n.toLowerCase()).includes((other.procedimento ?? "").toLowerCase())) return false;
+            
+            const otherDate = parseDateBRLocal(other.data_finalizacao);
+            if (!otherDate) return false;
+            return otherDate.getTime() > dataFin.getTime();
+          });
+
+          if (temMaisRecente) {
+            // Pula este procedimento pois o paciente já retornou mais recentemente para fazer um procedimento desta campanha!
+            continue;
+          }
+
           if (!pacientesParaEnviar.has(nome)) {
             pacientesParaEnviar.set(nome, {
               procedimento: proc.procedimento,
