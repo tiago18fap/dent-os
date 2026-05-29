@@ -440,19 +440,32 @@ async function importarDados(clinicaId, pacientes, procedimentos) {
     log(`  ✅ Pacientes: ${result.pacientesNovos} novos + ${result.pacientesAtualizados} atualizados`);
   }
 
-  // 2. PROCEDIMENTOS — Delete + Insert (sem chave única natural)
+  // 2. PROCEDIMENTOS — Delete + Insert (com dedup antes de inserir)
   if (procedimentos && procedimentos.length > 0) {
+    // Dedup: o Excel pode ter linhas repetidas (mesmo paciente+proc+data)
+    const seen = new Set();
+    const procUnicos = procedimentos.filter(p => {
+      const key = `${p.nome_paciente}|${p.procedimento}|${p.data_finalizacao}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const removidos = procedimentos.length - procUnicos.length;
+    if (removidos > 0) {
+      log(`  ⚠️ ${removidos} duplicatas removidas (${procedimentos.length} → ${procUnicos.length})`);
+    }
+
     log(`  Removendo procedimentos antigos da clínica ${clinicaId}...`);
     await supabaseRequest(`procedimentos?clinica_id=eq.${clinicaId}`, 'DELETE');
 
-    log(`  Inserindo ${procedimentos.length} procedimentos...`);
-    for (let i = 0; i < procedimentos.length; i += 500) {
-      const batch = procedimentos.slice(i, i + 500);
+    log(`  Inserindo ${procUnicos.length} procedimentos únicos...`);
+    for (let i = 0; i < procUnicos.length; i += 500) {
+      const batch = procUnicos.slice(i, i + 500);
       await supabaseRequest('procedimentos', 'POST', batch);
       log(`    Lote ${Math.floor(i / 500) + 1}: ${batch.length} inseridos`);
     }
-    result.procedimentos = procedimentos.length;
-    log(`  ✅ ${procedimentos.length} procedimentos importados`);
+    result.procedimentos = procUnicos.length;
+    log(`  ✅ ${procUnicos.length} procedimentos importados (${removidos} duplicatas ignoradas)`);
   }
 
   return result;
