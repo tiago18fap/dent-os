@@ -49,6 +49,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import { Cake, Zap, Loader2, Plus } from "lucide-react";
+import { gravarLogAuditoria } from "@/utils/auditoria";
 
 type ProcedimentoId = string;
 
@@ -703,6 +704,12 @@ export function Campanhas() {
         );
 
       if (error) throw error;
+
+      await gravarLogAuditoria(
+        clinica?.id,
+        "salvar_frase",
+        `Salva frase da campanha '${chave}' (${ativo ? 'Ativa' : 'Inativa'}): "${mensagemLimpa.slice(0, 80)}${mensagemLimpa.length > 80 ? '...' : ''}"`
+      );
     } catch (error: any) {
       console.error("Erro ao salvar configuração de campanha", error);
 
@@ -762,12 +769,24 @@ export function Campanhas() {
           .eq("clinica_id", clinica?.id)
           .eq("group_id", groupId);
         if (error) throw error;
+
+        await gravarLogAuditoria(
+          clinica?.id,
+          "editar_procedimento",
+          `Atualizada frase da campanha de procedimento (Group ID: ${groupId}): "${config.mensagem.slice(0, 80)}${config.mensagem.length > 80 ? '...' : ''}"`
+        );
       } else {
         // Insert
         const { error } = await (supabase as any)
           .from(TABELA_CAMPANHAS_PROCEDIMENTO)
           .insert(payload);
         if (error) throw error;
+
+        await gravarLogAuditoria(
+          clinica?.id,
+          "criar_procedimento",
+          `Criada campanha de procedimento (Group ID: ${groupId}): "${config.mensagem.slice(0, 80)}${config.mensagem.length > 80 ? '...' : ''}"`
+        );
       }
     } catch (error) {
       console.error("Erro ao sincronizar campanha por procedimento", error);
@@ -794,6 +813,12 @@ export function Campanhas() {
  
       if (error) {
         console.error("Erro ao remover resumo de campanha por procedimento", error);
+      } else {
+        await gravarLogAuditoria(
+          clinica?.id,
+          "deletar_procedimento",
+          `Excluída campanha de procedimento (Group ID: ${groupId})`
+        );
       }
     } catch (error) {
       console.error("Erro inesperado ao remover resumo de campanha por procedimento", error);

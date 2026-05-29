@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { useClinica } from "@/contexts/ClinicaContext";
 import * as xlsx from "xlsx";
+import { gravarLogAuditoria } from "@/utils/auditoria";
 
 interface HistoricoItem {
   id: string;
@@ -162,6 +163,11 @@ const Importacoes = () => {
         description: `Foram atualizados ${insertedCount} clientes com sucesso.`,
       });
       sucesso = true;
+      await gravarLogAuditoria(
+        clinica?.id,
+        "importar_clientes_excel",
+        `Importou ${insertedCount} clientes via Excel (${file.name})`
+      );
     } catch (error: any) {
       console.error(error);
       mensagemErro = error.message || "Erro desconhecido";
@@ -265,7 +271,11 @@ const Importacoes = () => {
         description: `Foram importados ${insertedCount} procedimentos com sucesso.`,
       });
       sucesso = true;
-
+      await gravarLogAuditoria(
+        clinica?.id,
+        "importar_procedimentos_excel",
+        `Importou ${insertedCount} procedimentos via Excel (${file.name})`
+      );
     } catch (error: any) {
       console.error(error);
       mensagemErro = error.message || "Erro desconhecido";

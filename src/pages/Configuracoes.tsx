@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Textarea } from "@/components/ui/textarea";
 import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, EyeOff, Loader2, Wifi, WifiOff, Send, Settings2, Monitor, Lock } from "lucide-react";
 import { createInstance, connectInstance, getConnectionState, disconnectAndDelete, fetchInstanceInfo, sendTextMessage, configureWebhook } from "@/services/evolutionApi";
+import { gravarLogAuditoria } from "@/utils/auditoria";
 
 interface ImportLogItem {
   id: string;
@@ -48,8 +49,10 @@ const SUPER_ADMIN_EMAILS: string[] = ["tiago@dentos.com.br", "admin@dentos.com.b
 
 const Configuracoes = () => {
   const { toast } = useToast();
-  const { clinica, isSuperAdmin } = useClinica();
+  const { clinica, perfil, isSuperAdmin } = useClinica();
   const whatsappStatus = useWhatsappStatus();
+  const [activeLogType, setActiveLogType] = useState<'auditoria' | 'sync' | 'importacoes'>('auditoria');
+  const [logSearchTerm, setLogSearchTerm] = useState("");
   const location = useLocation();
   const navigate = useNavigate();
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
@@ -297,7 +300,7 @@ const Configuracoes = () => {
 
     try {
       setCreateClinicaLoading(true);
-      const { error } = await supabase.rpc("create_clinica_with_admin", {
+      const { data: newClinicaId, error } = await supabase.rpc("create_clinica_with_admin", {
         _clinica_nome: newClinicaNome.trim(),
         _plano: newClinicaPlano,
         _status_pagamento: newClinicaStatus,
@@ -314,6 +317,12 @@ const Configuracoes = () => {
         title: "Clínica criada",
         description: "Clínica e usuário administrador criados com sucesso!"
       });
+
+      await gravarLogAuditoria(
+        newClinicaId as string,
+        "criar_clinica",
+        `Criou a clínica '${newClinicaNome.trim()}' com o plano ${newClinicaPlano} e status ${newClinicaStatus}. Admin: ${newAdminEmail.trim()}`
+      );
 
       setNewClinicaNome("");
       setNewClinicaPlano("bronze");
@@ -363,6 +372,12 @@ const Configuracoes = () => {
         description: "Os dados da clínica foram salvos com sucesso!"
       });
 
+      await gravarLogAuditoria(
+        selectedClinica.id,
+        "editar_clinica",
+        `Editou dados da clínica '${editClinicaNome.trim()}': Plano=${editClinicaPlano}, Status=${editClinicaStatus}, LimiteMsg=${editClinicaLimiteMsg}, LimiteProc=${editClinicaLimiteProc}`
+      );
+
       setEditClinicaOpen(false);
       clientesQuery.refetch();
     } catch (error: any) {
@@ -403,6 +418,12 @@ const Configuracoes = () => {
         title: "Clínica excluída",
         description: "A clínica e todos os seus dados associados foram excluídos com sucesso."
       });
+
+      await gravarLogAuditoria(
+        clinica?.id,
+        "deletar_clinica",
+        `Excluiu permanentemente a clínica '${deleteClinicaTarget.nome}' (ID: ${deleteClinicaTarget.id})`
+      );
 
       setDeleteClinicaOpen(false);
       setDeleteClinicaTarget(null);
@@ -449,6 +470,12 @@ const Configuracoes = () => {
         description: "Novo usuário cadastrado e vinculado com sucesso!"
       });
 
+      await gravarLogAuditoria(
+        selectedClinica.id,
+        "criar_usuario",
+        `Criou o usuário '${newClinicaUserFullName.trim()}' (${newClinicaUserEmail.trim()}) com papel de ${newClinicaUserRole}`
+      );
+
       setNewClinicaUserEmail("");
       setNewClinicaUserPassword("");
       setNewClinicaUserFullName("");
@@ -490,6 +517,12 @@ const Configuracoes = () => {
         title: "Senha alterada",
         description: "A senha do usuário foi atualizada com sucesso!"
       });
+
+      await gravarLogAuditoria(
+        selectedClinica?.id || clinica?.id,
+        "alterar_senha_usuario",
+        `Alterou a senha do usuário (ID: ${userId})`
+      );
 
       setEditingUserPasswordId(null);
       setNewPasswordForUser("");
@@ -533,6 +566,12 @@ const Configuracoes = () => {
         title: "Usuário excluído",
         description: "O usuário foi excluído do sistema."
       });
+
+      await gravarLogAuditoria(
+        selectedClinica?.id || clinica?.id,
+        "deletar_usuario",
+        `Excluiu o usuário (ID: ${userId})`
+      );
 
       if (selectedClinica) {
         fetchClinicaUsers(selectedClinica.id);
@@ -582,6 +621,12 @@ const Configuracoes = () => {
               numero: number ?? "Conectado",
               updated_at: new Date().toISOString(),
             }, { onConflict: "clinica_id" });
+
+          await gravarLogAuditoria(
+            clinica.id,
+            "conectar_whatsapp",
+            `WhatsApp conectado com sucesso (Número: ${number || "Não informado"})`
+          );
 
           // Refetch status
           queryClient.invalidateQueries({ queryKey: ["whatsapp_status"] });
@@ -688,6 +733,12 @@ const Configuracoes = () => {
           updated_at: new Date().toISOString(),
         }, { onConflict: "clinica_id" });
 
+      await gravarLogAuditoria(
+        clinica.id,
+        "desconectar_whatsapp",
+        "WhatsApp desconectado (Instância excluída/desconectada)"
+      );
+
       // Refetch status
       queryClient.invalidateQueries({ queryKey: ["whatsapp_status"] });
 
@@ -736,6 +787,12 @@ const Configuracoes = () => {
           description: "Verifique o celular de destino para confirmar se chegou.",
         });
         setTestDialogOpen(false);
+
+        await gravarLogAuditoria(
+          clinica.id,
+          "enviar_mensagem_teste_whatsapp",
+          `Enviou mensagem de teste de WhatsApp para ${testNumber}`
+        );
       } else {
         toast({
           variant: "destructive",
@@ -801,6 +858,12 @@ const Configuracoes = () => {
         }, { onConflict: "clinica_id" });
 
       if (error) throw error;
+
+      await gravarLogAuditoria(
+        clinica.id,
+        "salvar_redirecionamento_whatsapp",
+        `Configurou redirecionamento de WhatsApp: Ativo=${redirecionarAtivo}, Número de destino=${cleanPhone || 'Nenhum'}`
+      );
 
       // 2. Se estiver conectado, configurar/sincronizar webhook na Evolution API
       if (whatsappStatus.data?.conectado) {
@@ -886,6 +949,12 @@ const Configuracoes = () => {
 
       if (error) throw error;
 
+      await gravarLogAuditoria(
+        clinica.id,
+        "salvar_config_fila_whatsapp",
+        `Configurou fila de envios: Proteção dedup=${dedupDias} dias, Janela de horário=${horarioInicio} às ${horarioFim}`
+      );
+
       toast({
         title: "Configurações salvas!",
         description: "Configurações da fila de envios atualizadas com sucesso."
@@ -904,46 +973,30 @@ const Configuracoes = () => {
     }
   };
 
-  const logsQuery = useQuery({
-    queryKey: ["webhook_logs"],
-    enabled: isSuperAdmin,
-    queryFn: async (): Promise<ImportLogItem[]> => {
-      const { data, error } = await supabase
+  const importLogsQuery = useQuery({
+    queryKey: ["import_logs", clinica?.id, isSuperAdmin],
+    queryFn: async () => {
+      let query = supabase
         .from("importacoes_historico")
-        .select("id, file_name, tipo, created_at, status, origem, n8n_status, n8n_response")
-        .order("created_at", { ascending: false })
-        .limit(200);
+        .select("id, file_name, tipo, created_at, status, clinica_id, clinicas(nome)")
+        .order("created_at", { ascending: false });
+
+      if (!isSuperAdmin && clinica?.id) {
+        query = query.eq("clinica_id", clinica.id);
+      }
+
+      const { data, error } = await query.limit(200);
 
       if (error) {
         throw error;
       }
 
-      const rows = (data ?? []) as Array<{
-        id: string;
-        file_name: string;
-        tipo: string | null;
-        created_at: string;
-        status: string | null;
-        origem: string | null;
-        n8n_status: string | null;
-        n8n_response: unknown;
-      }>;
-
-      return rows.map((row) => {
+      return (data || []).map((row: any) => {
         const createdAt = new Date(row.created_at);
         const dataStr = `${createdAt.toLocaleDateString("pt-BR")} ${createdAt.toLocaleTimeString("pt-BR", {
           hour: "2-digit",
           minute: "2-digit",
         })}`;
-
-        let n8nPreview: string | null = null;
-        if (row.n8n_response != null) {
-          try {
-            n8nPreview = JSON.stringify(row.n8n_response).slice(0, 160);
-          } catch {
-            n8nPreview = String(row.n8n_response).slice(0, 160);
-          }
-        }
 
         return {
           id: row.id,
@@ -951,17 +1004,157 @@ const Configuracoes = () => {
           tipo: row.tipo ?? "-",
           data: dataStr,
           status: row.status ?? "-",
-          origem: row.origem ?? "-",
-          n8nStatus: row.n8n_status ?? null,
-          n8nPreview,
+          clinicaNome: row.clinicas?.nome ?? "Desconhecida",
         };
       });
     },
   });
 
-  const logs = (logsQuery.data ?? []) as ImportLogItem[];
-  const loadingLogs = logsQuery.isLoading;
-  const logsError = logsQuery.error as Error | null;
+  const syncLogsQuery = useQuery({
+    queryKey: ["sync_logs_all", clinica?.id, isSuperAdmin],
+    queryFn: async () => {
+      let query = supabase
+        .from("sync_logs")
+        .select("*, clinicas(nome)")
+        .order("created_at", { ascending: false });
+
+      if (!isSuperAdmin && clinica?.id) {
+        query = query.eq("clinica_id", clinica.id);
+      }
+
+      const { data, error } = await query.limit(200);
+
+      if (error) {
+        throw error;
+      }
+
+      return (data || []).map((row: any) => {
+        const createdAt = new Date(row.created_at);
+        const dataStr = `${createdAt.toLocaleDateString("pt-BR")} ${createdAt.toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}`;
+
+        return {
+          id: row.id,
+          tipo: row.tipo ?? "manual",
+          status: row.status ?? "-",
+          pacientes: row.pacientes_importados ?? 0,
+          procedimentos: row.procedimentos_importados ?? 0,
+          duracao: row.duracao_segundos ?? 0,
+          erro: row.erro_mensagem ?? "",
+          data: dataStr,
+          clinicaNome: row.clinicas?.nome ?? "Desconhecida",
+        };
+      });
+    },
+  });
+
+  const auditoriaLogsQuery = useQuery({
+    queryKey: ["auditoria_logs_all", clinica?.id, isSuperAdmin],
+    queryFn: async () => {
+      let query = supabase
+        .from("auditoria_logs")
+        .select("*, clinicas(nome)")
+        .order("created_at", { ascending: false });
+
+      if (!isSuperAdmin && clinica?.id) {
+        query = query.eq("clinica_id", clinica.id);
+      }
+
+      const { data, error } = await query.limit(200);
+
+      if (error) {
+        throw error;
+      }
+
+      return (data || []).map((row: any) => {
+        const createdAt = new Date(row.created_at);
+        const dataStr = `${createdAt.toLocaleDateString("pt-BR")} ${createdAt.toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}`;
+
+        return {
+          id: row.id,
+          email: row.usuario_email ?? "Sistema",
+          acao: row.acao,
+          descricao: row.descricao ?? "",
+          data: dataStr,
+          clinicaNome: row.clinicas?.nome ?? "Desconhecida",
+        };
+      });
+    },
+  });
+
+  const filteredAuditoria = useMemo(() => {
+    const term = logSearchTerm.toLowerCase();
+    const data = auditoriaLogsQuery.data ?? [];
+    if (!term) return data;
+    return data.filter(item => 
+      item.email.toLowerCase().includes(term) ||
+      item.acao.toLowerCase().includes(term) ||
+      item.descricao.toLowerCase().includes(term) ||
+      item.clinicaNome.toLowerCase().includes(term)
+    );
+  }, [auditoriaLogsQuery.data, logSearchTerm]);
+
+  const filteredSync = useMemo(() => {
+    const term = logSearchTerm.toLowerCase();
+    const data = syncLogsQuery.data ?? [];
+    if (!term) return data;
+    return data.filter(item => 
+      item.tipo.toLowerCase().includes(term) ||
+      item.status.toLowerCase().includes(term) ||
+      item.erro.toLowerCase().includes(term) ||
+      item.clinicaNome.toLowerCase().includes(term)
+    );
+  }, [syncLogsQuery.data, logSearchTerm]);
+
+  const filteredImport = useMemo(() => {
+    const term = logSearchTerm.toLowerCase();
+    const data = importLogsQuery.data ?? [];
+    if (!term) return data;
+    return data.filter(item => 
+      item.arquivo.toLowerCase().includes(term) ||
+      item.tipo.toLowerCase().includes(term) ||
+      item.status.toLowerCase().includes(term) ||
+      item.clinicaNome.toLowerCase().includes(term)
+    );
+  }, [importLogsQuery.data, logSearchTerm]);
+
+  const getActionBadge = (acao: string) => {
+    const map: Record<string, { label: string; color: string }> = {
+      criar_clinica: { label: "Nova Clínica", color: "bg-blue-500 hover:bg-blue-600 text-white" },
+      editar_clinica: { label: "Edição Clínica", color: "bg-amber-500 hover:bg-amber-600 text-white" },
+      deletar_clinica: { label: "Exclusão Clínica", color: "bg-red-500 hover:bg-red-600 text-white" },
+      criar_usuario: { label: "Novo Usuário", color: "bg-teal-500 hover:bg-teal-600 text-white" },
+      alterar_senha_usuario: { label: "Alteração Senha", color: "bg-indigo-500 hover:bg-indigo-600 text-white" },
+      deletar_usuario: { label: "Exclusão Usuário", color: "bg-rose-500 hover:bg-rose-600 text-white" },
+      conectar_whatsapp: { label: "WhatsApp Ligado", color: "bg-green-500 hover:bg-green-600 text-white" },
+      desconectar_whatsapp: { label: "WhatsApp Desligado", color: "bg-red-500 hover:bg-red-600 text-white" },
+      salvar_redirecionamento_whatsapp: { label: "WhatsApp Redirecionamento", color: "bg-purple-500 hover:bg-purple-600 text-white" },
+      salvar_config_fila_whatsapp: { label: "Fila Configurada", color: "bg-cyan-500 hover:bg-cyan-600 text-white" },
+      salvar_credenciais_easydental: { label: "Easy Dental Config", color: "bg-sky-500 hover:bg-sky-600 text-white" },
+      salvar_config_mercadopago: { label: "Mercado Pago Config", color: "bg-violet-500 hover:bg-violet-600 text-white" },
+      gerar_fila_manual: { label: "Fila Gerada", color: "bg-emerald-500 hover:bg-emerald-600 text-white" },
+      sincronizar_easydental_manual: { label: "Sync Manual", color: "bg-lime-500 hover:bg-lime-600 text-white" },
+      enviar_mensagem_teste_whatsapp: { label: "Mensagem Teste", color: "bg-slate-500 hover:bg-slate-600 text-white" },
+      salvar_frase: { label: "Frase Campanha", color: "bg-pink-500 hover:bg-pink-600 text-white" },
+      criar_procedimento: { label: "Nova Campanha Proc.", color: "bg-blue-600 hover:bg-blue-700 text-white" },
+      editar_procedimento: { label: "Edição Campanha Proc.", color: "bg-amber-600 hover:bg-amber-700 text-white" },
+      deletar_procedimento: { label: "Exclusão Campanha Proc.", color: "bg-red-600 hover:bg-red-700 text-white" },
+      importar_clientes_excel: { label: "Importação Clientes", color: "bg-teal-600 hover:bg-teal-700 text-white" },
+      importar_procedimentos_excel: { label: "Importação Proc.", color: "bg-rose-600 hover:bg-rose-700 text-white" },
+    };
+
+    const config = map[acao] || { label: acao.replace(/_/g, " ").toUpperCase(), color: "bg-gray-500 hover:bg-gray-600 text-white" };
+    return (
+      <Badge className={`text-[10px] font-normal ${config.color}`}>
+        {config.label}
+      </Badge>
+    );
+  };
 
   const clientesQuery = useQuery({
     queryKey: ["admin_clientes"],
@@ -1095,6 +1288,13 @@ const Configuracoes = () => {
       }
 
       if (error) throw error;
+
+      await gravarLogAuditoria(
+        clinica?.id,
+        "salvar_config_mercadopago",
+        "Super Admin atualizou as credenciais do gateway Mercado Pago"
+      );
+
       toast({
         title: "Configurações salvas!",
         description: "As chaves do Mercado Pago foram atualizadas no banco de dados."
@@ -1719,11 +1919,6 @@ const Configuracoes = () => {
                 Gerenciar Clientes
               </TabsTrigger>
             )}
-            {isSuperAdmin && (
-              <TabsTrigger value="logs">
-                Logs de importação
-              </TabsTrigger>
-            )}
             <TabsTrigger value="sistema">
               Sistema
             </TabsTrigger>
@@ -1735,6 +1930,11 @@ const Configuracoes = () => {
             {isSuperAdmin && (
               <TabsTrigger value="pedidos">
                 Pedidos & Cobrança
+              </TabsTrigger>
+            )}
+            {(isSuperAdmin || perfil?.role === 'admin') && (
+              <TabsTrigger value="logs">
+                Logs
               </TabsTrigger>
             )}
           </TabsList>
@@ -2264,74 +2464,234 @@ const Configuracoes = () => {
           </TabsContent>
 
           <TabsContent value="logs" className="mt-4">
-            {!isSuperAdmin ? (
+            {!(isSuperAdmin || perfil?.role === 'admin') ? (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm">Acesso restrito</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground">
-                    Apenas usuários super admin podem visualizar os logs detalhados de importação e chamadas ao
-                    webhook.
+                    Apenas administradores podem visualizar os logs detalhados do sistema.
                   </p>
                 </CardContent>
               </Card>
             ) : (
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Logs de importação e chamadas ao webhook</CardTitle>
+                <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3">
+                  <div>
+                    <CardTitle className="text-sm">Central de Logs e Auditoria</CardTitle>
+                  </div>
+                  <div className="w-full max-w-xs flex gap-2">
+                    <Input
+                      type="search"
+                      placeholder="Pesquisar nos logs..."
+                      value={logSearchTerm}
+                      onChange={(e) => setLogSearchTerm(e.target.value)}
+                      className="h-8 text-xs bg-background"
+                    />
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-8 px-2"
+                      onClick={() => {
+                        auditoriaLogsQuery.refetch();
+                        syncLogsQuery.refetch();
+                        importLogsQuery.refetch();
+                      }}
+                      title="Atualizar Logs"
+                    >
+                      <RefreshCcw className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    Cada linha representa um clique no botão de importação (clientes/procedimentos), com o arquivo
-                    enviado, origem, status interno e o status retornado pelo webhook (quando disponível).
-                  </p>
-                  <div className="mt-2 overflow-x-auto rounded-md border bg-card">
-                    <ScrollArea className="h-[420px]">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Data</TableHead>
-                            <TableHead>Arquivo</TableHead>
-                            <TableHead className="hidden sm:table-cell">Tipo</TableHead>
-                            <TableHead className="hidden sm:table-cell">Origem</TableHead>
-                            <TableHead className="hidden md:table-cell">Status interno</TableHead>
-                            <TableHead className="hidden md:table-cell">Status n8n</TableHead>
-                            <TableHead className="hidden lg:table-cell">Prévia da resposta</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {loadingLogs && (
+                <CardContent className="space-y-4">
+                  {/* Segmented log type selector */}
+                  <div className="flex flex-wrap gap-2 pb-4 border-b border-border">
+                    <Button
+                      variant={activeLogType === "auditoria" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setActiveLogType("auditoria")}
+                      className="text-xs h-8"
+                    >
+                      Ações de Usuários (Auditoria)
+                    </Button>
+                    <Button
+                      variant={activeLogType === "sync" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setActiveLogType("sync")}
+                      className="text-xs h-8"
+                    >
+                      Sincronizações (Easy Dental)
+                    </Button>
+                    <Button
+                      variant={activeLogType === "importacoes" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setActiveLogType("importacoes")}
+                      className="text-xs h-8"
+                    >
+                      Importações Excel
+                    </Button>
+                  </div>
+
+                  {/* 1. Auditoria Content */}
+                  {activeLogType === "auditoria" && (
+                    <div className="overflow-x-auto rounded-md border bg-card">
+                      <ScrollArea className="h-[420px]">
+                        <Table>
+                          <TableHeader>
                             <TableRow>
-                              <TableCell colSpan={7} className="text-center text-xs text-muted-foreground">
-                                Carregando logs de importação…
-                              </TableCell>
+                              <TableHead className="w-[150px]">Data</TableHead>
+                              {isSuperAdmin && <TableHead>Clínica</TableHead>}
+                              <TableHead className="w-[180px]">Usuário</TableHead>
+                              <TableHead className="w-[160px]">Ação</TableHead>
+                              <TableHead>Descrição</TableHead>
                             </TableRow>
-                          )}
-                          {logsError && !loadingLogs && (
-                            <TableRow>
-                              <TableCell colSpan={7} className="text-center text-xs text-destructive">
-                                Erro ao carregar logs. Tente novamente em alguns instantes.
-                              </TableCell>
-                            </TableRow>
-                          )}
-                          {!loadingLogs && !logsError && (!logs || logs.length === 0) && (
-                            <TableRow>
-                              <TableCell colSpan={7} className="text-center text-xs text-muted-foreground">
-                                Nenhum log registrado ainda.
-                              </TableCell>
-                            </TableRow>
-                          )}
-                          {!loadingLogs && !logsError && logs &&
-                            logs.map((item) => (
+                          </TableHeader>
+                          <TableBody>
+                            {auditoriaLogsQuery.isLoading && (
+                              <TableRow>
+                                <TableCell colSpan={isSuperAdmin ? 5 : 4} className="text-center text-xs text-muted-foreground p-8">
+                                  <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
+                                  Carregando logs de auditoria...
+                                </TableCell>
+                              </TableRow>
+                            )}
+                            {auditoriaLogsQuery.isError && !auditoriaLogsQuery.isLoading && (
+                              <TableRow>
+                                <TableCell colSpan={isSuperAdmin ? 5 : 4} className="text-center text-xs text-destructive p-8">
+                                  Erro ao carregar logs de auditoria.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                            {!auditoriaLogsQuery.isLoading && !auditoriaLogsQuery.isError && filteredAuditoria.length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={isSuperAdmin ? 5 : 4} className="text-center text-xs text-muted-foreground p-8">
+                                  Nenhum registro encontrado.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                            {!auditoriaLogsQuery.isLoading && !auditoriaLogsQuery.isError && filteredAuditoria.map((item) => (
                               <TableRow key={item.id}>
                                 <TableCell className="whitespace-nowrap text-xs">{item.data}</TableCell>
-                                <TableCell className="max-w-[220px] truncate text-xs" title={item.arquivo}>
-                                  {item.arquivo}
+                                {isSuperAdmin && <TableCell className="text-xs font-semibold">{item.clinicaNome}</TableCell>}
+                                <TableCell className="text-xs max-w-[180px] truncate" title={item.email}>{item.email}</TableCell>
+                                <TableCell>{getActionBadge(item.acao)}</TableCell>
+                                <TableCell className="text-xs text-muted-foreground">{item.descricao}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </ScrollArea>
+                    </div>
+                  )}
+
+                  {/* 2. Sincronizações Content */}
+                  {activeLogType === "sync" && (
+                    <div className="overflow-x-auto rounded-md border bg-card">
+                      <ScrollArea className="h-[420px]">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-[150px]">Data</TableHead>
+                              {isSuperAdmin && <TableHead>Clínica</TableHead>}
+                              <TableHead className="w-[100px]">Status</TableHead>
+                              <TableHead className="w-[80px] text-center">Pacientes</TableHead>
+                              <TableHead className="w-[100px] text-center">Procedimentos</TableHead>
+                              <TableHead className="w-[80px] text-center">Duração</TableHead>
+                              <TableHead>Erro / Mensagem</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {syncLogsQuery.isLoading && (
+                              <TableRow>
+                                <TableCell colSpan={isSuperAdmin ? 7 : 6} className="text-center text-xs text-muted-foreground p-8">
+                                  <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
+                                  Carregando logs de sincronização...
                                 </TableCell>
-                                <TableCell className="hidden sm:table-cell text-xs">{item.tipo}</TableCell>
-                                <TableCell className="hidden sm:table-cell text-xs">{item.origem}</TableCell>
-                                <TableCell className="hidden md:table-cell">
+                              </TableRow>
+                            )}
+                            {syncLogsQuery.isError && !syncLogsQuery.isLoading && (
+                              <TableRow>
+                                <TableCell colSpan={isSuperAdmin ? 7 : 6} className="text-center text-xs text-destructive p-8">
+                                  Erro ao carregar logs de sincronização.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                            {!syncLogsQuery.isLoading && !syncLogsQuery.isError && filteredSync.length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={isSuperAdmin ? 7 : 6} className="text-center text-xs text-muted-foreground p-8">
+                                  Nenhum registro encontrado.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                            {!syncLogsQuery.isLoading && !syncLogsQuery.isError && filteredSync.map((item) => (
+                              <TableRow key={item.id}>
+                                <TableCell className="whitespace-nowrap text-xs">{item.data}</TableCell>
+                                {isSuperAdmin && <TableCell className="text-xs font-semibold">{item.clinicaNome}</TableCell>}
+                                <TableCell>
+                                  <Badge
+                                    variant={item.status === "sucesso" ? "default" : item.status === "parcial" ? "secondary" : "destructive"}
+                                    className="text-[10px]"
+                                  >
+                                    {item.status === "sucesso" ? "✅ Sucesso" : item.status === "parcial" ? "⚠️ Parcial" : "❌ Erro"}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-xs text-center">{item.pacientes}</TableCell>
+                                <TableCell className="text-xs text-center">{item.procedimentos}</TableCell>
+                                <TableCell className="text-xs text-center">{item.duracao ? `${Math.round(item.duracao)}s` : "—"}</TableCell>
+                                <TableCell className="text-xs text-red-500 max-w-[200px] truncate" title={item.erro}>{item.erro || "—"}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </ScrollArea>
+                    </div>
+                  )}
+
+                  {/* 3. Importações Excel Content */}
+                  {activeLogType === "importacoes" && (
+                    <div className="overflow-x-auto rounded-md border bg-card">
+                      <ScrollArea className="h-[420px]">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-[150px]">Data</TableHead>
+                              {isSuperAdmin && <TableHead>Clínica</TableHead>}
+                              <TableHead>Arquivo</TableHead>
+                              <TableHead className="w-[120px]">Tipo</TableHead>
+                              <TableHead className="w-[150px]">Status</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {importLogsQuery.isLoading && (
+                              <TableRow>
+                                <TableCell colSpan={isSuperAdmin ? 5 : 4} className="text-center text-xs text-muted-foreground p-8">
+                                  <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
+                                  Carregando logs de importação...
+                                </TableCell>
+                              </TableRow>
+                            )}
+                            {importLogsQuery.isError && !importLogsQuery.isLoading && (
+                              <TableRow>
+                                <TableCell colSpan={isSuperAdmin ? 5 : 4} className="text-center text-xs text-destructive p-8">
+                                  Erro ao carregar logs de importação.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                            {!importLogsQuery.isLoading && !importLogsQuery.isError && filteredImport.length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={isSuperAdmin ? 5 : 4} className="text-center text-xs text-muted-foreground p-8">
+                                  Nenhum registro encontrado.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                            {!importLogsQuery.isLoading && !importLogsQuery.isError && filteredImport.map((item) => (
+                              <TableRow key={item.id}>
+                                <TableCell className="whitespace-nowrap text-xs">{item.data}</TableCell>
+                                {isSuperAdmin && <TableCell className="text-xs font-semibold">{item.clinicaNome}</TableCell>}
+                                <TableCell className="text-xs font-medium max-w-[250px] truncate" title={item.arquivo}>{item.arquivo}</TableCell>
+                                <TableCell className="text-xs">{item.tipo}</TableCell>
+                                <TableCell>
                                   <Badge
                                     variant={item.status.toLowerCase().startsWith("erro") ? "destructive" : "default"}
                                     className="text-[10px] font-normal"
@@ -2339,29 +2699,13 @@ const Configuracoes = () => {
                                     {item.status}
                                   </Badge>
                                 </TableCell>
-                                <TableCell className="hidden md:table-cell text-xs">
-                                  {item.n8nStatus ? (
-                                    <Badge
-                                      variant={item.n8nStatus.startsWith("2") ? "default" : "destructive"}
-                                      className="text-[10px] font-normal"
-                                    >
-                                      {item.n8nStatus}
-                                    </Badge>
-                                  ) : (
-                                    <span className="text-[11px] text-muted-foreground">—</span>
-                                  )}
-                                </TableCell>
-                                <TableCell className="hidden lg:table-cell max-w-[260px] truncate text-[11px] text-muted-foreground" title={
-                                  item.n8nPreview ?? undefined
-                                }>
-                                  {item.n8nPreview ?? "(sem conteúdo registrado)"}
-                                </TableCell>
                               </TableRow>
                             ))}
-                        </TableBody>
-                      </Table>
-                    </ScrollArea>
-                  </div>
+                          </TableBody>
+                        </Table>
+                      </ScrollArea>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -2498,6 +2842,13 @@ const Configuracoes = () => {
                         .from("whatsapp_config")
                         .upsert(updateData, { onConflict: "clinica_id" });
                       if (error) throw error;
+
+                      await gravarLogAuditoria(
+                        clinica.id,
+                        "salvar_credenciais_easydental",
+                        `Atualizou credenciais do Easy Dental Cloud (Usuário: ${easydentalUsuario.trim()})`
+                      );
+
                       toast({ title: "Credenciais salvas!", description: "Dados do Easy Dental salvos com sucesso." });
                       // Resetar para placeholder após salvar
                       if (easydentalSenha !== SENHA_PLACEHOLDER) {
@@ -2756,6 +3107,7 @@ function GerarFilaSection() {
   const [result, setResult] = useState<FilaResult>({ status: 'idle' });
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { clinica } = useClinica();
 
   const handleGerar = async () => {
     if (result.status === 'generating') return;
@@ -2787,6 +3139,13 @@ function GerarFilaSection() {
           total: data.total_mensagens || 0,
         });
         toast({ title: `✅ Fila gerada: ${data.total_mensagens} mensagens` });
+
+        await gravarLogAuditoria(
+          clinica?.id,
+          "gerar_fila_manual",
+          `Gerou a fila de envios manualmente: total de ${data.total_mensagens || 0} mensagens`
+        );
+
         queryClient.invalidateQueries({ queryKey: ['fila_envios'] });
       } else {
         setResult({ status: 'error', message: data.error || 'Erro na geração' });
@@ -2915,6 +3274,13 @@ function SyncNowSection({ clinicaId, ultimaSync }: { clinicaId?: string; ultimaS
           duracao: data.duracao || 0,
         });
         toast({ title: '✅ Sincronização concluída!' });
+
+        await gravarLogAuditoria(
+          clinicaId,
+          "sincronizar_easydental_manual",
+          `Executou sincronização manual com o Easy Dental: ${data.pacientes_novos || 0} novos, ${data.pacientes_atualizados || 0} atualizados, ${data.procedimentos || 0} procedimentos`
+        );
+
         // Revalidar dados
         queryClient.invalidateQueries({ queryKey: ['whatsapp-config'] });
       } else {
