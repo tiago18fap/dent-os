@@ -312,11 +312,9 @@ function ProcedimentoDetailDialog({
     return rawData.filter((p: any) => p.procedimento === procedimentoNome);
   }, [procedimentoNome, rawData]);
 
-  if (!procedimentoNome) return null;
-
   // Agrupar por data para a timeline
   const porData = useMemo(() => {
-    if (!pacientes) return [];
+    if (!pacientes || pacientes.length === 0) return [];
     const map = new Map<string, { pacientes: string[]; prestador: string }>();
     pacientes.forEach((p: any) => {
       const data = p.data_finalizacao || "Sem data";
@@ -336,11 +334,13 @@ function ProcedimentoDetailDialog({
   }, [pacientes]);
 
   const totalPacientes = useMemo(() => {
-    if (!pacientes) return 0;
+    if (!pacientes || pacientes.length === 0) return 0;
     const set = new Set<string>();
     pacientes.forEach((p: any) => { if (p.nome_paciente) set.add(p.nome_paciente); });
     return set.size;
   }, [pacientes]);
+
+  if (!procedimentoNome) return null;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
