@@ -128,12 +128,13 @@ const Configuracoes = () => {
   const [hasInitializedQueueConfig, setHasInitializedQueueConfig] = useState(false);
 
   // Estados para integração Easy Dental
+  const SENHA_PLACEHOLDER = "__SENHA_SALVA__";
   const [easydentalUrl, setEasydentalUrl] = useState("");
   const [easydentalUsuario, setEasydentalUsuario] = useState("");
   const [easydentalSenha, setEasydentalSenha] = useState("");
-  const [showEasydentalSenha, setShowEasydentalSenha] = useState(false);
   const [savingEasydental, setSavingEasydental] = useState(false);
   const [hasInitializedEasydental, setHasInitializedEasydental] = useState(false);
+  const hasSavedPassword = easydentalSenha === SENHA_PLACEHOLDER;
 
   useEffect(() => {
     if (whatsappStatus.data && !hasInitializedRedirect) {
@@ -160,7 +161,8 @@ const Configuracoes = () => {
     if (whatsappStatus.data && !hasInitializedEasydental) {
       setEasydentalUrl(whatsappStatus.data.easydental_url ?? "");
       setEasydentalUsuario(whatsappStatus.data.easydental_usuario ?? "");
-      setEasydentalSenha(whatsappStatus.data.easydental_senha ?? "");
+      // Nunca carrega a senha real — usa placeholder se existe senha salva
+      setEasydentalSenha(whatsappStatus.data.easydental_senha ? SENHA_PLACEHOLDER : "");
       setHasInitializedEasydental(true);
     }
   }, [whatsappStatus.data, hasInitializedEasydental]);
@@ -2267,17 +2269,25 @@ const Configuracoes = () => {
                   }
                   try {
                     setSavingEasydental(true);
+                    const updateData: any = {
+                      clinica_id: clinica.id,
+                      easydental_url: "https://app.easydentalcloud.com.br/",
+                      easydental_usuario: easydentalUsuario.trim(),
+                      updated_at: new Date().toISOString()
+                    };
+                    // Só envia a senha se foi alterada (não é o placeholder)
+                    if (easydentalSenha !== SENHA_PLACEHOLDER) {
+                      updateData.easydental_senha = easydentalSenha;
+                    }
                     const { error } = await (supabase as any)
                       .from("whatsapp_config")
-                      .upsert({
-                        clinica_id: clinica.id,
-                        easydental_url: "https://app.easydentalcloud.com.br/",
-                        easydental_usuario: easydentalUsuario.trim(),
-                        easydental_senha: easydentalSenha,
-                        updated_at: new Date().toISOString()
-                      }, { onConflict: "clinica_id" });
+                      .upsert(updateData, { onConflict: "clinica_id" });
                     if (error) throw error;
                     toast({ title: "Credenciais salvas!", description: "Dados do Easy Dental salvos com sucesso." });
+                    // Resetar para placeholder após salvar
+                    if (easydentalSenha !== SENHA_PLACEHOLDER) {
+                      setEasydentalSenha(SENHA_PLACEHOLDER);
+                    }
                     queryClient.invalidateQueries({ queryKey: ["whatsapp_status"] });
                   } catch (err: any) {
                     console.error("Erro ao salvar Easy Dental:", err);
@@ -2311,30 +2321,18 @@ const Configuracoes = () => {
                       <Label htmlFor="easydental-senha" className="text-sm font-medium">
                         Senha
                       </Label>
-                      <div className="relative">
-                        <Input
-                          id="easydental-senha"
-                          type={showEasydentalSenha ? "text" : "password"}
-                          placeholder="••••••••"
-                          value={easydentalSenha}
-                          onChange={(e) => setEasydentalSenha(e.target.value)}
-                          autoComplete="new-password"
-                          className="pr-10"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                          onClick={() => setShowEasydentalSenha(!showEasydentalSenha)}
-                        >
-                          {showEasydentalSenha ? (
-                            <EyeOff className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <Eye className="h-4 w-4 text-muted-foreground" />
-                          )}
-                        </Button>
-                      </div>
+                      <Input
+                        id="easydental-senha"
+                        type="password"
+                        placeholder={hasSavedPassword ? "Senha salva — clique para alterar" : "••••••••"}
+                        value={hasSavedPassword ? "" : easydentalSenha}
+                        onChange={(e) => setEasydentalSenha(e.target.value)}
+                        onFocus={() => { if (hasSavedPassword) setEasydentalSenha(""); }}
+                        autoComplete="new-password"
+                      />
+                      {hasSavedPassword && (
+                        <p className="text-[10px] text-muted-foreground">✓ Senha salva. Digite uma nova senha apenas se quiser alterá-la.</p>
+                      )}
                     </div>
                   </div>
 
