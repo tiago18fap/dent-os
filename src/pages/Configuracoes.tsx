@@ -2331,7 +2331,7 @@ const Configuracoes = () => {
                     </div>
                   </div>
 
-                  <div className="flex justify-end pt-2">
+                  <div className="flex justify-end gap-2 pt-2">
                     <Button type="submit" disabled={savingEasydental} size="sm">
                       {savingEasydental ? (
                         <>
@@ -2346,12 +2346,7 @@ const Configuracoes = () => {
                 </form>
 
                 {easydentalUsuario && easydentalSenha && (
-                  <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 p-3">
-                    <p className="text-xs text-green-700 dark:text-green-400 flex items-center gap-1.5">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      Credenciais configuradas. A automação utilizará esses dados para baixar os relatórios.
-                    </p>
-                  </div>
+                  <SyncNowSection clinicaId={config?.clinica_id} ultimaSync={config?.ultima_sync_sucesso} />
                 )}
 
                 {/* ═══ LOGS DE INTEGRAÇÃO ═══ */}
@@ -2366,6 +2361,169 @@ const Configuracoes = () => {
     </AppLayout>
   );
 };
+
+// ══════════════════════════════════════════════════════════════
+// Componente — Botão Sincronizar Agora + Resultado
+// ══════════════════════════════════════════════════════════════
+
+interface SyncResult {
+  status: 'idle' | 'syncing' | 'success' | 'error';
+  message?: string;
+  pacientesNovos?: number;
+  pacientesAtualizados?: number;
+  procedimentos?: number;
+  duracao?: number;
+}
+
+function SyncNowSection({ clinicaId, ultimaSync }: { clinicaId?: string; ultimaSync?: string | null }) {
+  const [syncResult, setSyncResult] = useState<SyncResult>({ status: 'idle' });
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const handleSync = async () => {
+    if (!clinicaId || syncResult.status === 'syncing') return;
+    setSyncResult({ status: 'syncing', message: 'Conectando ao Easy Dental...' });
+
+    try {
+      const res = await fetch(
+        'https://dzbeorfkualalocrvobe.supabase.co/functions/v1/easydental-sync',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          },
+          body: JSON.stringify({ clinica_id: clinicaId }),
+        }
+      );
+
+      const data = await res.json();
+
+      if (res.ok && data.status === 'sucesso') {
+        setSyncResult({
+          status: 'success',
+          pacientesNovos: data.pacientes_novos || 0,
+          pacientesAtualizados: data.pacientes_atualizados || 0,
+          procedimentos: data.procedimentos || 0,
+          duracao: data.duracao || 0,
+        });
+        toast({ title: '✅ Sincronização concluída!' });
+        // Revalidar dados
+        queryClient.invalidateQueries({ queryKey: ['whatsapp-config'] });
+      } else {
+        setSyncResult({
+          status: 'error',
+          message: data.error || data.message || 'Erro desconhecido na sincronização',
+        });
+        toast({ title: '❌ Erro na sincronização', description: data.error || 'Tente novamente', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      setSyncResult({
+        status: 'error',
+        message: err.message || 'Falha na conexão',
+      });
+      toast({ title: '❌ Falha na conexão', variant: 'destructive' });
+    }
+  };
+
+  const formatDate = (d: string) => {
+    try {
+      return new Date(d).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    } catch { return d; }
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Status + Botão */}
+      <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/50 bg-muted/30">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium flex items-center gap-1.5">
+            <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+            Credenciais configuradas
+          </p>
+          {ultimaSync && (
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Última sync: {formatDate(ultimaSync)}
+            </p>
+          )}
+        </div>
+        <Button
+          size="sm"
+          variant={syncResult.status === 'syncing' ? 'secondary' : 'default'}
+          disabled={syncResult.status === 'syncing'}
+          onClick={handleSync}
+          className="shrink-0"
+        >
+          {syncResult.status === 'syncing' ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Sincronizando...
+            </>
+          ) : (
+            <>
+              <RefreshCcw className="mr-2 h-4 w-4" />
+              Sincronizar Agora
+            </>
+          )}
+        </Button>
+      </div>
+
+      {/* Progresso */}
+      {syncResult.status === 'syncing' && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/30 p-3 animate-pulse">
+          <p className="text-xs text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {syncResult.message || 'Processando...'}
+          </p>
+          <p className="text-[10px] text-blue-600/60 dark:text-blue-400/50 mt-1">
+            Isso pode levar até 1 minuto. Fazendo login, baixando e importando dados...
+          </p>
+        </div>
+      )}
+
+      {/* Resultado Sucesso */}
+      {syncResult.status === 'success' && (
+        <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 p-3 space-y-2">
+          <p className="text-sm font-medium text-green-700 dark:text-green-400 flex items-center gap-1.5">
+            <CheckCircle2 className="h-4 w-4" />
+            Sincronização concluída!
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-md bg-white dark:bg-green-900/30 border border-green-100 dark:border-green-800 p-2 text-center">
+              <p className="text-lg font-bold text-green-700 dark:text-green-400">{syncResult.pacientesNovos}</p>
+              <p className="text-[10px] text-green-600/70 dark:text-green-400/60">Pacientes novos</p>
+            </div>
+            <div className="rounded-md bg-white dark:bg-green-900/30 border border-green-100 dark:border-green-800 p-2 text-center">
+              <p className="text-lg font-bold text-green-700 dark:text-green-400">{syncResult.pacientesAtualizados}</p>
+              <p className="text-[10px] text-green-600/70 dark:text-green-400/60">Atualizados</p>
+            </div>
+            <div className="rounded-md bg-white dark:bg-green-900/30 border border-green-100 dark:border-green-800 p-2 text-center">
+              <p className="text-lg font-bold text-green-700 dark:text-green-400">{syncResult.procedimentos}</p>
+              <p className="text-[10px] text-green-600/70 dark:text-green-400/60">Procedimentos</p>
+            </div>
+          </div>
+          {syncResult.duracao !== undefined && (
+            <p className="text-[10px] text-green-600/60 dark:text-green-400/40 text-right">
+              Concluído em {syncResult.duracao}s
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Resultado Erro */}
+      {syncResult.status === 'error' && (
+        <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 p-3">
+          <p className="text-xs text-red-700 dark:text-red-400 flex items-center gap-1.5 font-medium">
+            ⚠️ Erro na sincronização
+          </p>
+          <p className="text-[10px] text-red-600/70 dark:text-red-400/60 mt-1">
+            {syncResult.message}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ══════════════════════════════════════════════════════════════
 // Componente — Logs de Integração Easy Dental
