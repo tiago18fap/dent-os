@@ -323,6 +323,36 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
                 </Button>
               </div>
             )}
+            {/* ═══ ALERTA DE INTEGRAÇÃO PARADA ═══ */}
+            {(() => {
+              const config = whatsappStatusQuery?.data;
+              if (!config?.easydental_usuario || !config?.ultima_sync_sucesso) return null;
+              const diasSemSync = Math.floor((Date.now() - new Date(config.ultima_sync_sucesso).getTime()) / (1000 * 60 * 60 * 24));
+              if (diasSemSync < 7) return null;
+              return (
+                <div className="mx-4 mb-3 rounded-lg border-2 border-red-400 bg-gradient-to-r from-red-50 to-red-100 dark:from-red-950/40 dark:to-red-900/30 p-3 flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-2 duration-500">
+                  <div className="flex items-center gap-2">
+                    <span className="text-red-500 text-lg">🔴</span>
+                    <div>
+                      <p className="text-sm font-semibold text-red-700 dark:text-red-400">
+                        Integração Easy Dental parada há {diasSemSync} dias
+                      </p>
+                      <p className="text-xs text-red-600/80 dark:text-red-400/70">
+                        Verifique as credenciais em Configurações → Sistema ou ignore se estiver em férias/obras.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs border-red-300 text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-400"
+                    onClick={() => navigate("/configuracoes?tab=sistema")}
+                  >
+                    Verificar
+                  </Button>
+                </div>
+              );
+            })()}
             {children}
           </div>
         </main>

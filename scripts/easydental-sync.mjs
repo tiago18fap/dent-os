@@ -56,7 +56,132 @@ async function supabaseRequest(path, method = 'GET', body = null) {
 }
 
 async function getCredentials() {
-  return supabaseRequest('whatsapp_config?select=clinica_id,easydental_usuario,easydental_senha&easydental_usuario=not.is.null&easydental_senha=not.is.null');
+  // Busca credenciais + campos necessários para alertas de sync
+  return supabaseRequest('whatsapp_config?select=clinica_id,easydental_usuario,easydental_senha,redirecionar_numero,ultima_sync_sucesso,alerta_sync_enviado&easydental_usuario=not.is.null&easydental_senha=not.is.null');
+}
+
+// ══════════════════════════════════════════════════════════════
+// Logging e Alertas de Sincronização
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Salva um registro de log da sincronização na tabela sync_logs
+ */
+async function salvarLogSync(clinicaId, status, pacientesCount, procedimentosCount, erroMsg, duracaoSeg) {
+  try {
+    await supabaseRequest('sync_logs', 'POST', {
+      clinica_id: clinicaId,
+      tipo: 'easydental',
+      status,
+      pacientes_importados: pacientesCount,
+      procedimentos_importados: procedimentosCount,
+      erro_mensagem: erroMsg || null,
+      duracao_segundos: duracaoSeg,
+    });
+    log(`  📝 Log de sync salvo (status: ${status})`);
+  } catch (err) {
+    log(`  ⚠️ Falha ao salvar log de sync: ${err.message}`, 'WARN');
+  }
+}
+
+/**
+ * Atualiza ultima_sync_sucesso e reseta alerta quando sync é bem-sucedida
+ */
+async function atualizarUltimaSyncSucesso(clinicaId) {
+  try {
+    await supabaseRequest(
+      `whatsapp_config?clinica_id=eq.${clinicaId}`,
+      'PATCH',
+      { ultima_sync_sucesso: new Date().toISOString(), alerta_sync_enviado: false }
+    );
+    log(`  🕐 ultima_sync_sucesso atualizada`);
+  } catch (err) {
+    log(`  ⚠️ Falha ao atualizar ultima_sync_sucesso: ${err.message}`, 'WARN');
+  }
+}
+
+/**
+ * Envia mensagem WhatsApp via Evolution API
+ */
+async function enviarWhatsApp(clinicaId, telefone, mensagem) {
+  const EVO_URL = process.env.EVO_URL || 'https://evo.dentos.app.br';
+  const EVO_KEY = process.env.EVO_KEY || 'B0A415B7C60E-4332-B6B3-11BB1B060735';
+
+  // Limpar telefone — remover caracteres não-numéricos
+  const numeroLimpo = String(telefone).replace(/\D/g, '');
+  const numeroCompleto = numeroLimpo.startsWith('55') ? numeroLimpo : `55${numeroLimpo}`;
+
+  const res = await fetch(`${EVO_URL}/message/sendText/${clinicaId}`, {
+    method: 'POST',
+    headers: {
+      'apikey': EVO_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      number: numeroCompleto,
+      text: mensagem,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Evolution API ${res.status}: ${text}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Verifica se a sync está parada há 7+ dias e envia alerta WhatsApp
+ */
+async function verificarEEnviarAlertaSync(cred) {
+  const { clinica_id, redirecionar_numero, ultima_sync_sucesso, alerta_sync_enviado } = cred;
+
+  // Se o alerta já foi enviado, não repetir
+  if (alerta_sync_enviado) {
+    log(`  ℹ️ Alerta de sync já enviado anteriormente para clínica ${clinica_id}`);
+    return;
+  }
+
+  // Se não tem número de atendimento configurado, não enviar
+  if (!redirecionar_numero) {
+    log(`  ℹ️ Sem redirecionar_numero configurado para clínica ${clinica_id}`);
+    return;
+  }
+
+  // Calcular dias sem sync com sucesso
+  let diasSemSync = null;
+  if (!ultima_sync_sucesso) {
+    diasSemSync = 999; // Nunca sincronizou
+  } else {
+    const ultimaSync = new Date(ultima_sync_sucesso);
+    const agora = new Date();
+    diasSemSync = Math.floor((agora - ultimaSync) / (1000 * 60 * 60 * 24));
+  }
+
+  // Verificar se passou 7+ dias
+  if (diasSemSync >= 7) {
+    log(`  🔴 Sync parada há ${diasSemSync === 999 ? 'muito tempo (nunca sincronizou)' : diasSemSync + ' dias'} — enviando alerta...`);
+
+    const diasTexto = diasSemSync === 999 ? 'muito tempo' : `${diasSemSync} dias`;
+    const mensagem = `🔴 *Alerta DentOS*\n\nA integração com o Easy Dental está parada há ${diasTexto}.\n\nPor favor, verifique as credenciais de acesso em Configurações → Sistema.\n\nSe a clínica está em férias ou obras, desconsidere este aviso.`;
+
+    try {
+      await enviarWhatsApp(clinica_id, redirecionar_numero, mensagem);
+      log(`  ✅ Alerta WhatsApp enviado para ${redirecionar_numero}`);
+
+      // Marcar alerta como enviado para não repetir
+      await supabaseRequest(
+        `whatsapp_config?clinica_id=eq.${clinica_id}`,
+        'PATCH',
+        { alerta_sync_enviado: true }
+      );
+    } catch (err) {
+      log(`  ⚠️ Falha ao enviar alerta WhatsApp: ${err.message}`, 'WARN');
+    }
+  } else {
+    log(`  ✅ Última sync com sucesso há ${diasSemSync} dia(s) — sem necessidade de alerta`);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -247,6 +372,13 @@ async function main() {
     const { clinica_id, easydental_usuario, easydental_senha } = cred;
     log(`\n════ Clínica: ${clinica_id} (${easydental_usuario}) ════`);
 
+    // Controle de tempo e contagem para logging
+    const inicio = Date.now();
+    let pacientesCount = 0;
+    let procedimentosCount = 0;
+    let syncStatus = 'erro';
+    let erroMsg = null;
+
     try {
       // 3. Download do Easy Dental
       const { pacientes: rawPac, procedimentos: rawProc } = await downloadFromEasyDental(easydental_usuario, easydental_senha);
@@ -255,17 +387,53 @@ async function main() {
       const pacientesMapped = rawPac ? mapearPacientes(rawPac, clinica_id) : [];
       const procedimentosMapped = rawProc ? mapearProcedimentos(rawProc, clinica_id) : [];
 
+      pacientesCount = pacientesMapped.length;
+      procedimentosCount = procedimentosMapped.length;
+
       log(`\nMapeamento concluído:`);
-      log(`  Pacientes: ${pacientesMapped.length}`);
-      log(`  Procedimentos: ${procedimentosMapped.length}`);
+      log(`  Pacientes: ${pacientesCount}`);
+      log(`  Procedimentos: ${procedimentosCount}`);
 
       // 5. Importar no Supabase (SOMENTE para esta clinica_id)
       await importarDados(clinica_id, pacientesMapped, procedimentosMapped);
 
+      // Definir status: 'parcial' se faltou uma das categorias, 'sucesso' se ambas OK
+      if ((!rawPac || pacientesCount === 0) && procedimentosCount > 0) {
+        syncStatus = 'parcial';
+        erroMsg = 'Pacientes não foram importados';
+      } else if (pacientesCount > 0 && (!rawProc || procedimentosCount === 0)) {
+        syncStatus = 'parcial';
+        erroMsg = 'Procedimentos não foram importados';
+      } else if (pacientesCount === 0 && procedimentosCount === 0) {
+        syncStatus = 'parcial';
+        erroMsg = 'Nenhum dado importado';
+      } else {
+        syncStatus = 'sucesso';
+      }
+
       log(`\n✅ Clínica ${clinica_id} sincronizada com sucesso!`);
     } catch (err) {
+      syncStatus = 'erro';
+      erroMsg = err.message;
       log(`❌ Erro na clínica ${clinica_id}: ${err.message}`, 'ERROR');
     }
+
+    // Calcular duração em segundos
+    const duracaoSeg = Math.round((Date.now() - inicio) / 1000);
+
+    // 6. Salvar log da sincronização
+    await salvarLogSync(clinica_id, syncStatus, pacientesCount, procedimentosCount, erroMsg, duracaoSeg);
+
+    // 7. Se sync foi sucesso ou parcial, atualizar ultima_sync_sucesso
+    if (syncStatus === 'sucesso') {
+      await atualizarUltimaSyncSucesso(clinica_id);
+      // Atualizar o objeto cred com o novo valor para a verificação de alerta
+      cred.ultima_sync_sucesso = new Date().toISOString();
+      cred.alerta_sync_enviado = false;
+    }
+
+    // 8. Verificar se precisa enviar alerta de sync parada
+    await verificarEEnviarAlertaSync(cred);
   }
 
   log('\n═══════════════════════════════════════════════');

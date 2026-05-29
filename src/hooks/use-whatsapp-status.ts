@@ -17,6 +17,7 @@ export interface WhatsappConfig {
   easydental_url?: string | null;
   easydental_usuario?: string | null;
   easydental_senha?: string | null;
+  ultima_sync_sucesso?: string | null;
 }
 
 export const useWhatsappStatus = () => {
@@ -66,7 +67,7 @@ export const useWhatsappStatus = () => {
 
       const { data, error } = await (supabase as any)
         .from("whatsapp_config")
-        .select("id, clinica_id, numero, conectado, updated_at, redirecionar_ativo, redirecionar_numero, redirecionar_mensagem, dedup_dias, horario_inicio, horario_fim, easydental_url, easydental_usuario, easydental_senha")
+        .select("id, clinica_id, numero, conectado, updated_at, redirecionar_ativo, redirecionar_numero, redirecionar_mensagem, dedup_dias, horario_inicio, horario_fim, easydental_url, easydental_usuario, easydental_senha, ultima_sync_sucesso")
         .eq("clinica_id", targetClinicaId)
         .maybeSingle();
 
@@ -145,6 +146,7 @@ export const useWhatsappStatus = () => {
         easydental_url: data ? (data as any).easydental_url ?? null : null,
         easydental_usuario: data ? (data as any).easydental_usuario ?? null : null,
         easydental_senha: data ? (data as any).easydental_senha ?? null : null,
+        ultima_sync_sucesso: data ? (data as any).ultima_sync_sucesso ?? null : null,
       };
     },
   });
