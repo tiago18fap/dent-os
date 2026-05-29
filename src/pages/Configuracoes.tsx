@@ -42,6 +42,7 @@ interface ClinicaAdminItem {
   data_fim_teste: string | null;
   created_at: string;
   dias_restantes?: number;
+  cnpj?: string | null;
 }
 
 // Lista simples de e-mails de super admin.
@@ -78,6 +79,7 @@ const Configuracoes = () => {
   // Estados de criação de clínica
   const [createClinicaOpen, setCreateClinicaOpen] = useState(false);
   const [newClinicaNome, setNewClinicaNome] = useState("");
+  const [newClinicaCnpj, setNewClinicaCnpj] = useState("");
   const [newClinicaPlano, setNewClinicaPlano] = useState<"bronze" | "prata" | "ouro" | "ilimitado_premium">("bronze");
   const [newClinicaStatus, setNewClinicaStatus] = useState<"ativo" | "inadimplente" | "teste_gratis" | "cancelado">("teste_gratis");
   const [newClinicaLimiteMsg, setNewClinicaLimiteMsg] = useState(100);
@@ -91,6 +93,7 @@ const Configuracoes = () => {
   const [editClinicaOpen, setEditClinicaOpen] = useState(false);
   const [selectedClinica, setSelectedClinica] = useState<ClinicaAdminItem | null>(null);
   const [editClinicaNome, setEditClinicaNome] = useState("");
+  const [editClinicaCnpj, setEditClinicaCnpj] = useState("");
   const [editClinicaPlano, setEditClinicaPlano] = useState("bronze");
   const [editClinicaStatus, setEditClinicaStatus] = useState("teste_gratis");
   const [editClinicaLimiteMsg, setEditClinicaLimiteMsg] = useState(100);
@@ -313,6 +316,16 @@ const Configuracoes = () => {
 
       if (error) throw error;
 
+      if (newClinicaCnpj.trim() !== "") {
+        const { error: cnpjError } = await supabase
+          .from("clinicas")
+          .update({ cnpj: newClinicaCnpj.trim() })
+          .eq("id", newClinicaId);
+        if (cnpjError) {
+          console.error("Erro ao salvar CNPJ da clínica:", cnpjError);
+        }
+      }
+
       toast({
         title: "Clínica criada",
         description: "Clínica e usuário administrador criados com sucesso!"
@@ -325,6 +338,7 @@ const Configuracoes = () => {
       );
 
       setNewClinicaNome("");
+      setNewClinicaCnpj("");
       setNewClinicaPlano("bronze");
       setNewClinicaStatus("teste_gratis");
       setNewClinicaLimiteMsg(100);
@@ -357,6 +371,7 @@ const Configuracoes = () => {
         .from("clinicas")
         .update({
           nome: editClinicaNome.trim(),
+          cnpj: editClinicaCnpj.trim(),
           plano: editClinicaPlano,
           status_pagamento: editClinicaStatus,
           limite_mensagens: Number(editClinicaLimiteMsg),
@@ -1185,7 +1200,8 @@ const Configuracoes = () => {
           limite_procedimentos: c.limite_procedimentos,
           data_fim_teste: c.data_fim_teste,
           created_at: c.created_at,
-          dias_restantes
+          dias_restantes,
+          cnpj: c.cnpj
         };
       });
     },
@@ -1465,6 +1481,15 @@ const Configuracoes = () => {
                     required
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="newClinicaCnpj">CNPJ da Clínica</Label>
+                  <Input
+                    id="newClinicaCnpj"
+                    value={newClinicaCnpj}
+                    onChange={(e) => setNewClinicaCnpj(e.target.value)}
+                    placeholder="Ex: 00.000.000/0000-00"
+                  />
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="newClinicaPlano">Plano</Label>
@@ -1593,6 +1618,15 @@ const Configuracoes = () => {
                         value={editClinicaNome}
                         onChange={(e) => setEditClinicaNome(e.target.value)}
                         required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="editClinicaCnpj">CNPJ da Clínica</Label>
+                      <Input
+                        id="editClinicaCnpj"
+                        value={editClinicaCnpj}
+                        onChange={(e) => setEditClinicaCnpj(e.target.value)}
+                        placeholder="Ex: 00.000.000/0000-00"
                       />
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2366,6 +2400,9 @@ const Configuracoes = () => {
                               <TableRow key={cliente.id}>
                                 <TableCell className="font-medium text-xs">
                                   <p>{cliente.nome}</p>
+                                  {cliente.cnpj && (
+                                    <span className="text-[10px] text-primary/80 font-semibold block mt-0.5">CNPJ: {cliente.cnpj}</span>
+                                  )}
                                   <span className="text-[9px] text-muted-foreground font-mono block mt-0.5">{cliente.id}</span>
                                 </TableCell>
                                 <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
@@ -2426,6 +2463,7 @@ const Configuracoes = () => {
                                       onClick={() => {
                                         setSelectedClinica(cliente);
                                         setEditClinicaNome(cliente.nome);
+                                        setEditClinicaCnpj(cliente.cnpj ?? "");
                                         setEditClinicaPlano(cliente.plano);
                                         setEditClinicaStatus(cliente.status_pagamento);
                                         setEditClinicaLimiteMsg(cliente.limite_mensagens);
