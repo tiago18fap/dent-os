@@ -176,6 +176,7 @@ export function Campanhas() {
           .from("clientes")
           .select("id, paciente")
           .ilike("situacao", "Ativo")
+          .not("telefone", "is", null)
           .order("paciente", { ascending: true });
 
         if (!isSuperAdmin || isImpersonating) {
@@ -517,6 +518,8 @@ export function Campanhas() {
         .from("clientes")
         .select("id, paciente, telefone")
         .eq("clinica_id", clinica?.id)
+        .ilike("situacao", "Ativo")
+        .not("telefone", "is", null)
         .in("id", idsPacientes);
       
       if (erroClientes) throw erroClientes;

@@ -14,7 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronsUpDown, Calendar as CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -42,106 +42,86 @@ const Procedimentos = () => {
   const isMobile = useIsMobile();
   const { clinica, loading, isSuperAdmin, isImpersonating } = useClinica();
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["procedimentos", clinica?.id, isSuperAdmin, isImpersonating],
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [professionalFilter, setProfessionalFilter] = useState("");
+  const [date, setDate] = useState<DateRange | undefined>(undefined);
+  const [page, setPage] = useState(1);
+  const [prestadorOpen, setPrestadorOpen] = useState(false);
+  const pageSize = 25;
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const { data: queryResult, isLoading, error } = useQuery({
+    queryKey: ["procedimentos", clinica?.id, isSuperAdmin, isImpersonating, debouncedSearch, professionalFilter, page],
     queryFn: async () => {
-      let query = supabase
+      let query = (supabase as any)
         .from("procedimentos")
-        .select("*");
+        .select("id, nome_paciente, procedimento, prestador, data_finalizacao", { count: "exact" });
 
       if (!isSuperAdmin || isImpersonating) {
         if (clinica?.id) {
           query = query.eq("clinica_id", clinica.id);
         } else {
-          return [];
+          return { data: [], count: 0 };
         }
       }
 
-      const { data, error } = await query.order("procedimento", { ascending: true });
+      if (debouncedSearch) {
+        query = query.ilike("nome_paciente", `%${debouncedSearch}%`);
+      }
+
+      if (professionalFilter) {
+        query = query.ilike("prestador", professionalFilter);
+      }
+
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+
+      const { data, error, count } = await query
+        .order("data_finalizacao", { ascending: false })
+        .range(from, to);
 
       if (error) throw error;
-      return data ?? [];
+      return { data: data ?? [], count: count ?? 0 };
     },
     enabled: !loading,
     retry: 1,
   });
 
-  const [searchTerm, setSearchTerm] = useState("");
-  const [professionalFilter, setProfessionalFilter] = useState("");
-  const [date, setDate] = useState<DateRange | undefined>(undefined);
-  
-  const [page, setPage] = useState(1);
-  const [prestadorOpen, setPrestadorOpen] = useState(false);
-  const pageSize = 20;
-
-  const uniquePrestadores = useMemo(() => {
-    if (!data) return [];
-    const prestadores = new Set<string>();
-    data.forEach((proc: any) => {
-      if (proc.prestador) prestadores.add(proc.prestador);
-    });
-    return Array.from(prestadores).sort();
-  }, [data]);
-
-  const filteredData = useMemo(() => {
-    if (!data) return [];
-    const term = searchTerm.trim().toLowerCase();
-    const profTerm = professionalFilter.trim().toLowerCase();
-    
-    if (!term && !profTerm && !date?.from && !date?.to) return data;
-
-    return (data as any[]).filter((proc) => {
-      const nomePaciente = (proc.nome_paciente ?? "").toString().toLowerCase();
-      const prestador = (proc.prestador ?? "").toString().toLowerCase();
-
-      const matchName = term === "" || nomePaciente.includes(term);
-      const matchProf = profTerm === "" || prestador === profTerm; 
-      
-      let matchDate = true;
-      if (date?.from || date?.to) {
-        if (proc.data_finalizacao) {
-           try {
-             const procDate = parse(proc.data_finalizacao, "dd/MM/yyyy", new Date());
-             const procTime = procDate.getTime();
-             if (date.from && date.to) {
-                 // Adjust toTime to include the full end day
-                 const fromCopy = new Date(date.from);
-                 fromCopy.setHours(0,0,0,0);
-                 const toCopy = new Date(date.to);
-                 toCopy.setHours(23,59,59,999);
-                 const fromTime = fromCopy.getTime();
-                 const toTime = toCopy.getTime();
-                 matchDate = procTime >= fromTime && procTime <= toTime;
-              } else if (date.from) {
-                 const fromCopy = new Date(date.from);
-                 fromCopy.setHours(0,0,0,0);
-                 matchDate = procTime >= fromCopy.getTime();
-              } else if (date.to) {
-                 const toCopy = new Date(date.to);
-                 toCopy.setHours(23,59,59,999);
-                 matchDate = procTime <= toCopy.getTime();
-              }
-           } catch(e) {
-             matchDate = false;
-           }
-        } else {
-           matchDate = false;
-        }
-      }
-
-      return matchName && matchProf && matchDate;
-    });
-  }, [data, searchTerm, professionalFilter, date]);
-
-  const totalItems = filteredData.length;
+  const procedimentos = queryResult?.data ?? [];
+  const totalItems = queryResult?.count ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
-  const paginatedData = useMemo(() => {
-    if (!filteredData) return [];
-    const start = (page - 1) * pageSize;
-    const end = start + pageSize;
-    return filteredData.slice(start, end);
-  }, [filteredData, page, pageSize]);
+  // Fetch unique prestadores (separate lightweight query)
+  const { data: prestadoresData } = useQuery({
+    queryKey: ["prestadores-unicos", clinica?.id],
+    queryFn: async () => {
+      let query = (supabase as any)
+        .from("procedimentos")
+        .select("prestador");
+
+      if (!isSuperAdmin || isImpersonating) {
+        if (clinica?.id) query = query.eq("clinica_id", clinica.id);
+      }
+
+      const { data } = await query.not("prestador", "is", null).limit(5000);
+      const set = new Set<string>();
+      (data ?? []).forEach((r: any) => { if (r.prestador) set.add(r.prestador); });
+      return Array.from(set).sort();
+    },
+    enabled: !loading,
+  });
+
+  const uniquePrestadores = prestadoresData ?? [];
+
 
   const pagesToShow = useMemo(() => {
     if (totalPages <= 7) {
@@ -294,10 +274,10 @@ const Procedimentos = () => {
                 Ocorreu um erro ao carregar os procedimentos. Detalhes: {(error as Error).message}
               </p>
             )}
-            {!isLoading && !error && (!data || data.length === 0 || filteredData.length === 0) && (
+            {!isLoading && !error && procedimentos.length === 0 && (
               <p className="text-sm text-muted-foreground">Nenhum procedimento encontrado.</p>
             )}
-            {!isLoading && !error && filteredData && filteredData.length > 0 && (
+            {!isLoading && !error && procedimentos.length > 0 && (
               <div className="space-y-3">
                 <div className="rounded-md border bg-card overflow-x-auto">
                   <Table>
@@ -310,7 +290,7 @@ const Procedimentos = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {paginatedData.map((proc: any) => {
+                      {procedimentos.map((proc: any) => {
                         const nomePaciente = proc.nome_paciente ?? "-";
                         return (
                           <TableRow key={proc.id}>
@@ -328,7 +308,7 @@ const Procedimentos = () => {
                   <div className="flex flex-col items-center justify-between gap-3 text-xs text-muted-foreground sm:flex-row">
                     <span className="w-full text-center sm:w-auto sm:text-left">
                       Mostrando {totalItems === 0 ? 0 : (page - 1) * pageSize + 1}–
-                      {Math.min(page * pageSize, totalItems)} de {totalItems}
+                      {Math.min(page * pageSize, totalItems)} de {totalItems.toLocaleString("pt-BR")}
                     </span>
                     <Pagination className="w-full justify-center sm:w-auto">
                       <PaginationContent>

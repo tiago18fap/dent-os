@@ -55,6 +55,35 @@ async function supabaseRequest(path, method = 'GET', body = null) {
   return res;
 }
 
+/**
+ * Busca TODOS os registros paginando automaticamente (sem limite de 1000).
+ * PostgREST retorna max 1000 por request, então fazemos requests sequenciais.
+ */
+async function fetchAll(path) {
+  const PAGE_SIZE = 1000;
+  let allData = [];
+  let offset = 0;
+  while (true) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}${path.includes('?') ? '&' : '?'}limit=${PAGE_SIZE}&offset=${offset}`, {
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'count=exact',
+      },
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`FetchAll ${path}: ${res.status} ${text}`);
+    }
+    const data = await res.json();
+    allData = allData.concat(data);
+    if (data.length < PAGE_SIZE) break; // Última página
+    offset += PAGE_SIZE;
+  }
+  return allData;
+}
+
 async function getCredentials() {
   // Busca credenciais + campos necessários para alertas de sync
   return supabaseRequest('whatsapp_config?select=clinica_id,easydental_usuario,easydental_senha,redirecionar_numero,ultima_sync_sucesso,alerta_sync_enviado&easydental_usuario=not.is.null&easydental_senha=not.is.null');
@@ -388,7 +417,7 @@ async function importarDados(clinicaId, pacientes, procedimentos) {
   // Se o código já existe, atualiza telefone, nome, etc. Se não, insere.
   if (pacientes && pacientes.length > 0) {
     // Contar existentes antes do upsert
-    const existentesRes = await supabaseRequest(
+    const existentesRes = await fetchAll(
       `clientes?clinica_id=eq.${clinicaId}&select=codigo`,
     );
     const codigosExistentes = new Set(existentesRes.map(c => c.codigo));
