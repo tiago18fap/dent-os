@@ -99,16 +99,35 @@ async function handleRequest(req, res) {
     return json(res, 401, { error: 'Unauthorized' });
   }
 
-  // POST /sync — sincronizar todas as clínicas
+  // POST /sync — sincronizar (aceita clinica_id opcional no body)
   if (path === '/sync' && method === 'POST') {
     if (syncing) {
       return json(res, 409, { error: 'Sincronização já em andamento' });
     }
 
-    // Responder imediatamente e processar em background
-    json(res, 202, { message: 'Sincronização iniciada', startedAt: new Date().toISOString() });
+    const body = await parseBody(req);
+    const targetClinicaId = body.clinica_id;
 
-    // Executar em background
+    if (targetClinicaId) {
+      // Sincronizar clínica específica (síncrono — aguarda resultado)
+      syncing = true;
+      try {
+        const result = await syncClinica(targetClinicaId, { supabaseUrl: SUPABASE_URL, supabaseKey: SUPABASE_KEY });
+        lastSync = { finishedAt: new Date().toISOString(), success: true, clinicaId: targetClinicaId, ...result };
+        log(`Sincronização clínica ${targetClinicaId} completa`);
+        return json(res, 200, { status: 'sucesso', ...result });
+      } catch (err) {
+        lastSync = { finishedAt: new Date().toISOString(), success: false, clinicaId: targetClinicaId, error: err.message };
+        log(`Erro na sincronização clínica ${targetClinicaId}: ${err.message}`, 'ERROR');
+        return json(res, 500, { status: 'erro', error: err.message });
+      } finally {
+        syncing = false;
+      }
+    }
+
+    // Sem clinica_id: sincronizar todas (assíncrono)
+    json(res, 202, { message: 'Sincronização de todas as clínicas iniciada', startedAt: new Date().toISOString() });
+
     syncing = true;
     try {
       const result = await syncTodasClinicas({ supabaseUrl: SUPABASE_URL, supabaseKey: SUPABASE_KEY });

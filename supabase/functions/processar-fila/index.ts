@@ -116,7 +116,7 @@ serve(async (req) => {
         continue;
       }
 
-      // 2b. Pick the oldest 1 pending message
+      // 2b. Pick the oldest 5 pending messages
       const { data: mensagens, error: msgError } = await supabase
         .from("fila_envios")
         .select("*")
@@ -124,7 +124,7 @@ serve(async (req) => {
         .eq("status", "pendente")
         .lte("data_programada", brazilTime.isoString)
         .order("data_programada", { ascending: true })
-        .limit(1);
+        .limit(5);
 
       if (msgError) {
         console.error(`[processar-fila] Erro ao buscar mensagens para ${clinicaId}:`, msgError);
@@ -138,133 +138,145 @@ serve(async (req) => {
         continue;
       }
 
-      const msg = mensagens[0];
-      console.log(`[processar-fila] Mensagem ${msg.id} para ${msg.paciente_nome} (${msg.telefone})`);
+      // Process each pending message for this clinic
+      for (const msg of mensagens) {
+        console.log(`[processar-fila] Mensagem ${msg.id} para ${msg.paciente_nome} (${msg.telefone})`);
 
-      // 2c. Dedup check: has this paciente_id been sent in the last dedup_dias?
-      const dedupCutoff = new Date();
-      dedupCutoff.setDate(dedupCutoff.getDate() - dedupDias);
+        // 2c. Dedup check: has this paciente_id been sent in the last dedup_dias?
+        const dedupCutoff = new Date();
+        dedupCutoff.setDate(dedupCutoff.getDate() - dedupDias);
 
-      const { count: dedupCount, error: dedupError } = await supabase
-        .from("fila_envios")
-        .select("id", { count: "exact", head: true })
-        .eq("clinica_id", clinicaId)
-        .eq("paciente_id", msg.paciente_id)
-        .eq("status", "enviado")
-        .gte("updated_at", dedupCutoff.toISOString())
-        .neq("id", msg.id);
-
-      if (dedupError) {
-        console.error(`[processar-fila] Erro na verificação de dedup:`, dedupError);
-      }
-
-      if ((dedupCount ?? 0) > 0) {
-        console.log(`[processar-fila] Mensagem ${msg.id} ignorada por dedup (paciente ${msg.paciente_id} enviado nos últimos ${dedupDias} dias)`);
-        
-        const { error: dedupUpdateError } = await supabase
+        const { count: dedupCount, error: dedupError } = await supabase
           .from("fila_envios")
-          .update({ status: "dedup_ignorado", updated_at: new Date().toISOString() })
-          .eq("id", msg.id);
+          .select("id", { count: "exact", head: true })
+          .eq("clinica_id", clinicaId)
+          .eq("paciente_id", msg.paciente_id)
+          .eq("status", "enviado")
+          .gte("updated_at", dedupCutoff.toISOString())
+          .neq("id", msg.id);
 
-        if (dedupUpdateError) {
-          console.error(`[processar-fila] Erro ao marcar dedup_ignorado:`, dedupUpdateError);
+        if (dedupError) {
+          console.error(`[processar-fila] Erro na verificação de dedup:`, dedupError);
         }
 
-        summary.push({ clinica_id: clinicaId, status: "dedup_ignorado", detail: `msg ${msg.id}` });
-        continue;
-      }
+        if ((dedupCount ?? 0) > 0) {
+          console.log(`[processar-fila] Mensagem ${msg.id} ignorada por dedup (paciente ${msg.paciente_id} enviado nos últimos ${dedupDias} dias)`);
+          
+          const { error: dedupUpdateError } = await supabase
+            .from("fila_envios")
+            .update({ status: "dedup_ignorado", updated_at: new Date().toISOString() })
+            .eq("id", msg.id);
 
-      // 2d. Check credit balance before sending
-      const { data: carteira, error: carteiraError } = await supabase
-        .from("carteira_envios")
-        .select("id, saldo")
-        .eq("clinica_id", clinicaId)
-        .single();
+          if (dedupUpdateError) {
+            console.error(`[processar-fila] Erro ao marcar dedup_ignorado:`, dedupUpdateError);
+          }
 
-      if (carteiraError || !carteira) {
-        console.error(`[processar-fila] Erro ao buscar carteira para ${clinicaId}:`, carteiraError);
-        summary.push({ clinica_id: clinicaId, status: "erro", detail: "Carteira não encontrada" });
-        continue;
-      }
-
-      if (carteira.saldo <= 0) {
-        console.log(`[processar-fila] Clínica ${clinicaId}: saldo insuficiente (${carteira.saldo})`);
-        summary.push({ clinica_id: clinicaId, status: "sem_saldo", detail: `Saldo: ${carteira.saldo}` });
-        continue;
-      }
-
-      // 2e. Send message via Evolution API
-      const instanceName = `dentos_${clinicaId.replace(/-/g, "").slice(0, 12)}`;
-      const sendUrl = `${EVOLUTION_API_URL}/message/sendText/${instanceName}`;
-
-      console.log(`[processar-fila] Enviando para ${msg.telefone} via instância ${instanceName}`);
-
-      let sendSuccess = false;
-      let sendErrorDetail = "";
-
-      try {
-        const sendResponse = await fetch(sendUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: EVOLUTION_API_KEY,
-          },
-          body: JSON.stringify({
-            number: msg.telefone,
-            text: msg.mensagem,
-          }),
-        });
-
-        if (sendResponse.ok) {
-          sendSuccess = true;
-          console.log(`[processar-fila] Mensagem ${msg.id} enviada com sucesso`);
-        } else {
-          const errorBody = await sendResponse.text().catch(() => "");
-          sendErrorDetail = `HTTP ${sendResponse.status}: ${errorBody.slice(0, 500)}`;
-          console.error(`[processar-fila] Falha ao enviar mensagem ${msg.id}: ${sendErrorDetail}`);
-        }
-      } catch (fetchError: any) {
-        sendErrorDetail = `Fetch error: ${fetchError.message || String(fetchError)}`;
-        console.error(`[processar-fila] Exceção ao enviar mensagem ${msg.id}:`, fetchError);
-      }
-
-      // 2f. Update message status
-      if (sendSuccess) {
-        const { error: updateError } = await supabase
-          .from("fila_envios")
-          .update({ status: "enviado", updated_at: new Date().toISOString() })
-          .eq("id", msg.id);
-
-        if (updateError) {
-          console.error(`[processar-fila] Erro ao atualizar status para enviado:`, updateError);
+          summary.push({ clinica_id: clinicaId, status: "dedup_ignorado", detail: `msg ${msg.id}` });
+          continue;
         }
 
-        // 2g. Deduct 1 from saldo
-        const { error: saldoError } = await supabase
+        // 2d. Check credit balance before sending (atomic read)
+        const { data: carteira, error: carteiraError } = await supabase
           .from("carteira_envios")
-          .update({ saldo: carteira.saldo - 1 })
-          .eq("id", carteira.id);
+          .select("id, saldo")
+          .eq("clinica_id", clinicaId)
+          .single();
 
-        if (saldoError) {
-          console.error(`[processar-fila] Erro ao deduzir saldo:`, saldoError);
+        if (carteiraError || !carteira) {
+          console.error(`[processar-fila] Erro ao buscar carteira para ${clinicaId}:`, carteiraError);
+          summary.push({ clinica_id: clinicaId, status: "erro", detail: "Carteira não encontrada" });
+          break; // stop processing this clinic
         }
 
-        summary.push({ clinica_id: clinicaId, status: "enviado", detail: `msg ${msg.id} → ${msg.telefone}` });
-      } else {
-        const { error: falhaError } = await supabase
-          .from("fila_envios")
-          .update({
-            status: "falha",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", msg.id);
-
-        if (falhaError) {
-          console.error(`[processar-fila] Erro ao atualizar status para falha:`, falhaError);
+        if (carteira.saldo <= 0) {
+          console.log(`[processar-fila] Clínica ${clinicaId}: saldo insuficiente (${carteira.saldo})`);
+          summary.push({ clinica_id: clinicaId, status: "sem_saldo", detail: `Saldo: ${carteira.saldo}` });
+          break; // stop processing this clinic
         }
 
-        summary.push({ clinica_id: clinicaId, status: "falha", detail: sendErrorDetail.slice(0, 200) });
-      }
+        // 2e. Send message via Evolution API
+        const instanceName = `dentos_${clinicaId.replace(/-/g, "").slice(0, 12)}`;
+        const sendUrl = `${EVOLUTION_API_URL}/message/sendText/${instanceName}`;
+
+        console.log(`[processar-fila] Enviando para ${msg.telefone} via instância ${instanceName}`);
+
+        let sendSuccess = false;
+        let sendErrorDetail = "";
+
+        try {
+          const sendResponse = await fetch(sendUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: EVOLUTION_API_KEY,
+            },
+            body: JSON.stringify({
+              number: msg.telefone,
+              text: msg.mensagem,
+            }),
+          });
+
+          if (sendResponse.ok) {
+            sendSuccess = true;
+            console.log(`[processar-fila] Mensagem ${msg.id} enviada com sucesso`);
+          } else {
+            const errorBody = await sendResponse.text().catch(() => "");
+            sendErrorDetail = `HTTP ${sendResponse.status}: ${errorBody.slice(0, 500)}`;
+            console.error(`[processar-fila] Falha ao enviar mensagem ${msg.id}: ${sendErrorDetail}`);
+          }
+        } catch (fetchError: any) {
+          sendErrorDetail = `Fetch error: ${fetchError.message || String(fetchError)}`;
+          console.error(`[processar-fila] Exceção ao enviar mensagem ${msg.id}:`, fetchError);
+        }
+
+        // 2f. Update message status
+        if (sendSuccess) {
+          const { error: updateError } = await supabase
+            .from("fila_envios")
+            .update({ status: "enviado", updated_at: new Date().toISOString() })
+            .eq("id", msg.id);
+
+          if (updateError) {
+            console.error(`[processar-fila] Erro ao atualizar status para enviado:`, updateError);
+          }
+
+          // 2g. Atomic saldo decrement using RPC-style update
+          const { error: saldoError } = await supabase.rpc('decrementar_saldo', {
+            p_clinica_id: clinicaId,
+            p_quantidade: 1,
+          });
+
+          if (saldoError) {
+            // Fallback: try non-atomic update if RPC doesn't exist yet
+            console.warn(`[processar-fila] RPC decrementar_saldo falhou, usando fallback:`, saldoError);
+            await supabase
+              .from("carteira_envios")
+              .update({ saldo: carteira.saldo - 1 })
+              .eq("id", carteira.id);
+          }
+
+          summary.push({ clinica_id: clinicaId, status: "enviado", detail: `msg ${msg.id} → ${msg.telefone}` });
+        } else {
+          const { error: falhaError } = await supabase
+            .from("fila_envios")
+            .update({
+              status: "falha",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", msg.id);
+
+          if (falhaError) {
+            console.error(`[processar-fila] Erro ao atualizar status para falha:`, falhaError);
+          }
+
+          summary.push({ clinica_id: clinicaId, status: "falha", detail: sendErrorDetail.slice(0, 200) });
+        }
+
+        // Small delay between messages to avoid WhatsApp rate limits (2 seconds)
+        if (mensagens.indexOf(msg) < mensagens.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      } // end for-of mensagens
     }
 
     const enviados = summary.filter((s) => s.status === "enviado").length;
