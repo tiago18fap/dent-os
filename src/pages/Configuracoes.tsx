@@ -396,11 +396,11 @@ const Configuracoes = () => {
     e.preventDefault();
     if (!deleteClinicaTarget) return;
 
-    if (deleteConfirmInput.trim().toLowerCase() !== deleteClinicaTarget.nome.trim().toLowerCase()) {
+    if (deleteConfirmInput.trim().toUpperCase() !== "EXCLUIR") {
       toast({
         variant: "destructive",
-        title: "Nome incorreto",
-        description: "O nome digitado não confere com o nome da clínica para confirmação."
+        title: "Confirmação incorreta",
+        description: "Digite EXCLUIR para confirmar a exclusão da clínica."
       });
       return;
     }
@@ -1868,16 +1868,16 @@ const Configuracoes = () => {
 
               <form onSubmit={handleDeleteClinica} className="space-y-4 pt-2">
                 <div className="space-y-2 text-sm">
-                  <p>Para confirmar, digite o nome completo da clínica abaixo:</p>
-                  <p className="font-mono bg-muted p-2 rounded text-center select-none text-foreground font-semibold">
-                    {deleteClinicaTarget.nome}
+                  <p>Para confirmar a exclusão da clínica <strong>{deleteClinicaTarget.nome}</strong>, digite a palavra abaixo:</p>
+                  <p className="font-mono bg-muted p-2 rounded text-center select-none text-foreground font-semibold tracking-wider">
+                    EXCLUIR
                   </p>
                   <Input
-                    placeholder="Digite o nome da clínica exatamente como acima"
+                    placeholder="Digite EXCLUIR para confirmar"
                     value={deleteConfirmInput}
                     onChange={(e) => setDeleteConfirmInput(e.target.value)}
                     required
-                    className="bg-background"
+                    className="bg-background text-center font-semibold"
                   />
                 </div>
 
@@ -1897,7 +1897,7 @@ const Configuracoes = () => {
                   <Button
                     type="submit"
                     variant="destructive"
-                    disabled={deleteClinicaLoading || deleteConfirmInput.trim().toLowerCase() !== deleteClinicaTarget.nome.trim().toLowerCase()}
+                    disabled={deleteClinicaLoading || deleteConfirmInput.trim().toUpperCase() !== "EXCLUIR"}
                   >
                     {deleteClinicaLoading ? "Excluindo..." : "Sim, excluir tudo"}
                   </Button>
