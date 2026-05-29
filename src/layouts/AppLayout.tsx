@@ -261,9 +261,55 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
             <SidebarTrigger className="md:hidden" />
             <div className="hidden items-center gap-2 md:flex" />
           </div>
-          <div className="flex flex-1 items-center justify-between gap-4">
-            <div className="flex flex-col" />
-            <div className="flex items-center gap-2">
+          <div className="flex flex-1 items-center justify-between gap-4 overflow-hidden">
+            <div className="flex flex-1 items-center gap-2 overflow-x-auto py-1 mr-2 no-scrollbar">
+              {isSuperAdmin && !isImpersonating && (
+                <div className="flex items-center gap-1.5 bg-destructive/10 border border-destructive/20 text-destructive text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-medium whitespace-nowrap shadow-sm shrink-0">
+                  <span className="font-bold tracking-wider bg-destructive text-destructive-foreground px-1 py-0.2 rounded text-[9px]">
+                    MASTER
+                  </span>
+                  <span className="hidden md:inline">
+                    Visualizando dados consolidados de todas as clínicas.
+                  </span>
+                  <span className="md:hidden">
+                    Consolidado de clínicas.
+                  </span>
+                </div>
+              )}
+              {impersonatedClinicaName && (
+                <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-500 text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-medium whitespace-nowrap shadow-sm shrink-0 animate-pulse">
+                  <span className="font-bold tracking-wider bg-amber-500 text-white px-1 py-0.2 rounded text-[9px] uppercase">
+                    VISÃO
+                  </span>
+                  <span>Clínica: <strong>{impersonatedClinicaName}</strong></span>
+                  <button 
+                    onClick={handleStopImpersonation}
+                    className="ml-1 text-[9px] underline hover:text-amber-600 font-semibold"
+                  >
+                    Sair
+                  </button>
+                </div>
+              )}
+              {(() => {
+                const config = whatsappStatusQuery?.data;
+                if (!config?.easydental_usuario || !config?.ultima_sync_sucesso) return null;
+                const diasSemSync = Math.floor((Date.now() - new Date(config.ultima_sync_sucesso).getTime()) / (1000 * 60 * 60 * 24));
+                if (diasSemSync < 7) return null;
+                return (
+                  <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-medium whitespace-nowrap shadow-sm shrink-0">
+                    <span className="text-red-500 text-xs animate-pulse">🔴</span>
+                    <span>Sync parado há {diasSemSync} dias</span>
+                    <button
+                      onClick={() => navigate("/configuracoes?tab=sistema")}
+                      className="ml-1 text-[9px] underline hover:text-red-700 font-semibold"
+                    >
+                      Ajustar
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
               <Button
                 type="button"
                 size="sm"
@@ -292,70 +338,6 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
         </header>
         <main className="flex-1 bg-background/80 p-3 sm:p-4">
           <div className="mx-auto max-w-6xl space-y-3 sm:space-y-4 font-sans">
-            {isSuperAdmin && !isImpersonating && (
-              <div className="bg-destructive/10 border border-destructive/30 text-destructive rounded-lg p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs sm:text-sm shadow-sm">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold uppercase tracking-wider bg-destructive text-destructive-foreground px-2 py-0.5 rounded text-[10px]">
-                    ADMINISTRADOR MASTER
-                  </span>
-                  <span>
-                    Você está visualizando os dados consolidados de todas as clínicas. Para gerenciar uma clínica específica, acesse{" "}
-                    <NavLink to="/configuracoes?tab=clientes" className="underline font-semibold hover:text-destructive/80">
-                      Configurações &gt; Gerenciar Clínicas
-                    </NavLink>{" "}
-                    e clique em "Visualizar".
-                  </span>
-                </div>
-              </div>
-            )}
-            {impersonatedClinicaName && (
-              <div className="bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-500 rounded-lg p-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs sm:text-sm shadow-sm animate-pulse">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold uppercase tracking-wider bg-amber-500 text-white px-2 py-0.5 rounded text-[10px]">
-                    MODO VISUALIZAÇÃO
-                  </span>
-                  <span>Você está navegando como a clínica <strong>{impersonatedClinicaName}</strong>.</span>
-                </div>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="h-8 border-amber-500/50 hover:bg-amber-500/20 text-amber-700 dark:text-amber-500 font-medium"
-                  onClick={handleStopImpersonation}
-                >
-                  Sair da Visualização
-                </Button>
-              </div>
-            )}
-            {/* ═══ ALERTA DE INTEGRAÇÃO PARADA ═══ */}
-            {(() => {
-              const config = whatsappStatusQuery?.data;
-              if (!config?.easydental_usuario || !config?.ultima_sync_sucesso) return null;
-              const diasSemSync = Math.floor((Date.now() - new Date(config.ultima_sync_sucesso).getTime()) / (1000 * 60 * 60 * 24));
-              if (diasSemSync < 7) return null;
-              return (
-                <div className="mx-4 mb-3 rounded-lg border-2 border-red-400 bg-gradient-to-r from-red-50 to-red-100 dark:from-red-950/40 dark:to-red-900/30 p-3 flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-2 duration-500">
-                  <div className="flex items-center gap-2">
-                    <span className="text-red-500 text-lg">🔴</span>
-                    <div>
-                      <p className="text-sm font-semibold text-red-700 dark:text-red-400">
-                        Integração Easy Dental parada há {diasSemSync} dias
-                      </p>
-                      <p className="text-xs text-red-600/80 dark:text-red-400/70">
-                        Verifique as credenciais em Configurações → Sistema ou ignore se estiver em férias/obras.
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs border-red-300 text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-400"
-                    onClick={() => navigate("/configuracoes?tab=sistema")}
-                  >
-                    Verificar
-                  </Button>
-                </div>
-              );
-            })()}
             {children}
           </div>
         </main>
