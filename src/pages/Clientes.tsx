@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Eye, Users, Phone, Calendar, Stethoscope, Loader2, X } from "lucide-react";
+import { Eye, Users, Phone, Calendar, Stethoscope, Loader2, X, MessageSquare, Send } from "lucide-react";
 import { useClinica } from "@/contexts/ClinicaContext";
 
 const PAGE_SIZE = 25;
@@ -304,6 +304,23 @@ function ClienteDetailDialog({
     enabled: open && !!cliente?.paciente,
   });
 
+  const { data: mensagens, isLoading: loadingMsgs } = useQuery({
+    queryKey: ["cliente-mensagens", cliente?.id],
+    queryFn: async () => {
+      if (!cliente?.id || !clinicaId) return [];
+      const { data, error } = await (supabase as any)
+        .from("fila_envios")
+        .select("id, mensagem, data_programada, status, origem, created_at")
+        .eq("clinica_id", clinicaId)
+        .eq("paciente_id", cliente.id)
+        .order("data_programada", { ascending: true });
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: open && !!cliente?.id,
+  });
+
   if (!cliente) return null;
 
   return (
@@ -349,6 +366,11 @@ function ClienteDetailDialog({
             <Stethoscope className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
             <p className="text-xs font-medium">{procedimentos?.length ?? "..."}</p>
             <p className="text-[10px] text-muted-foreground">Procedimentos</p>
+          </div>
+          <div className="rounded-lg border p-3 text-center">
+            <MessageSquare className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
+            <p className="text-xs font-medium">{mensagens?.length ?? "..."}</p>
+            <p className="text-[10px] text-muted-foreground">Mensagens</p>
           </div>
         </div>
 
@@ -422,6 +444,85 @@ function ClienteDetailDialog({
               {/* Summary */}
               <div className="text-[10px] text-muted-foreground text-right pt-1 border-t">
                 {procedimentos.length} procedimento{procedimentos.length !== 1 ? "s" : ""} registrado{procedimentos.length !== 1 ? "s" : ""}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Mensagens Enviadas */}
+        <div className="mt-4">
+          <h3 className="text-sm font-semibold flex items-center gap-1.5 mb-3">
+            <Send className="h-4 w-4 text-primary" />
+            Mensagens Enviadas
+          </h3>
+
+          {loadingMsgs && (
+            <div className="flex items-center justify-center py-4 gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-xs">Carregando mensagens...</span>
+            </div>
+          )}
+
+          {!loadingMsgs && (!mensagens || mensagens.length === 0) && (
+            <p className="text-xs text-muted-foreground text-center py-4">
+              Nenhuma mensagem enviada para este paciente.
+            </p>
+          )}
+
+          {!loadingMsgs && mensagens && mensagens.length > 0 && (
+            <div className="relative pl-5">
+              <div className="absolute left-[7px] top-1 bottom-1 w-0.5 bg-muted-foreground/15" />
+              <div className="space-y-3">
+                {mensagens.map((msg: any, i: number) => {
+                  const statusColor = msg.status === "enviado"
+                    ? "border-green-500 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400"
+                    : msg.status === "erro"
+                    ? "border-red-400 bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400"
+                    : "border-yellow-400 bg-yellow-50 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-400";
+
+                  const origemLabel: Record<string, string> = {
+                    aniversario_mes: "🎂 Aniversário",
+                    aniversario_dia: "🎂 Aniv. Dia",
+                    procedimento: "🦷 Procedimento",
+                    massa: "📢 Disparo em massa",
+                    manual: "✍️ Manual",
+                  };
+
+                  return (
+                    <div key={msg.id} className="relative">
+                      <div className={`absolute -left-5 top-1.5 w-2.5 h-2.5 rounded-full border-2 ${
+                        msg.status === "enviado"
+                          ? "bg-green-500 border-green-500"
+                          : msg.status === "erro"
+                          ? "bg-red-400 border-red-400"
+                          : "bg-yellow-400 border-yellow-400"
+                      }`} />
+                      <div className={`rounded-lg border p-3 ${
+                        msg.status === "enviado" ? "border-green-200/50 bg-green-50/30 dark:bg-green-950/10" : "bg-muted/20"
+                      }`}>
+                        <div className="flex items-center justify-between mb-1.5 gap-2">
+                          <p className="text-[10px] font-semibold text-primary tabular-nums">
+                            {new Date(msg.data_programada).toLocaleDateString("pt-BR")} {new Date(msg.data_programada).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${statusColor}`}>
+                              {msg.status}
+                            </Badge>
+                            <span className="text-[9px] text-muted-foreground">
+                              {origemLabel[msg.origem] ?? msg.origem}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                          {msg.mensagem}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="text-[10px] text-muted-foreground text-right pt-1 border-t mt-3">
+                {mensagens.length} mensagem{mensagens.length !== 1 ? "ns" : ""}
               </div>
             </div>
           )}
