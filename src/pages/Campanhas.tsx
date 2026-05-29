@@ -550,17 +550,23 @@ export function Campanhas() {
       
       if (erroClientes) throw erroClientes;
 
-      const insertsFila = clientes.map((c: any) => ({
-        paciente_id: c.id,
-        paciente_nome: c.paciente,
-        telefone: c.telefone,
-        mensagem: mensagem,
-        data_programada: dataAgendada.toISOString(),
-        status: "pendente",
-        custo: 1,
-        origem: "massa",
-        clinica_id: clinica?.id,
-      }));
+      const insertsFila = clientes.map((c: any) => {
+        const nomeCompleto = (c.paciente ?? "").trim();
+        const primeiroNome = nomeCompleto.split(" ")[0] ?? "";
+        const nomeFormatado = primeiroNome.charAt(0).toUpperCase() + primeiroNome.slice(1).toLowerCase();
+        const mensagemFinal = mensagem.replace(/\{nome\}/gi, nomeFormatado);
+        return {
+          paciente_id: c.id,
+          paciente_nome: c.paciente,
+          telefone: c.telefone,
+          mensagem: mensagemFinal,
+          data_programada: dataAgendada.toISOString(),
+          status: "pendente",
+          custo: 1,
+          origem: "massa",
+          clinica_id: clinica?.id,
+        };
+      });
 
       const { error: erroFila } = await (supabase as any).from("fila_envios").insert(insertsFila);
       if (erroFila) throw erroFila;
@@ -1269,12 +1275,12 @@ export function Campanhas() {
                   <Textarea
                     id="mensagem-massa"
                     rows={5}
-                    placeholder="Olá {{nome}}, estamos com condições especiais para sua próxima consulta…"
+                    placeholder="Olá {nome}, estamos com condições especiais para sua próxima consulta…"
                     value={mensagemMassa}
                     onChange={(event) => setMensagemMassa(event.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {"Use {{nome}}, {{procedimento}} e {{data_procedimento}} para personalizar automaticamente a mensagem."}
+                    {"Use {nome}, {procedimento} e {data_procedimento} para personalizar automaticamente a mensagem."}
                   </p>
                   <p className="text-[11px] text-muted-foreground">{mensagemMassa.length} caracteres</p>
                 </div>
@@ -1807,7 +1813,7 @@ export function Campanhas() {
                                 }}
                               />
                               <p className="text-[11px] text-muted-foreground">
-                                {"Use {{nome}}, {{procedimento}} e {{data_procedimento}} para personalizar automaticamente a mensagem."}
+                                {"Use {nome}, {procedimento} e {data_procedimento} para personalizar automaticamente a mensagem."}
                               </p>
                             </div>
                           </>
@@ -1865,7 +1871,7 @@ export function Campanhas() {
                         onChange={(event) => setMensagemAniversarioDia(event.target.value)}
                         onBlur={() => void salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_DIA, mensagemAniversarioDia, aniversarioDiaAtivo)}
                       />
-                      <p className="text-[11px] text-muted-foreground">{"Use {{nome}} na mensagem para inserir automaticamente o nome do paciente."}</p>
+                      <p className="text-[11px] text-muted-foreground">{"Use {nome} na mensagem para inserir automaticamente o primeiro nome do paciente."}</p>
                     </div>
                   </div>
 
@@ -1901,7 +1907,7 @@ export function Campanhas() {
                         onChange={(event) => setMensagemAniversarioMes(event.target.value)}
                         onBlur={() => void salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_MES, mensagemAniversarioMes, aniversarioMesAtivo)}
                       />
-                      <p className="text-[11px] text-muted-foreground">{"Use {{nome}} na mensagem para inserir automaticamente o nome do paciente."}</p>
+                      <p className="text-[11px] text-muted-foreground">{"Use {nome} na mensagem para inserir automaticamente o primeiro nome do paciente."}</p>
                     </div>
                   </div>
                 </div>
