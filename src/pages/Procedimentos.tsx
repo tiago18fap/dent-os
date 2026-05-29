@@ -285,9 +285,7 @@ const Procedimentos = () => {
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
         procedimentoNome={selectedProc}
-        clinicaId={clinica?.id}
-        isSuperAdmin={isSuperAdmin}
-        isImpersonating={isImpersonating}
+        rawData={rawData ?? []}
       />
     </AppLayout>
   );
@@ -301,36 +299,18 @@ function ProcedimentoDetailDialog({
   open,
   onClose,
   procedimentoNome,
-  clinicaId,
-  isSuperAdmin,
-  isImpersonating,
+  rawData,
 }: {
   open: boolean;
   onClose: () => void;
   procedimentoNome: string | null;
-  clinicaId?: string;
-  isSuperAdmin?: boolean;
-  isImpersonating?: boolean;
+  rawData: any[];
 }) {
-  const { data: pacientes, isLoading } = useQuery({
-    queryKey: ["procedimento-pacientes", procedimentoNome, clinicaId],
-    queryFn: async () => {
-      if (!procedimentoNome) return [];
-      let query = (supabase as any)
-        .from("procedimentos")
-        .select("nome_paciente, prestador, data_finalizacao")
-        .eq("procedimento", procedimentoNome);
-
-      if (!isSuperAdmin || isImpersonating) {
-        if (clinicaId) query = query.eq("clinica_id", clinicaId);
-      }
-
-      const { data, error } = await query.order("data_finalizacao", { ascending: false });
-      if (error) throw error;
-      return data ?? [];
-    },
-    enabled: open && !!procedimentoNome,
-  });
+  // Filtrar dos dados já carregados (evita query com caracteres especiais)
+  const pacientes = useMemo(() => {
+    if (!procedimentoNome || !rawData) return [];
+    return rawData.filter((p: any) => p.procedimento === procedimentoNome);
+  }, [procedimentoNome, rawData]);
 
   if (!procedimentoNome) return null;
 
@@ -376,12 +356,12 @@ function ProcedimentoDetailDialog({
         <div className="grid grid-cols-2 gap-3 mt-1">
           <div className="rounded-lg border p-3 text-center">
             <Users className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
-            <p className="text-lg font-bold">{isLoading ? "..." : totalPacientes}</p>
+            <p className="text-lg font-bold">{totalPacientes}</p>
             <p className="text-[10px] text-muted-foreground">Pacientes</p>
           </div>
           <div className="rounded-lg border p-3 text-center">
             <CalendarIcon className="h-4 w-4 mx-auto text-muted-foreground mb-1" />
-            <p className="text-lg font-bold">{isLoading ? "..." : (pacientes?.length ?? 0)}</p>
+            <p className="text-lg font-bold">{pacientes.length}</p>
             <p className="text-[10px] text-muted-foreground">Realizações</p>
           </div>
         </div>
@@ -393,18 +373,11 @@ function ProcedimentoDetailDialog({
             Linha do Tempo
           </h3>
 
-          {isLoading && (
-            <div className="flex items-center justify-center py-6 gap-2 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span className="text-xs">Carregando...</span>
-            </div>
-          )}
-
-          {!isLoading && porData.length === 0 && (
+          {porData.length === 0 && (
             <p className="text-xs text-muted-foreground text-center py-4">Nenhum registro encontrado.</p>
           )}
 
-          {!isLoading && porData.length > 0 && (
+          {porData.length > 0 && (
             <div className="relative pl-5">
               {/* Linha vertical */}
               <div className="absolute left-[7px] top-1 bottom-1 w-0.5 bg-muted-foreground/15" />
