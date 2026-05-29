@@ -41,6 +41,7 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
   const { toast } = useToast();
   const whatsappStatusQuery = useWhatsappStatus();
   const { isSuperAdmin, isImpersonating } = useClinica();
+  const isAutomaticImport = Boolean(whatsappStatusQuery.data?.easydental_usuario);
   const [impersonatedClinicaName, setImpersonatedClinicaName] = useState<string | null>(null);
 
   useEffect(() => {
@@ -118,6 +119,7 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                {!isAutomaticImport && (
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     asChild
@@ -130,6 +132,7 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                )}
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     asChild

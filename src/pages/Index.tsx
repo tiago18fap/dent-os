@@ -1,12 +1,15 @@
 import { AppLayout } from "@/layouts/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Upload, Megaphone, Gift, FileSpreadsheet, Calendar } from "lucide-react";
+import { ArrowRight, Upload, Megaphone, Gift, FileSpreadsheet, Calendar, RefreshCcw } from "lucide-react";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useWhatsappStatus } from "@/hooks/use-whatsapp-status";
 
 const Index = () => {
   const navigate = useNavigate();
+  const whatsappStatusQuery = useWhatsappStatus();
+  const isAutomaticImport = Boolean(whatsappStatusQuery.data?.easydental_usuario);
 
   useEffect(() => {
     document.title = "Dashboard DentOS";
@@ -67,14 +70,23 @@ const Index = () => {
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-muted-foreground">
             <p>
-              Conecte o seu ERP odontológico ao DentOS para importar clientes e procedimentos e automatizar a
-              comunicação com seus pacientes.
+              {isAutomaticImport
+                ? "Seu sistema está configurado para importar dados automaticamente via Easy Dental. Gerencie suas campanhas e acompanhe os resultados."
+                : "Conecte o seu ERP odontológico ao DentOS para importar clientes e procedimentos e automatizar a comunicação com seus pacientes."}
             </p>
             <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
-              <Button size="sm" onClick={() => navigate("/importacoes")}>
-                <Upload className="mr-2 h-4 w-4" />
-                Importar dados agora
-              </Button>
+              {!isAutomaticImport && (
+                <Button size="sm" onClick={() => navigate("/importacoes")}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Importar dados agora
+                </Button>
+              )}
+              {isAutomaticImport && (
+                <Button size="sm" variant="outline" onClick={() => navigate("/configuracoes?tab=sistema")}>
+                  <RefreshCcw className="mr-2 h-4 w-4" />
+                  Ver integração automática
+                </Button>
+              )}
               <Button size="sm" variant="outline" onClick={() => navigate("/campanhas")}>
                 <Megaphone className="mr-2 h-4 w-4" />
                 Criar campanha
