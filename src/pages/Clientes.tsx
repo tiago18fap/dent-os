@@ -6,16 +6,19 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Eye, Users, Phone, Calendar, Stethoscope, Loader2, X, MessageSquare, Send } from "lucide-react";
+import { Eye, Users, Phone, Calendar, Stethoscope, Loader2, X, MessageSquare, Send, Ban, Trash2, UserCheck, ShieldAlert } from "lucide-react";
 import { useClinica } from "@/contexts/ClinicaContext";
+import { useToast } from "@/hooks/use-toast";
 
 const PAGE_SIZE = 25;
 
 const Clientes = () => {
   const { clinica, loading, isSuperAdmin, isImpersonating } = useClinica();
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -36,7 +39,7 @@ const Clientes = () => {
   }, [searchTerm]);
 
   // Server-side paginated query
-  const { data: queryResult, isLoading, error } = useQuery({
+  const { data: queryResult, isLoading, error, refetch: refetchClientes } = useQuery({
     queryKey: ["clientes", clinica?.id, isSuperAdmin, isImpersonating, debouncedSearch, page],
     queryFn: async () => {
       let query = supabase
@@ -89,6 +92,90 @@ const Clientes = () => {
     return pages;
   }, [page, totalPages]);
 
+  // Query para solicitações de opt-out (saída da lista)
+  const optOutQuery = useQuery({
+    queryKey: ["solicitacoes_optout", clinica?.id, isSuperAdmin, isImpersonating],
+    queryFn: async () => {
+      let query = supabase
+        .from("solicitacoes_optout")
+        .select("id, paciente_nome, telefone, mensagem_recebida, created_at, cliente_id");
+
+      if (!isSuperAdmin || isImpersonating) {
+        if (clinica?.id) {
+          query = query.eq("clinica_id", clinica.id);
+        } else {
+          return [];
+        }
+      }
+
+      const { data, error } = await query.order("created_at", { ascending: false });
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !loading,
+  });
+
+  const optOutList = optOutQuery.data ?? [];
+
+  const handleReactivar = async (logId: string, clienteId: string | null) => {
+    try {
+      if (clienteId) {
+        const { error: updateError } = await supabase
+          .from("clientes")
+          .update({ situacao: "Ativo" })
+          .eq("id", clienteId);
+
+        if (updateError) throw updateError;
+      }
+
+      const { error: deleteError } = await supabase
+        .from("solicitacoes_optout")
+        .delete()
+        .eq("id", logId);
+
+      if (deleteError) throw deleteError;
+
+      toast({
+        title: "Paciente reativado!",
+        description: "O paciente foi definido como Ativo e voltará a receber mensagens.",
+      });
+
+      optOutQuery.refetch();
+      refetchClientes();
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao reativar paciente",
+        description: err.message || "Tente novamente mais tarde.",
+      });
+    }
+  };
+
+  const handleDeleteOptOut = async (logId: string) => {
+    try {
+      const { error } = await supabase
+        .from("solicitacoes_optout")
+        .delete()
+        .eq("id", logId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Registro removido",
+        description: "O registro de solicitação de saída foi excluído.",
+      });
+
+      optOutQuery.refetch();
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao excluir registro",
+        description: err.message || "Tente novamente mais tarde.",
+      });
+    }
+  };
+
   const handleOpenDetail = (cliente: any) => {
     setSelectedCliente(cliente);
     setDetailOpen(true);
@@ -96,154 +183,275 @@ const Clientes = () => {
 
   return (
     <AppLayout>
-      <section className="space-y-4" aria-label="Lista de clientes/pacientes">
-        <Card>
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary" />
-              <CardTitle>Clientes / Pacientes</CardTitle>
-              {!isLoading && (
-                <Badge variant="secondary" className="ml-2 text-xs">
-                  {totalItems.toLocaleString("pt-BR")} total
+      <section className="space-y-4" aria-label="Gestão de Clientes e Opt-Out">
+        <Tabs defaultValue="lista-clientes" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 max-w-md bg-muted/60 p-1">
+            <TabsTrigger value="lista-clientes" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              <span>Lista de Pacientes</span>
+            </TabsTrigger>
+            <TabsTrigger value="solicitacoes-saida" className="flex items-center gap-2 relative">
+              <Ban className="h-4 w-4 text-destructive" />
+              <span>Solicitações de Saída</span>
+              {optOutList.length > 0 && (
+                <Badge variant="destructive" className="ml-1 px-1.5 py-0 text-[10px]">
+                  {optOutList.length}
                 </Badge>
               )}
-            </div>
-            <div className="w-full max-w-xs">
-              <Input
-                type="search"
-                placeholder="Buscar por nome, código ou telefone..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="h-9 bg-background"
-                aria-label="Buscar clientes"
-              />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {isLoading && (
-              <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm">Carregando clientes…</span>
-              </div>
-            )}
-            {error && (
-              <p className="text-sm text-destructive">
-                Ocorreu um erro ao carregar os clientes. Tente novamente em instantes.
-              </p>
-            )}
-            {!isLoading && !error && clientes.length === 0 && (
-              <p className="text-sm text-muted-foreground py-4 text-center">Nenhum cliente encontrado.</p>
-            )}
-            {!isLoading && !error && clientes.length > 0 && (
-              <div className="space-y-3">
-                <div className="overflow-x-auto rounded-md border bg-card">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Paciente</TableHead>
-                        <TableHead>Telefone</TableHead>
-                        <TableHead className="hidden sm:table-cell">Código</TableHead>
-                        <TableHead className="hidden sm:table-cell">Nascimento</TableHead>
-                        <TableHead className="hidden sm:table-cell">Situação</TableHead>
-                        <TableHead className="hidden md:table-cell">Prestador</TableHead>
-                        <TableHead className="w-10">Detalhes</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {clientes.map((cliente) => (
-                        <TableRow key={cliente.id} className="group">
-                          <TableCell className="font-medium">{cliente.paciente}</TableCell>
-                          <TableCell className="tabular-nums text-xs">
-                            {cliente.telefone ? formatPhone(cliente.telefone) : "-"}
-                          </TableCell>
-                          <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
-                            {cliente.codigo ?? "-"}
-                          </TableCell>
-                          <TableCell className="hidden sm:table-cell text-xs">
-                            {cliente.nascimento
-                              ? new Date(cliente.nascimento + "T00:00:00").toLocaleDateString("pt-BR")
-                              : "-"}
-                          </TableCell>
-                          <TableCell className="hidden sm:table-cell">
-                            <Badge
-                              variant="outline"
-                              className={`text-[10px] ${
-                                cliente.situacao === "Ativo"
-                                  ? "border-green-500 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 dark:border-green-700"
-                                  : "border-gray-200 bg-gray-50 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500 dark:border-gray-700"
-                              }`}
-                            >
-                              {cliente.situacao ?? "-"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                            {cliente.prestador ?? "-"}
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 opacity-50 group-hover:opacity-100 transition-opacity"
-                              onClick={() => handleOpenDetail(cliente)}
-                              title="Ver detalhes e procedimentos"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+            </TabsTrigger>
+          </TabsList>
 
-                {/* Paginação */}
-                <div className="flex flex-col items-center justify-between gap-3 text-xs text-muted-foreground sm:flex-row">
-                  <span className="w-full text-center sm:w-auto sm:text-left">
-                    Mostrando {totalItems === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–
-                    {Math.min(page * PAGE_SIZE, totalItems)} de {totalItems.toLocaleString("pt-BR")}
-                  </span>
-                  {totalPages > 1 && (
-                    <Pagination className="w-full justify-center sm:w-auto">
-                      <PaginationContent>
-                        <PaginationItem>
-                          <PaginationPrevious
-                            href="#"
-                            onClick={(e) => { e.preventDefault(); setPage((p) => Math.max(1, p - 1)); }}
-                            aria-disabled={page === 1}
-                            className={page === 1 ? "pointer-events-none opacity-50" : ""}
-                          />
-                        </PaginationItem>
-                        {pagesToShow.map((pn, i) => (
-                          <PaginationItem key={`${pn}-${i}`}>
-                            {pn === "ellipsis" ? (
-                              <PaginationEllipsis />
-                            ) : (
-                              <PaginationLink
-                                href="#"
-                                isActive={pn === page}
-                                onClick={(e) => { e.preventDefault(); setPage(pn as number); }}
-                              >
-                                {pn}
-                              </PaginationLink>
-                            )}
-                          </PaginationItem>
-                        ))}
-                        <PaginationItem>
-                          <PaginationNext
-                            href="#"
-                            onClick={(e) => { e.preventDefault(); setPage((p) => Math.min(totalPages, p + 1)); }}
-                            aria-disabled={page === totalPages}
-                            className={page === totalPages ? "pointer-events-none opacity-50" : ""}
-                          />
-                        </PaginationItem>
-                      </PaginationContent>
-                    </Pagination>
+          <TabsContent value="lista-clientes" className="mt-4">
+            <Card>
+              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-primary" />
+                  <CardTitle>Clientes / Pacientes</CardTitle>
+                  {!isLoading && (
+                    <Badge variant="secondary" className="ml-2 text-xs">
+                      {totalItems.toLocaleString("pt-BR")} total
+                    </Badge>
                   )}
                 </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                <div className="w-full max-w-xs">
+                  <Input
+                    type="search"
+                    placeholder="Buscar por nome, código ou telefone..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="h-9 bg-background"
+                    aria-label="Buscar clientes"
+                  />
+                </div>
+              </CardHeader>
+              <CardContent>
+                {isLoading && (
+                  <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">Carregando clientes…</span>
+                  </div>
+                )}
+                {error && (
+                  <p className="text-sm text-destructive">
+                    Ocorreu um erro ao carregar os clientes. Tente novamente em instantes.
+                  </p>
+                )}
+                {!isLoading && !error && clientes.length === 0 && (
+                  <p className="text-sm text-muted-foreground py-4 text-center">Nenhum cliente encontrado.</p>
+                )}
+                {!isLoading && !error && clientes.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="overflow-x-auto rounded-md border bg-card">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Paciente</TableHead>
+                            <TableHead>Telefone</TableHead>
+                            <TableHead className="hidden sm:table-cell">Código</TableHead>
+                            <TableHead className="hidden sm:table-cell">Nascimento</TableHead>
+                            <TableHead className="hidden sm:table-cell">Situação</TableHead>
+                            <TableHead className="hidden md:table-cell">Prestador</TableHead>
+                            <TableHead className="w-10">Detalhes</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {clientes.map((cliente) => (
+                            <TableRow key={cliente.id} className="group">
+                              <TableCell className="font-medium">{cliente.paciente}</TableCell>
+                              <TableCell className="tabular-nums text-xs">
+                                {cliente.telefone ? formatPhone(cliente.telefone) : "-"}
+                              </TableCell>
+                              <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
+                                {cliente.codigo ?? "-"}
+                              </TableCell>
+                              <TableCell className="hidden sm:table-cell text-xs">
+                                {cliente.nascimento
+                                  ? new Date(cliente.nascimento + "T00:00:00").toLocaleDateString("pt-BR")
+                                  : "-"}
+                              </TableCell>
+                              <TableCell className="hidden sm:table-cell">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[10px] ${
+                                    cliente.situacao === "Ativo"
+                                      ? "border-green-500 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400 dark:border-green-700"
+                                      : cliente.situacao === "Desabilitado"
+                                      ? "border-red-300 bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400 dark:border-red-700"
+                                      : "border-gray-200 bg-gray-50 text-gray-400 dark:bg-gray-800/30 dark:text-gray-500 dark:border-gray-700"
+                                  }`}
+                                >
+                                  {cliente.situacao ?? "-"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
+                                {cliente.prestador ?? "-"}
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 opacity-50 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => handleOpenDetail(cliente)}
+                                  title="Ver detalhes e procedimentos"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {/* Paginação */}
+                    <div className="flex flex-col items-center justify-between gap-3 text-xs text-muted-foreground sm:flex-row">
+                      <span className="w-full text-center sm:w-auto sm:text-left">
+                        Mostrando {totalItems === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–
+                        {Math.min(page * PAGE_SIZE, totalItems)} de {totalItems.toLocaleString("pt-BR")}
+                      </span>
+                      {totalPages > 1 && (
+                        <Pagination className="w-full justify-center sm:w-auto">
+                          <PaginationContent>
+                            <PaginationItem>
+                              <PaginationPrevious
+                                href="#"
+                                onClick={(e) => { e.preventDefault(); setPage((p) => Math.max(1, p - 1)); }}
+                                aria-disabled={page === 1}
+                                className={page === 1 ? "pointer-events-none opacity-50" : ""}
+                              />
+                            </PaginationItem>
+                            {pagesToShow.map((pn, i) => (
+                              <PaginationItem key={`${pn}-${i}`}>
+                                {pn === "ellipsis" ? (
+                                  <PaginationEllipsis />
+                                ) : (
+                                  <PaginationLink
+                                    href="#"
+                                    isActive={pn === page}
+                                    onClick={(e) => { e.preventDefault(); setPage(pn as number); }}
+                                  >
+                                    {pn}
+                                  </PaginationLink>
+                                )}
+                              </PaginationItem>
+                            ))}
+                            <PaginationItem>
+                              <PaginationNext
+                                href="#"
+                                onClick={(e) => { e.preventDefault(); setPage((p) => Math.min(totalPages, p + 1)); }}
+                                aria-disabled={page === totalPages}
+                                className={page === totalPages ? "pointer-events-none opacity-50" : ""}
+                              />
+                            </PaginationItem>
+                          </PaginationContent>
+                        </Pagination>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="solicitacoes-saida" className="mt-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="h-5 w-5 text-destructive" />
+                  <div>
+                    <CardTitle className="text-lg">Solicitações de Remoção da Lista (Opt-Out / LGPD)</CardTitle>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Pacientes que enviaram mensagens solicitando sair da lista ou reclamando. Eles foram automaticamente marcados como **Desabilitados** e não receberão novas mensagens do sistema.
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {optOutQuery.isLoading ? (
+                  <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">Carregando solicitações…</span>
+                  </div>
+                ) : optOutList.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4 text-center">
+                    Nenhuma solicitação de saída registrada.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto rounded-md border bg-card">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Paciente</TableHead>
+                          <TableHead>Telefone</TableHead>
+                          <TableHead>Mensagem Recebida</TableHead>
+                          <TableHead className="hidden sm:table-cell">Data da Solicitação</TableHead>
+                          <TableHead className="w-24 text-right">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {optOutList.map((log: any) => (
+                          <TableRow key={log.id} className="group">
+                            <TableCell className="font-medium text-xs">
+                              {log.paciente_nome}
+                              {log.cliente_id ? (
+                                <Badge variant="secondary" className="ml-2 bg-blue-50 text-blue-700 text-[9px] py-0.5 border-blue-200">
+                                  Cadastrado
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="ml-2 text-[9px] text-muted-foreground py-0.5 border-gray-200 bg-gray-50">
+                                  Não Cadastrado
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="tabular-nums text-xs">
+                              {log.telefone ? formatPhone(log.telefone) : "-"}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-xs truncate" title={log.mensagem_recebida}>
+                              {log.mensagem_recebida}
+                            </TableCell>
+                            <TableCell className="hidden sm:table-cell text-xs">
+                              {new Date(log.created_at).toLocaleString("pt-BR", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {log.cliente_id && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                    onClick={() => handleReactivar(log.id, log.cliente_id)}
+                                    title="Reativar paciente e voltar a enviar mensagens"
+                                  >
+                                    <UserCheck className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-destructive hover:text-destructive hover:bg-red-50"
+                                  onClick={() => handleDeleteOptOut(log.id)}
+                                  title="Excluir este log de solicitação"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </section>
 
       {/* Dialog de Detalhes do Cliente */}
