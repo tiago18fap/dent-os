@@ -26,12 +26,91 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [clinicaNome, setClinicaNome] = useState("");
+  const [cnpj, setCnpj] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const [iniciarTrial, setIniciarTrial] = useState(false);
+  const [paymentType, setPaymentType] = useState<'assinatura' | 'avulso'>('assinatura');
+  const [cardNum, setCardNum] = useState("");
+  const [cardName, setCardName] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [cardCvv, setCardCvv] = useState("");
+  const [mpPublicKey, setMpPublicKey] = useState("");
   
   // Verifica se veio da Landing com mode=signup ou mode=login
   const initialMode = searchParams.get("mode") === "signup" ? true : false;
   const [isSignUp, setIsSignUp] = useState(initialMode);
   const plano = searchParams.get("plano");
+
+  useEffect(() => {
+    // Carregar chave pública do Mercado Pago
+    const fetchKey = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("mercadopago-public-key");
+        if (!error && data?.publicKey) {
+          setMpPublicKey(data.publicKey);
+        }
+      } catch (e) {
+        console.error("Failed to load public key", e);
+      }
+    };
+    if (isSignUp) {
+      fetchKey();
+    }
+  }, [isSignUp]);
+
+  useEffect(() => {
+    if (!isSignUp) return;
+    const script = document.createElement("script");
+    script.src = "https://sdk.mercadopago.com/js/v2";
+    script.async = true;
+    document.body.appendChild(script);
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, [isSignUp]);
+
+  const tokenizeCard = async () => {
+    if (!mpPublicKey || mpPublicKey === "APP_USR-dummy-public-key" || !(window as any).MercadoPago) {
+      console.warn("Mercado Pago SDK não carregado ou chave dummy. Usando token simulado.");
+      return `mock_token_${Date.now()}`;
+    }
+    
+    try {
+      const mp = new (window as any).MercadoPago(mpPublicKey);
+      const response = await mp.createCardToken({
+        cardNumber: cardNum.replace(/\s+/g, ""),
+        cardholderName: cardName,
+        cardExpirationMonth: cardExpiry.split("/")[0],
+        cardExpirationYear: "20" + cardExpiry.split("/")[1],
+        securityCode: cardCvv,
+      });
+      return response.id;
+    } catch (e) {
+      console.error("Erro na tokenização do cartão:", e);
+      return `mock_token_${Date.now()}`;
+    }
+  };
+
+  const formatCnpj = (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+    if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+    if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12, 14)}`;
+  };
+
+  const formatCardNumber = (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    return digits.replace(/(\d{4})(?=\d)/g, "$1 ").slice(0, 19);
+  };
+
+  const formatCardExpiry = (value: string) => {
+    const clean = value.replace(/\D/g, "");
+    if (clean.length <= 2) return clean;
+    return `${clean.slice(0, 2)}/${clean.slice(2, 4)}`;
+  };
 
   useEffect(() => {
     if (plano) {
@@ -141,6 +220,28 @@ const Auth = () => {
       return;
     }
 
+    const cleanCnpj = cnpj.replace(/\D/g, "");
+    if (!cleanCnpj || cleanCnpj.length !== 14) {
+      toast({
+        variant: "destructive",
+        title: "CNPJ inválido",
+        description: "Por favor, informe um CNPJ válido com 14 dígitos.",
+      });
+      return;
+    }
+
+    let cardToken = "";
+    if (!iniciarTrial) {
+      if (!cardNum || !cardName || !cardExpiry || !cardCvv) {
+        toast({
+          variant: "destructive",
+          title: "Dados de cartão incompletos",
+          description: "Por favor, preencha todos os campos do cartão de crédito para a assinatura.",
+        });
+        return;
+      }
+    }
+
     setLoading(true);
  
     try {
@@ -159,7 +260,13 @@ const Auth = () => {
           description: "Este email já possui uma conta. Faça login para acessar o sistema.",
         });
         setIsSignUp(false);
+        setLoading(false);
         return;
+      }
+
+      // Se for pagar com cartão, tokeniza o cartão no frontend antes do signUp
+      if (!iniciarTrial) {
+        cardToken = await tokenizeCard();
       }
  
       const { error } = await supabase.auth.signUp({
@@ -171,6 +278,7 @@ const Auth = () => {
             full_name: fullName.trim(),
             clinica_nome: clinicaNome.trim(),
             plano_pretendido: plano || "bronze",
+            cnpj: cleanCnpj,
           },
         },
       });
@@ -198,11 +306,41 @@ const Auth = () => {
           description,
         });
       } else {
-        toast({
-          title: "Conta criada",
-          description:
-            "Verifique seu email para confirmar o cadastro. Se não receber, verifique sua caixa de spam.",
-        });
+        if (!iniciarTrial) {
+          toast({
+            title: "Conta criada!",
+            description: "Processando o pagamento da sua assinatura...",
+          });
+
+          // Processar o pagamento transparente
+          const { data: payData, error: payError } = await supabase.functions.invoke("mercadopago-transparent", {
+            body: {
+              planoId: plano || "bronze",
+              tipo: paymentType,
+              token: cardToken,
+            },
+          });
+
+          if (payError || !payData?.success) {
+            toast({
+              variant: "warning",
+              title: "Assinatura pendente",
+              description: "Sua conta foi criada, mas o pagamento do cartão falhou. Liberamos 7 dias de teste para você regularizar no painel.",
+            });
+          } else {
+            toast({
+              title: "Assinatura ativa!",
+              description: "Seu plano foi ativado com sucesso!",
+            });
+          }
+        } else {
+          toast({
+            title: "Conta criada!",
+            description: "Seu teste grátis de 7 dias foi iniciado com sucesso.",
+          });
+        }
+        
+        navigate("/app");
       }
     } catch (err: any) {
       if (err instanceof z.ZodError) {
@@ -223,17 +361,18 @@ const Auth = () => {
     }
   };
 
+  const cardTitle = isSignUp ? (plano ? `Checkout - Plano ${plano.toUpperCase()}` : "Criar conta") : "Entrar";
+  const cardDescription = isSignUp 
+    ? (plano ? "Preencha seus dados cadastrais e de pagamento abaixo para ativar o plano." : "Preencha os dados para criar sua conta")
+    : "Use suas credenciais para acessar o sistema";
+
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-gradient-to-br from-background via-background to-muted/20 px-4">
-      <Card className="w-full max-w-md shadow-xl">
+    <div className="flex min-h-screen w-full items-center justify-center bg-gradient-to-br from-background via-background to-muted/20 px-4 py-8">
+      <Card className={`w-full ${isSignUp && plano ? 'max-w-xl' : 'max-w-md'} shadow-xl transition-all duration-300`}>
         <CardHeader className="space-y-4 text-center">
           <img src={logoFull} alt="DentOS" className="mx-auto h-12 w-auto" />
-          <CardTitle className="text-2xl">{isSignUp ? "Criar conta" : "Entrar"}</CardTitle>
-          <CardDescription>
-            {isSignUp
-              ? "Preencha os dados para criar sua conta"
-              : "Use suas credenciais para acessar o sistema"}
-          </CardDescription>
+          <CardTitle className="text-2xl font-bold text-foreground">{cardTitle}</CardTitle>
+          <CardDescription>{cardDescription}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={isSignUp ? handleSignUp : handleSignIn} className="space-y-4">
@@ -241,69 +380,198 @@ const Auth = () => {
               <>
                 {plano && (
                   <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 mb-2 text-center text-xs text-foreground">
-                    Você está se cadastrando no plano: <span className="font-bold capitalize text-primary">{plano}</span>
+                    Você está assinando o plano: <span className="font-bold capitalize text-primary">{plano}</span>
                   </div>
                 )}
-                <div className="space-y-2">
-                  <Label htmlFor="fullName">Nome completo</Label>
-                  <Input
-                    id="fullName"
-                    type="text"
-                    placeholder="Seu nome completo"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    required={isSignUp}
-                    disabled={loading}
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="fullName">Nome completo</Label>
+                    <Input
+                      id="fullName"
+                      type="text"
+                      placeholder="Seu nome completo"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      required={isSignUp}
+                      disabled={loading}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="clinicaNome">Nome da Clínica</Label>
+                    <Input
+                      id="clinicaNome"
+                      type="text"
+                      placeholder="Nome da sua clínica"
+                      value={clinicaNome}
+                      onChange={(e) => setClinicaNome(e.target.value)}
+                      required={isSignUp}
+                      disabled={loading}
+                    />
+                  </div>
                 </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="clinicaNome">Nome da Clínica</Label>
+                  <Label htmlFor="cnpj">CNPJ da Clínica</Label>
                   <Input
-                    id="clinicaNome"
+                    id="cnpj"
                     type="text"
-                    placeholder="Nome da sua clínica"
-                    value={clinicaNome}
-                    onChange={(e) => setClinicaNome(e.target.value)}
+                    placeholder="00.000.000/0000-00"
+                    value={cnpj}
+                    onChange={(e) => setCnpj(formatCnpj(e.target.value))}
                     required={isSignUp}
                     disabled={loading}
                   />
                 </div>
               </>
             )}
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="seu@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={loading}
-              />
+
+            <div className={`grid grid-cols-1 ${isSignUp && plano ? 'sm:grid-cols-2' : ''} gap-4`}>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="seu@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={loading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Senha</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                  minLength={6}
+                />
+                {isSignUp && (
+                  <p className="text-[10px] text-muted-foreground">Mínimo 6 caracteres.</p>
+                )}
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={loading}
-                minLength={6}
-              />
-              {isSignUp && (
-                <p className="text-xs text-muted-foreground">A senha deve ter no mínimo 6 caracteres.</p>
-              )}
-            </div>
+
+            {isSignUp && plano && (
+              <div className="border-t pt-4 space-y-4">
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                  💳 Dados de Pagamento (Mercado Pago Transparente)
+                </h3>
+
+                {/* Seletor de Tipo de Pagamento */}
+                {!iniciarTrial && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentType("assinatura")}
+                      className={`p-3 rounded-lg border text-left flex flex-col gap-1 transition-all ${
+                        paymentType === "assinatura"
+                          ? "border-primary bg-primary/5 text-primary"
+                          : "border-muted text-muted-foreground hover:bg-muted/30"
+                      }`}
+                    >
+                      <span className="text-xs font-bold">Assinatura Recorrente</span>
+                      <span className="text-[9px] font-normal leading-tight">Cobrança automática mensal</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentType("avulso")}
+                      className={`p-3 rounded-lg border text-left flex flex-col gap-1 transition-all ${
+                        paymentType === "avulso"
+                          ? "border-primary bg-primary/5 text-primary"
+                          : "border-muted text-muted-foreground hover:bg-muted/30"
+                      }`}
+                    >
+                      <span className="text-xs font-bold">Pagamento Avulso</span>
+                      <span className="text-[9px] font-normal leading-tight">Renovação manual mensal</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Checkbox de 7 Dias Grátis */}
+                <div className="flex items-center space-x-2 bg-muted/30 p-2.5 rounded-lg border border-dashed">
+                  <input
+                    id="trial-signup-checkbox"
+                    type="checkbox"
+                    checked={iniciarTrial}
+                    onChange={(e) => setIniciarTrial(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-[hsl(var(--login-primary))] focus:ring-[hsl(var(--login-primary))] cursor-pointer accent-[hsl(var(--login-primary))]"
+                  />
+                  <label htmlFor="trial-signup-checkbox" className="text-xs text-muted-foreground font-semibold cursor-pointer select-none">
+                    Iniciar com 7 dias grátis de teste (sem pagar agora)
+                  </label>
+                </div>
+
+                {/* Campos do Cartão (Escondidos no Trial) */}
+                {!iniciarTrial && (
+                  <div className="space-y-3 animate-in fade-in-50 duration-200">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cardNum">Número do Cartão</Label>
+                      <Input
+                        id="cardNum"
+                        type="text"
+                        placeholder="0000 0000 0000 0000"
+                        value={cardNum}
+                        onChange={(e) => setCardNum(formatCardNumber(e.target.value))}
+                        disabled={loading}
+                        required={!iniciarTrial}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cardName">Nome impresso no Cartão</Label>
+                      <Input
+                        id="cardName"
+                        type="text"
+                        placeholder="NOME COMO NO CARTÃO"
+                        value={cardName}
+                        onChange={(e) => setCardName(e.target.value.toUpperCase())}
+                        disabled={loading}
+                        required={!iniciarTrial}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="cardExpiry">Validade (MM/AA)</Label>
+                        <Input
+                          id="cardExpiry"
+                          type="text"
+                          placeholder="MM/AA"
+                          value={cardExpiry}
+                          onChange={(e) => setCardExpiry(formatCardExpiry(e.target.value))}
+                          disabled={loading}
+                          required={!iniciarTrial}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="cardCvv">CVV / Cód. Segurança</Label>
+                        <Input
+                          id="cardCvv"
+                          type="password"
+                          placeholder="123"
+                          value={cardCvv}
+                          onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                          disabled={loading}
+                          required={!iniciarTrial}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <Button
                type="submit"
-               className="w-full bg-[hsl(var(--login-primary))] hover:bg-[hsl(var(--login-primary))]/90 text-primary-foreground"
+               className="w-full bg-[hsl(var(--login-primary))] hover:bg-[hsl(var(--login-primary))]/90 text-primary-foreground font-semibold py-5"
                disabled={loading}
              >
-               {loading ? "Aguarde..." : isSignUp ? "Criar conta" : "Entrar"}
+               {loading ? "Processando..." : isSignUp ? (plano ? (iniciarTrial ? "Ativar 7 Dias Grátis & Criar Conta" : "Finalizar Checkout & Ativar Plano") : "Criar conta") : "Entrar"}
              </Button>
           </form>
 
