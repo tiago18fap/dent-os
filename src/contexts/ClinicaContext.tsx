@@ -75,8 +75,6 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
                       perfilData.role === "super_admin" || 
                       perfilData.role === "admin_master";
 
-      setIsSuperAdmin(isSuper);
-
       let targetClinicaId = perfilData.clinica_id;
       let targetPerfil = perfilData;
       let impActive = false;
@@ -94,6 +92,7 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
+      setIsSuperAdmin(isSuper && !impActive);
       setIsImpersonating(impActive);
       setPerfil(targetPerfil as Perfil);
 
