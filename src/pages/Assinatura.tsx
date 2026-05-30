@@ -48,6 +48,7 @@ const Assinatura = () => {
   const [selectedPlanoForCheckout, setSelectedPlanoForCheckout] = useState<string | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [processandoCheckout, setProcessandoCheckout] = useState(false);
+  const [checkoutMethod, setCheckoutMethod] = useState<"trial" | "pay">("trial");
 
   // Detecta checkout automático por query param ou localStorage
   useEffect(() => {
@@ -393,47 +394,131 @@ const Assinatura = () => {
       </div>
 
       <Dialog open={checkoutDialogOpen} onOpenChange={setCheckoutDialogOpen}>
-        <DialogContent className="sm:max-w-[450px] border-primary/20">
+        <DialogContent className="sm:max-w-[450px] border-primary/20 bg-background/95 backdrop-blur-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl font-bold">
               <CreditCard className="h-5 w-5 text-primary" />
-              <span>Escolha a forma de pagamento</span>
+              <span>Checkout do Plano</span>
             </DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground mt-1">
-              Selecione como deseja assinar o plano <strong className="capitalize">{selectedPlanoForCheckout}</strong>.
+              Escolha como deseja iniciar o plano <strong className="capitalize text-foreground font-semibold">{selectedPlanoForCheckout}</strong>.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-1 gap-4 pt-4">
-            <Button
-              className="h-24 flex flex-col items-start p-4 hover:border-primary border border-muted bg-card hover:bg-primary/5 transition-all text-left group"
-              variant="outline"
-              disabled={processandoCheckout}
-              onClick={() => iniciarCheckoutMP("assinatura")}
-            >
-              <div className="flex items-center justify-between w-full">
-                <span className="font-bold text-foreground group-hover:text-primary transition-colors">Assinatura Mensal Automática</span>
-                <Badge className="bg-primary/20 text-primary border-0 hover:bg-primary/20 text-[10px]">Recomendado</Badge>
-              </div>
-              <span className="text-xs text-muted-foreground font-normal mt-1 whitespace-normal">
-                Cobrança recorrente no Cartão de Crédito. Sem preocupações com renovação mensal.
-              </span>
-            </Button>
 
-            <Button
-              className="h-24 flex flex-col items-start p-4 hover:border-primary border border-muted bg-card hover:bg-primary/5 transition-all text-left group"
-              variant="outline"
-              disabled={processandoCheckout}
-              onClick={() => iniciarCheckoutMP("avulso")}
+          {/* Opções de Escolha: Teste Grátis vs Pagamento */}
+          <div className="grid grid-cols-2 gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setCheckoutMethod("trial")}
+              className={`p-3 rounded-lg border text-left transition-all flex flex-col justify-between h-20 outline-none ${
+                checkoutMethod === "trial"
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-muted bg-card hover:bg-accent/50"
+              }`}
             >
-              <div className="flex items-center justify-between w-full">
-                <span className="font-bold text-foreground group-hover:text-primary transition-colors">Pagamento Avulso Mensal</span>
-                <Badge variant="outline" className="text-[10px]">Pix ou Cartão</Badge>
-              </div>
-              <span className="text-xs text-muted-foreground font-normal mt-1 whitespace-normal">
-                Gere um Pix ou pague com cartão de crédito manualmente a cada mês para renovar sua conta.
-              </span>
-            </Button>
+              <span className="font-bold text-xs">7 Dias Grátis</span>
+              <span className="text-[10px] text-muted-foreground leading-snug">Experimente sem compromisso</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCheckoutMethod("pay")}
+              className={`p-3 rounded-lg border text-left transition-all flex flex-col justify-between h-20 outline-none ${
+                checkoutMethod === "pay"
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-muted bg-card hover:bg-accent/50"
+              }`}
+            >
+              <span className="font-bold text-xs">Pagar Agora</span>
+              <span className="text-[10px] text-muted-foreground leading-snug">Cartão de Crédito ou Pix</span>
+            </button>
           </div>
+
+          {/* Corpo do Checkout Dinâmico */}
+          {checkoutMethod === "trial" ? (
+            <div className="pt-4">
+              <Button
+                className="w-full bg-[hsl(var(--login-primary))] hover:bg-[hsl(var(--login-primary))]/90 text-primary-foreground font-semibold py-6 flex items-center justify-center gap-2"
+                onClick={async () => {
+                  if (!clinica?.id) return;
+                  try {
+                    setProcessandoCheckout(true);
+                    
+                    // Atualiza o status de pagamento e a validade da clínica no Supabase
+                    const { error } = await supabase
+                      .from("clinicas")
+                      .update({
+                        status_pagamento: "teste_gratis",
+                        data_fim_teste: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+                      })
+                      .eq("id", clinica.id);
+
+                    if (error) throw error;
+
+                    toast({
+                      title: "Período de teste ativado!",
+                      description: "Seus 7 dias gratuitos foram liberados. Aproveite!",
+                    });
+                    
+                    localStorage.removeItem("pending_checkout_plano");
+                    setCheckoutDialogOpen(false);
+                    
+                    // Recarrega a página no Dashboard para atualizar o ClinicaContext e liberar o acesso
+                    window.location.href = "/app";
+                  } catch (err: any) {
+                    toast({
+                      variant: "destructive",
+                      title: "Erro ao ativar teste",
+                      description: err.message || "Tente novamente mais tarde.",
+                    });
+                  } finally {
+                    setProcessandoCheckout(false);
+                  }
+                }}
+                disabled={processandoCheckout}
+              >
+                {processandoCheckout ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Processando...</span>
+                  </>
+                ) : (
+                  <span>Ativar 7 Dias Grátis & Acessar Painel</span>
+                )}
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 pt-4">
+              <Button
+                className="h-24 flex flex-col items-start p-4 hover:border-primary border border-muted bg-card hover:bg-primary/5 transition-all text-left group"
+                variant="outline"
+                disabled={processandoCheckout}
+                onClick={() => iniciarCheckoutMP("assinatura")}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span className="font-bold text-foreground group-hover:text-primary transition-colors">Assinatura Mensal Automática</span>
+                  <Badge className="bg-primary/20 text-primary border-0 hover:bg-primary/20 text-[10px]">Recomendado</Badge>
+                </div>
+                <span className="text-xs text-muted-foreground font-normal mt-1 whitespace-normal">
+                  Cobrança recorrente no Cartão de Crédito. Sem preocupações com renovação mensal.
+                </span>
+              </Button>
+
+              <Button
+                className="h-24 flex flex-col items-start p-4 hover:border-primary border border-muted bg-card hover:bg-primary/5 transition-all text-left group"
+                variant="outline"
+                disabled={processandoCheckout}
+                onClick={() => iniciarCheckoutMP("avulso")}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span className="font-bold text-foreground group-hover:text-primary transition-colors">Pagamento Avulso Mensal</span>
+                  <Badge variant="outline" className="text-[10px]">Pix ou Cartão</Badge>
+                </div>
+                <span className="text-xs text-muted-foreground font-normal mt-1 whitespace-normal">
+                  Gere um Pix ou pague com cartão de crédito manualmente a cada mês para renovar sua conta.
+                </span>
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </AppLayout>
