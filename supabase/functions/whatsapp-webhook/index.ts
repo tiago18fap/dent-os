@@ -209,6 +209,24 @@ serve(async (req) => {
                   acao: "paciente_optout_automatico",
                   descricao: `Paciente '${cliente.paciente}' (+${clientNumber}) solicitou saída da lista. Status alterado para Desabilitado. Mensagem recebida: "${clientMessageText}"`
                 });
+
+              // 5. Notificar o telefone de atendimento com o nome do paciente cadastrado
+              const optoutNotifyText = `🚫 *[DentOS] Paciente Desabilitado (Opt-Out)!*\n\nO paciente *${cliente.paciente}* (+${clientNumber}) pediu para não receber mais mensagens.\n\n*Mensagem enviada:* "${clientMessageText}"\n\n_O status do paciente foi atualizado para *Desabilitado* e os envios agendados foram cancelados._`;
+              await fetch(`${EVOLUTION_API_URL}/message/sendText/${instance}`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  apikey: EVOLUTION_API_KEY,
+                },
+                body: JSON.stringify({
+                  number: cleanRedirectNumber,
+                  text: optoutNotifyText,
+                  options: {
+                    delay: 1200,
+                    presence: "composing",
+                  },
+                }),
+              });
             }
           } else {
             console.log(`[Webhook] Paciente não cadastrado solicitou opt-out. Registrando.`);
@@ -221,9 +239,27 @@ serve(async (req) => {
                 telefone: clientNumber,
                 mensagem_recebida: clientMessageText
               });
+
+            // Notificar o telefone de atendimento com o pushName
+            const optoutNotifyText = `🚫 *[DentOS] Solicitante Desabilitado (Não Cadastrado)!*\n\nO número +${clientNumber} (*${pushName}*) pediu para não receber mais mensagens.\n\n*Mensagem enviada:* "${clientMessageText}"\n\n_Como o número não foi encontrado no cadastro da clínica, o log de opt-out foi registrado para revisão manual._`;
+            await fetch(`${EVOLUTION_API_URL}/message/sendText/${instance}`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                apikey: EVOLUTION_API_KEY,
+              },
+              body: JSON.stringify({
+                number: cleanRedirectNumber,
+                text: optoutNotifyText,
+                options: {
+                  delay: 1200,
+                  presence: "composing",
+                },
+              }),
+            });
           }
 
-          // Enviar resposta personalizada de confirmação
+          // Enviar resposta personalizada de confirmação ao paciente
           const confirmText = "Entendido. Nós removemos seu contato da nossa lista de envios automáticos e você não receberá novas mensagens. Desculpe-nos pelo incômodo! 👍";
           console.log(`[Webhook] Enviando confirmação de exclusão para ${clientNumber}...`);
           await fetch(`${EVOLUTION_API_URL}/message/sendText/${instance}`, {
@@ -235,24 +271,6 @@ serve(async (req) => {
             body: JSON.stringify({
               number: clientNumber,
               text: confirmText,
-              options: {
-                delay: 1200,
-                presence: "composing",
-              },
-            }),
-          });
-
-          // Notificar o telefone de atendimento
-          const optoutNotifyText = `🚫 *[DentOS] Paciente solicitou exclusão!*\n\n*Paciente:* +${clientNumber} (${pushName})\n*Mensagem recebida:* _${clientMessageText}_\n\n_(O status deste paciente foi alterado para *Desabilitado* e suas mensagens pendentes na fila foram excluídas.)_`;
-          await fetch(`${EVOLUTION_API_URL}/message/sendText/${instance}`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              apikey: EVOLUTION_API_KEY,
-            },
-            body: JSON.stringify({
-              number: cleanRedirectNumber,
-              text: optoutNotifyText,
               options: {
                 delay: 1200,
                 presence: "composing",
