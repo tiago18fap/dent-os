@@ -518,7 +518,7 @@ function ClienteDetailDialog({
       if (!cliente?.id || !clinicaId) return [];
       const { data, error } = await (supabase as any)
         .from("fila_envios")
-        .select("id, mensagem, data_programada, status, origem, created_at")
+        .select("id, mensagem, data_programada, status, origem, created_at, lida, respondida, teve_retorno, data_leitura, data_resposta, data_retorno, mensagem_resposta")
         .eq("clinica_id", clinicaId)
         .eq("paciente_id", cliente.id)
         .order("data_programada", { ascending: true });
@@ -721,9 +721,22 @@ function ClienteDetailDialog({
                             {new Date(msg.data_programada).toLocaleDateString("pt-BR")} {new Date(msg.data_programada).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                           </p>
                           <div className="flex items-center gap-1.5">
+                            {msg.status === "enviado" && (
+                              <>
+                                {msg.lida ? (
+                                  <Badge variant="outline" className="border-blue-300 bg-blue-50 text-blue-700 dark:bg-blue-950/20 text-[9px] px-1.5 py-0 flex items-center gap-0.5">
+                                    👁️ Lida
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-400 dark:bg-slate-900/10 text-[9px] px-1.5 py-0">
+                                    Enviada
+                                  </Badge>
+                                )}
+                              </>
+                            )}
                             <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${statusColor}`}>
                               {msg.status === "cancelado"
-                                ? "Cancelado"
+                                ? "Cancelado (Retornou)"
                                 : msg.status === "dedup_ignorado"
                                 ? "Dedup"
                                 : msg.status}
@@ -733,9 +746,38 @@ function ClienteDetailDialog({
                             </span>
                           </div>
                         </div>
-                        <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                        <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
                           {msg.mensagem}
                         </p>
+                        
+                        {/* Indicador de Leitura detalhada */}
+                        {msg.status === "enviado" && msg.lida && msg.data_leitura && (
+                          <p className="text-[9px] text-muted-foreground/80 mt-1 flex items-center gap-1">
+                            <span>✓✓ Lida em: {new Date(msg.data_leitura).toLocaleString("pt-BR")}</span>
+                          </p>
+                        )}
+
+                        {/* Bloco de Resposta do Paciente */}
+                        {msg.respondida && (
+                          <div className="mt-2.5 pl-3 border-l-2 border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/10 p-2 rounded text-xs">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-semibold text-emerald-700 dark:text-emerald-400">Resposta do Paciente:</span>
+                              {msg.data_resposta && (
+                                <span className="text-[9px] text-muted-foreground">
+                                  {new Date(msg.data_resposta).toLocaleString("pt-BR")}
+                                </span>
+                              )}
+                            </div>
+                            <p className="italic text-muted-foreground">"{msg.mensagem_resposta || "Sem texto"}"</p>
+                          </div>
+                        )}
+
+                        {/* Bloco de Retorno Convertido */}
+                        {msg.teve_retorno && (
+                          <div className="mt-2 flex items-center gap-1 text-[10px] text-violet-700 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/20 px-2 py-1 rounded w-fit">
+                            <span>🔄 <strong>Retorno Convertido!</strong> Paciente retornou à clínica{msg.data_retorno ? ` em ${new Date(msg.data_retorno).toLocaleDateString("pt-BR")}` : ""}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

@@ -123,22 +123,27 @@ const Index = () => {
     enabled: !!clinicaId || isConsolidated,
   });
 
-  // 3. Query para estatísticas da fila (mensagens pendentes)
-  const { data: queueStats = { pendente: 0, enviado: 0, falhou: 0 }, isLoading: loadingQueueStats } = useQuery({
+  // 3. Query para estatísticas da fila (mensagens pendentes e histórico)
+  const { data: queueStats = { pendente: 0, enviado: 0, falhou: 0, lido: 0, respondido: 0, retornado: 0 }, isLoading: loadingQueueStats } = useQuery({
     queryKey: ["dashboard_queue_stats", clinicaId, isConsolidated],
     queryFn: async () => {
-      let query = supabase.from("fila_envios").select("status");
+      let query = supabase.from("fila_envios").select("status, lida, respondida, teve_retorno");
       if (!isConsolidated) {
-        if (!clinicaId) return { pendente: 0, enviado: 0, falhou: 0 };
+        if (!clinicaId) return { pendente: 0, enviado: 0, falhou: 0, lido: 0, respondido: 0, retornado: 0 };
         query = query.eq("clinica_id", clinicaId);
       }
       const { data, error } = await query;
       if (error) throw error;
       
-      const stats = { pendente: 0, enviado: 0, falhou: 0 };
+      const stats = { pendente: 0, enviado: 0, falhou: 0, lido: 0, respondido: 0, retornado: 0 };
       data.forEach((item: any) => {
         if (item.status === "pendente") stats.pendente++;
-        else if (item.status === "enviado") stats.enviado++;
+        else if (item.status === "enviado") {
+          stats.enviado++;
+          if (item.lida) stats.lido++;
+          if (item.respondida) stats.respondido++;
+          if (item.teve_retorno) stats.retornado++;
+        }
         else if (item.status === "falhou" || item.status === "error") stats.falhou++;
       });
       return stats;
@@ -318,20 +323,21 @@ const Index = () => {
   const demoFunil = [
     { name: "Importados", qtd: 1915 },
     { name: "Contatados", qtd: 960 },
-    { name: "Agendados", qtd: 220 },
-    { name: "Concluídos", qtd: 147 }
+    { name: "Lidos", qtd: 648 },
+    { name: "Respondidos", qtd: 284 },
+    { name: "Retornos", qtd: 147 }
   ];
 
   // --- DADOS REAIS ---
   const activeStats = demoMode ? demoStats : {
-    retornos: realConversionStats.retornos,
-    conversaoRate: realConversionStats.conversaoRate,
-    faturamentoRecuperado: realConversionStats.faturamentoRecuperado,
+    retornos: queueStats.retornado,
+    conversaoRate: queueStats.enviado > 0 ? Math.round((queueStats.retornado / queueStats.enviado) * 100 * 10) / 10 : 0,
+    faturamentoRecuperado: queueStats.retornado * 150, // R$ 150 de faturamento estimado por retorno
     tempoRetornoReduzido: realConversionStats.tempoRetornoDias > 0 ? 60 - realConversionStats.tempoRetornoDias : 0 // Compara com baseline de 60 dias
   };
 
   const faturamentoTrend = demoMode ? demoFaturamentoTrend : [
-    { name: "Atual", valor: realConversionStats.faturamentoRecuperado }
+    { name: "Atual", valor: queueStats.retornado * 150 }
   ];
 
   const tempoRetorno = demoMode ? demoTempoRetorno : [
@@ -341,8 +347,9 @@ const Index = () => {
   const funilData = demoMode ? demoFunil : [
     { name: "Importados", qtd: totalPacientes },
     { name: "Contatados", qtd: queueStats.enviado },
-    { name: "Agendados", qtd: realConversionStats.retornos },
-    { name: "Concluídos", qtd: realConversionStats.retornos }
+    { name: "Lidos", qtd: queueStats.lido },
+    { name: "Respondidos", qtd: queueStats.respondido },
+    { name: "Retornos", qtd: queueStats.retornado }
   ];
 
   const isDemoActive = demoMode;
@@ -604,9 +611,10 @@ const Index = () => {
                     <Cell 
                       key={`cell-${index}`} 
                       fill={
-                        index === 0 ? "hsl(var(--muted-foreground)/40)" :
-                        index === 1 ? "rgba(var(--primary-rgb), 0.6)" :
-                        index === 2 ? "rgba(var(--primary-rgb), 0.8)" :
+                        index === 0 ? "hsl(var(--muted-foreground)/35)" :
+                        index === 1 ? "rgba(100, 116, 139, 0.65)" :
+                        index === 2 ? "rgba(59, 130, 246, 0.75)" :
+                        index === 3 ? "rgba(16, 185, 129, 0.85)" :
                         "hsl(var(--login-primary))"
                       } 
                     />
