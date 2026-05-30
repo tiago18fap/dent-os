@@ -64,6 +64,17 @@ const Configuracoes = () => {
   const [logSearchTerm, setLogSearchTerm] = useState("");
   const location = useLocation();
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState(() => {
+    return new URLSearchParams(location.search).get("tab") || "perfil";
+  });
+
+  useEffect(() => {
+    const tab = new URLSearchParams(location.search).get("tab");
+    if (tab && tab !== activeTab) {
+      setActiveTab(tab);
+    }
+  }, [location.search]);
+
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [connectLoading, setConnectLoading] = useState(false);
   const [qrImage, setQrImage] = useState<string | null>(null);
@@ -2324,7 +2335,11 @@ const Configuracoes = () => {
         )}
 
         <Tabs
-          defaultValue={(new URLSearchParams(location.search).get("tab") as "perfil" | "geral" | "logs") ?? "perfil"}
+          value={activeTab}
+          onValueChange={(val) => {
+            setActiveTab(val);
+            navigate(`/configuracoes?tab=${val}`);
+          }}
           className="w-full"
         >
           <TabsList className="flex w-full justify-start overflow-x-auto">
