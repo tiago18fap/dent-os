@@ -83,6 +83,14 @@ const Index = () => {
     document.title = "Dashboard DentOS";
   }, []);
 
+  // Redireciona para checkout se houver plano pendente no login/cadastro
+  useEffect(() => {
+    const pending = localStorage.getItem("pending_checkout_plano");
+    if (pending && clinicaId) {
+      navigate(`/assinatura?checkout=true&plano=${pending}`);
+    }
+  }, [clinicaId, navigate]);
+
   // 1. Query para total de pacientes
   const { data: totalPacientes = 0, isLoading: loadingPacientes } = useQuery({
     queryKey: ["dashboard_total_pacientes", clinicaId, isConsolidated],
