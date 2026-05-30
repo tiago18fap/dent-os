@@ -24,13 +24,15 @@ import {
   AlertCircle,
   HelpCircle,
   Calendar,
-  LayoutDashboard
+  LayoutDashboard,
+  MoreVertical
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useClinica } from "@/contexts/ClinicaContext";
+import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
   AreaChart, 
   Area, 
@@ -49,6 +51,23 @@ import {
 
 // Cores para o gráfico de pizza (Situação dos Pacientes)
 const PIE_COLORS = ["hsl(var(--login-primary))", "#f59e0b", "#94a3b8"];
+
+const CardInfo = ({ text }: { text: string }) => (
+  <UITooltip>
+    <TooltipTrigger asChild>
+      <button 
+        type="button" 
+        className="text-muted-foreground/50 hover:text-foreground p-1 rounded-full transition-colors cursor-help shrink-0"
+        aria-label="Informações sobre o indicador"
+      >
+        <MoreVertical className="h-3.5 w-3.5" />
+      </button>
+    </TooltipTrigger>
+    <TooltipContent className="max-w-[220px] text-xs leading-relaxed bg-popover text-popover-foreground border shadow-md p-2.5">
+      {text}
+    </TooltipContent>
+  </UITooltip>
+);
 
 const Index = () => {
   const navigate = useNavigate();
@@ -334,7 +353,8 @@ const Index = () => {
   }
 
   return (
-    <AppLayout>
+    <TooltipProvider>
+      <AppLayout>
       {/* Top Header com Título e Switch de Demonstração */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b pb-4">
         <div>
@@ -376,9 +396,12 @@ const Index = () => {
       {/* Grid de Cards de KPIs */}
       <section className="grid grid-cols-2 gap-3 md:gap-4 md:grid-cols-4" aria-label="Indicadores Chave de Performance">
         <Card className="hover:shadow-md transition-all duration-300">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 relative">
             <CardTitle className="text-xs font-medium text-muted-foreground">Total de Pacientes</CardTitle>
-            <Users className="h-4 w-4 text-blue-500" />
+            <div className="flex items-center gap-0.5">
+              <Users className="h-4 w-4 text-blue-500" />
+              <CardInfo text="Total de pacientes importados e sincronizados da base de dados do seu software Easy Dental." />
+            </div>
           </CardHeader>
           <CardContent>
             {loadingPacientes ? (
@@ -391,9 +414,12 @@ const Index = () => {
         </Card>
 
         <Card className="hover:shadow-md transition-all duration-300">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 relative">
             <CardTitle className="text-xs font-medium text-muted-foreground">Mensagens em Fila</CardTitle>
-            <Clock className="h-4 w-4 text-amber-500 animate-pulse" />
+            <div className="flex items-center gap-0.5">
+              <Clock className="h-4 w-4 text-amber-500 animate-pulse" />
+              <CardInfo text="Quantidade de mensagens automáticas de campanhas ativas que estão programadas e aguardando processamento na fila de disparos do WhatsApp." />
+            </div>
           </CardHeader>
           <CardContent>
             {loadingQueueStats ? (
@@ -406,9 +432,12 @@ const Index = () => {
         </Card>
 
         <Card className="hover:shadow-md transition-all duration-300 border-[hsl(var(--login-primary))]/20 bg-[hsl(var(--login-primary))]/5">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 relative">
             <CardTitle className="text-xs font-medium text-[hsl(var(--login-primary))]">Retornos Convertidos</CardTitle>
-            <TrendingUp className="h-4 w-4 text-[hsl(var(--login-primary))]" />
+            <div className="flex items-center gap-0.5">
+              <TrendingUp className="h-4 w-4 text-[hsl(var(--login-primary))]" />
+              <CardInfo text="Pacientes contatados via WhatsApp que realizaram e concluíram um novo procedimento/consulta na clínica após a data de envio da mensagem." />
+            </div>
           </CardHeader>
           <CardContent>
             {loadingConversion ? (
@@ -426,9 +455,12 @@ const Index = () => {
         </Card>
 
         <Card className="hover:shadow-md transition-all duration-300 border-green-500/20 bg-green-500/5">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 relative">
             <CardTitle className="text-xs font-medium text-green-600">Receita Recuperada</CardTitle>
-            <DollarSign className="h-4 w-4 text-green-500" />
+            <div className="flex items-center gap-0.5">
+              <DollarSign className="h-4 w-4 text-green-500" />
+              <CardInfo text="Volume financeiro recuperado, calculado multiplicando o total de pacientes que retornaram pelo ticket médio estimado de R$ 150 por consulta." />
+            </div>
           </CardHeader>
           <CardContent>
             <p className="text-xl sm:text-2xl font-bold text-green-700">
@@ -445,14 +477,17 @@ const Index = () => {
       <section className="grid gap-4 md:grid-cols-2" aria-label="Visualização de Dados e Gráficos">
         {/* Gráfico 1: Evolução de Receita Recuperada */}
         <Card className="hover:shadow-md transition-shadow duration-300">
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
-              <DollarSign className="h-4 w-4 text-green-600" />
-              <span>Receita Recuperada Acumulada</span>
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Histórico financeiro de tratamentos concluídos pós-comunicação ativa
-            </CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
+            <div className="space-y-1.5">
+              <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+                <DollarSign className="h-4 w-4 text-green-600" />
+                <span>Receita Recuperada Acumulada</span>
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Histórico financeiro de tratamentos concluídos pós-comunicação ativa
+              </CardDescription>
+            </div>
+            <CardInfo text="Evolução histórica do faturamento de tratamentos concluídos pós-comunicação ativa, acumulando os retornos convertidos ao longo do tempo." />
           </CardHeader>
           <CardContent className="h-64">
             {faturamentoTrend.length === 1 && faturamentoTrend[0].valor === 0 ? (
@@ -485,14 +520,17 @@ const Index = () => {
 
         {/* Gráfico 2: Redução no Intervalo de Retorno */}
         <Card className="hover:shadow-md transition-shadow duration-300">
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
-              <Clock className="h-4 w-4 text-blue-500" />
-              <span>Intervalo de Retorno do Paciente (Dias)</span>
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Tempo médio que o paciente leva para retornar à clínica com vs sem campanhas
-            </CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
+            <div className="space-y-1.5">
+              <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+                <Clock className="h-4 w-4 text-blue-500" />
+                <span>Intervalo de Retorno do Paciente (Dias)</span>
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Tempo médio que o paciente leva para retornar à clínica com vs sem campanhas
+              </CardDescription>
+            </div>
+            <CardInfo text="Comparação do tempo médio (em dias) que os pacientes levam para retornar. Compara a média antes de usar a plataforma (baseline de 180 dias) com a média real após a implantação da comunicação ativa." />
           </CardHeader>
           <CardContent className="h-64">
             {tempoRetorno.length === 1 && tempoRetorno[0].Depois === 180 ? (
@@ -521,14 +559,17 @@ const Index = () => {
 
         {/* Gráfico 3: Funil de Conversão */}
         <Card className="hover:shadow-md transition-shadow duration-300">
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
-              <TrendingUp className="h-4 w-4 text-primary" />
-              <span>Funil de Engajamento e Conversão</span>
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Fluxo desde o paciente cadastrado até o tratamento efetivado pós-mensagem
-            </CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
+            <div className="space-y-1.5">
+              <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+                <TrendingUp className="h-4 w-4 text-primary" />
+                <span>Funil de Engajamento e Conversão</span>
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Fluxo desde o paciente cadastrado até o tratamento efetivado pós-mensagem
+              </CardDescription>
+            </div>
+            <CardInfo text="Mapeamento do fluxo de pacientes: desde o total importado, quantos foram contatados por mensagem, quantos agendaram retorno e quantos concluíram seus tratamentos." />
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -560,14 +601,17 @@ const Index = () => {
 
         {/* Gráfico 4: Pizza de Situação da Base de Pacientes */}
         <Card className="hover:shadow-md transition-shadow duration-300">
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
-              <Users className="h-4 w-4 text-primary" />
-              <span>Situação Clínico-Operacional dos Pacientes</span>
-            </CardTitle>
-            <CardDescription className="text-xs">
-              Distribuição e saúde atual do cadastro de pacientes (banco de dados real)
-            </CardDescription>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
+            <div className="space-y-1.5">
+              <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+                <Users className="h-4 w-4 text-primary" />
+                <span>Situação Clínico-Operacional dos Pacientes</span>
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Distribuição e saúde atual do cadastro de pacientes (banco de dados real)
+              </CardDescription>
+            </div>
+            <CardInfo text="Percentual e quantidade de pacientes divididos por sua situação atual cadastrada no banco de dados (ex: Ativos, Inativos, etc.), ideal para medir a saúde da base." />
           </CardHeader>
           <CardContent className="h-64">
             {loadingDistribution ? (
@@ -616,8 +660,8 @@ const Index = () => {
         {/* Fila de Envios Programados */}
         <Card className="hover:shadow-md transition-shadow duration-300 flex flex-col justify-between">
           <div>
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
-              <div>
+            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
+              <div className="space-y-1.5">
                 <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
                   <Clock className="h-4 w-4 text-amber-500" />
                   <span>Próximos Envios Agendados na Fila</span>
@@ -626,10 +670,13 @@ const Index = () => {
                   Próximos contatos agendados gerados automaticamente pelos critérios de campanhas
                 </CardDescription>
               </div>
-              <Button variant="ghost" size="sm" className="h-7 text-xs text-primary" onClick={() => navigate("/fila-envios")}>
-                Ver Fila Completa
-                <ArrowRight className="ml-1 h-3.5 w-3.5" />
-              </Button>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button variant="ghost" size="sm" className="h-7 text-xs text-primary" onClick={() => navigate("/fila-envios")}>
+                  Ver Fila Completa
+                  <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                </Button>
+                <CardInfo text="Agenda de mensagens automáticas com disparos previstos para hoje, mostrando o nome do paciente, trecho da mensagem e origem da campanha." />
+              </div>
             </CardHeader>
             <CardContent>
               {loadingUpcoming ? (
@@ -673,8 +720,8 @@ const Index = () => {
         {/* Histórico de Sincronizações (Easy Dental) */}
         <Card className="hover:shadow-md transition-shadow duration-300 flex flex-col justify-between">
           <div>
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
-              <div>
+            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
+              <div className="space-y-1.5">
                 <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
                   <RefreshCcw className="h-4 w-4 text-[hsl(var(--login-primary))]" />
                   <span>Sincronizações Recentes (Easy Dental)</span>
@@ -683,10 +730,13 @@ const Index = () => {
                   Histórico de importações automáticas executadas pelo worker
                 </CardDescription>
               </div>
-              <Button variant="ghost" size="sm" className="h-7 text-xs text-primary" onClick={() => navigate("/configuracoes?tab=sistema")}>
-                Configurações
-                <ArrowRight className="ml-1 h-3.5 w-3.5" />
-              </Button>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button variant="ghost" size="sm" className="h-7 text-xs text-primary" onClick={() => navigate("/configuracoes?tab=sistema")}>
+                  Configurações
+                  <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                </Button>
+                <CardInfo text="Histórico das últimas execuções de importação de dados, indicando a data/hora, quantidade de novos pacientes/procedimentos sincronizados e o status da conexão." />
+              </div>
             </CardHeader>
             <CardContent>
               {loadingSyncLogs ? (
@@ -748,6 +798,7 @@ const Index = () => {
         </Card>
       </section>
     </AppLayout>
+  </TooltipProvider>
   );
 };
 
