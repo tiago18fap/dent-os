@@ -84,6 +84,83 @@ const Assinatura = () => {
     }
   }, [loading, clinica, isSuperAdmin, isImpersonating]);
 
+  // Detecta se voltou do Mercado Pago com sucesso
+  useEffect(() => {
+    if (loading || !clinica) return;
+
+    const query = new URLSearchParams(window.location.search);
+    const success = query.get("success");
+    const planoCheckout = query.get("plano_checkout") || selectedPlanoForCheckout;
+
+    if (success === "true" && clinica.id) {
+      const planoAtivo = planoCheckout || "bronze";
+      
+      const updatePlan = async () => {
+        try {
+          setProcessandoCheckout(true);
+          toast({
+            title: "Processando ativação...",
+            description: "Estamos confirmando o seu pagamento e ativando seu plano.",
+          });
+
+          // Atualizar o plano e status de pagamento da clínica
+          const { error: errorClinica } = await supabase
+            .from("clinicas")
+            .update({
+              status_pagamento: "ativo",
+              plano: planoAtivo,
+              limite_mensagens: planoAtivo === "prata" ? 1000 : 100,
+              limite_procedimentos: planoAtivo === "prata" ? 30 : 10,
+              data_fim_teste: null
+            })
+            .eq("id", clinica.id);
+
+          if (errorClinica) throw errorClinica;
+
+          // Atualizar carteira de envios
+          const { error: errorCarteira } = await supabase
+            .from("carteira_envios")
+            .upsert({
+              clinica_id: clinica.id,
+              saldo: planoAtivo === "prata" ? 1000 : 100
+            });
+
+          if (errorCarteira) throw errorCarteira;
+
+          toast({
+            title: "Parabéns! Assinatura Ativada!",
+            description: `Seu plano ${planoAtivo.toUpperCase()} foi ativado com sucesso.`,
+          });
+
+          localStorage.removeItem("pending_checkout_plano");
+
+          // Remove query params sem dar reload
+          const url = new URL(window.location.href);
+          url.searchParams.delete("success");
+          url.searchParams.delete("plano_checkout");
+          window.history.replaceState({}, "", url.pathname + url.search);
+
+          // Redireciona para o painel principal após um pequeno delay
+          setTimeout(() => {
+            window.location.href = "/app";
+          }, 1500);
+
+        } catch (err: any) {
+          toast({
+            variant: "destructive",
+            title: "Erro ao ativar plano",
+            description: err.message || "Tente novamente ou fale com o suporte.",
+          });
+        } finally {
+          setProcessandoCheckout(false);
+        }
+      };
+
+      updatePlan();
+    }
+  }, [loading, clinica, selectedPlanoForCheckout]);
+
+
   const adminClinicasQuery = useQuery({
     queryKey: ["admin_assinaturas_clinicas"],
     enabled: isSuperAdmin && !isImpersonating && !loading,
