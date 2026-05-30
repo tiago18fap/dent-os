@@ -23,7 +23,8 @@ import {
   Loader2, 
   AlertCircle,
   HelpCircle,
-  Calendar
+  Calendar,
+  LayoutDashboard
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
@@ -504,7 +505,7 @@ const Index = () => {
                 <BarChart data={tempoRetorno} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
                   <XAxis dataKey="name" className="text-[10px] fill-muted-foreground" />
-                  <YAxis className="text-[10px] fill-muted-foreground" suffix=" dias" />
+                  <YAxis className="text-[10px] fill-muted-foreground" tickFormatter={(val) => `${val} dias`} />
                   <Tooltip 
                     formatter={(value: any) => [`${value} dias`]}
                     contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))" }}
