@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/layouts/AppLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,40 @@ const Assinatura = () => {
   const [selectedPlanoForCheckout, setSelectedPlanoForCheckout] = useState<string | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [processandoCheckout, setProcessandoCheckout] = useState(false);
+
+  // Detecta checkout automático por query param ou localStorage
+  useEffect(() => {
+    if (loading || !clinica) return;
+
+    // Se é super admin e não está impersonating, não faz sentido fazer checkout de clínica
+    if (isSuperAdmin && !isImpersonating) return;
+
+    const pendingPlano = localStorage.getItem("pending_checkout_plano");
+    const queryPlano = new URLSearchParams(window.location.search).get("plano");
+    const planoId = queryPlano || pendingPlano;
+
+    if (planoId && ["bronze", "prata", "ouro"].includes(planoId)) {
+      // Limpa os pendentes para evitar loops
+      localStorage.removeItem("pending_checkout_plano");
+      
+      // Remove o param do URL sem recarregar a página
+      const url = new URL(window.location.href);
+      url.searchParams.delete("plano");
+      url.searchParams.delete("checkout");
+      window.history.replaceState({}, "", url.pathname + url.search);
+
+      if (planoId === 'ouro') {
+        toast({
+          title: "Plano Ouro",
+          description: "Fale com nosso suporte em contato@dentos.com.br para um plano personalizado.",
+        });
+        return;
+      }
+
+      setSelectedPlanoForCheckout(planoId);
+      setCheckoutDialogOpen(true);
+    }
+  }, [loading, clinica, isSuperAdmin, isImpersonating]);
 
   const adminClinicasQuery = useQuery({
     queryKey: ["admin_assinaturas_clinicas"],
