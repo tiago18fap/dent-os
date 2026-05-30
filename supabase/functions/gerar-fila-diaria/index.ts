@@ -203,6 +203,8 @@ serve(async (req) => {
 
               if (nomesProc.length === 0 || !mensagemTemplate.trim() || diasEntreEnvios <= 0) continue;
 
+              const pacientesAdicionados: string[] = [];
+
               // Fetch matching procedures for this clinica
               const { data: procs, error: erroProcs } = await supabase
                 .from("procedimentos")
@@ -351,11 +353,23 @@ serve(async (req) => {
 
                     if (!erroInsert) {
                       clinicaResult.procedimentos++;
+                      pacientesAdicionados.push(nomePaciente);
                     } else {
                       clinicaResult.erros.push(`Insert proc erro: ${erroInsert.message}`);
                     }
                   }
                 }
+              }
+
+              if (pacientesAdicionados.length > 0) {
+                await supabase
+                  .from("auditoria_logs")
+                  .insert({
+                    clinica_id: clinicaId,
+                    usuario_email: "Cron - Sistema",
+                    acao: "fila_procedimento_cron",
+                    descricao: `Campanha '${nomesProc.join(", ")}' (Group ID: ${groupId}): adicionou ${pacientesAdicionados.length} paciente(s) à fila: ${pacientesAdicionados.join(", ")}`
+                  });
               }
             } catch (err) {
               clinicaResult.erros.push(`Erro campanha ${campanha.group_id}: ${String(err)}`);
