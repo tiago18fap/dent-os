@@ -2693,6 +2693,7 @@ const Configuracoes = () => {
                       <li>O disparo inicia às <strong>{horarioInicio || "08:00"}</strong> e encerra às <strong>{horarioFim || "20:00"}</strong></li>
                       <li>Cada mensagem é enviada com intervalo de <strong>1 a 2 minutos</strong> para evitar bloqueios do WhatsApp</li>
                       <li>Pacientes que receberam mensagem nos últimos <strong>{dedupDias} dias</strong> são ignorados automaticamente</li>
+                      <li>Se o paciente retornar e realizar um novo procedimento antes do envio, a mensagem agendada é <strong>excluída da fila automaticamente</strong></li>
                     </ul>
                   </div>
 
