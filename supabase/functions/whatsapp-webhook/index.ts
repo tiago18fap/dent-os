@@ -11,6 +11,36 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const EVOLUTION_API_URL = "https://evolution-evolution-api.qfjowr.easypanel.host";
 const EVOLUTION_API_KEY = "429683C4C977415CAAFCCE10F7D57E11";
 
+function checkOptOutRequest(text: string): boolean {
+  const normalized = text.toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, ""); // Remove accents
+
+  const optOutPatterns = [
+    /\bsair\b/,
+    /\bremover\b/,
+    /\bexcluir\b/,
+    /\bparar\b/,
+    /\bcancelar\b/,
+    /\blgpd\b/,
+    /\bspam\b/,
+    /\bperturbar\b/,
+    /\bincomodar\b/,
+    /nao (quero|desejo) (mais|receber)/,
+    /nao me envie/,
+    /nao mande mais/,
+    /parar de receber/,
+    /retirar (meu )?(numero|nome|cadastro|contato|lista)/,
+    /remover (meu )?(numero|nome|cadastro|contato|lista)/,
+    /excluir (meu )?(numero|nome|cadastro|contato|lista)/,
+    /descadastrar/,
+    /deixe de enviar/,
+    /pare de enviar/
+  ];
+
+  return optOutPatterns.some(pattern => pattern.test(normalized));
+}
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
     persistSession: false,
@@ -96,6 +126,7 @@ serve(async (req) => {
         }
 
         const clientNumber = remoteJid.split("@")[0];
+        const cleanRedirectNumber = config.redirecionar_numero.replace(/\D/g, "");
         
         // 4. Extrair o texto da mensagem enviada pelo cliente
         let clientMessageText = "[Mídia ou mensagem sem texto]";
@@ -115,6 +146,123 @@ serve(async (req) => {
             clientMessageText = "[Documento enviado pelo paciente]";
           }
         }
+
+        // --- Algoritmo de Detecção de Opt-Out (Saída da Lista / LGPD) ---
+        const isOptOut = checkOptOutRequest(clientMessageText);
+        if (isOptOut) {
+          console.log(`[Webhook] Opt-out detectado para o número: ${clientNumber}`);
+          const pushName = messageData.pushName || "Paciente Desconhecido";
+
+          // Buscar paciente pelo telefone e clinica_id usando RPC
+          const { data: clientesEncontrados, error: searchError } = await supabase.rpc(
+            "find_cliente_by_telefone",
+            { target_clinica_id: config.clinica_id, search_telefone: clientNumber }
+          );
+
+          if (searchError) {
+            console.error("[Webhook] Erro ao buscar paciente por telefone:", searchError);
+          }
+
+          if (clientesEncontrados && clientesEncontrados.length > 0) {
+            for (const cliente of clientesEncontrados) {
+              console.log(`[Webhook] Desabilitando paciente: ${cliente.paciente} (ID: ${cliente.id})`);
+              
+              // 1. Atualizar status para "Desabilitado"
+              const { error: updateError } = await supabase
+                .from("clientes")
+                .update({ situacao: "Desabilitado" })
+                .eq("id", cliente.id);
+
+              if (updateError) {
+                console.error(`[Webhook] Erro ao desabilitar paciente ${cliente.id}:`, updateError);
+              }
+
+              // 2. Deletar mensagens agendadas e pendentes na fila de envios
+              const { error: deleteError } = await supabase
+                .from("fila_envios")
+                .delete()
+                .eq("clinica_id", config.clinica_id)
+                .eq("paciente_id", cliente.id)
+                .eq("status", "pendente");
+
+              if (deleteError) {
+                console.error(`[Webhook] Erro ao limpar fila pendente para o paciente ${cliente.id}:`, deleteError);
+              }
+
+              // 3. Registrar na tabela de solicitações de opt-out
+              await supabase
+                .from("solicitacoes_optout")
+                .insert({
+                  clinica_id: config.clinica_id,
+                  cliente_id: cliente.id,
+                  paciente_nome: cliente.paciente,
+                  telefone: cliente.telefone || clientNumber,
+                  mensagem_recebida: clientMessageText
+                });
+
+              // 4. Registrar auditoria
+              await supabase
+                .from("auditoria_logs")
+                .insert({
+                  clinica_id: config.clinica_id,
+                  usuario_email: "Sistema - WhatsApp Webhook",
+                  acao: "paciente_optout_automatico",
+                  descricao: `Paciente '${cliente.paciente}' (+${clientNumber}) solicitou saída da lista. Status alterado para Desabilitado. Mensagem recebida: "${clientMessageText}"`
+                });
+            }
+          } else {
+            console.log(`[Webhook] Paciente não cadastrado solicitou opt-out. Registrando.`);
+            await supabase
+              .from("solicitacoes_optout")
+              .insert({
+                clinica_id: config.clinica_id,
+                cliente_id: null,
+                paciente_nome: pushName,
+                telefone: clientNumber,
+                mensagem_recebida: clientMessageText
+              });
+          }
+
+          // Enviar resposta personalizada de confirmação
+          const confirmText = "Entendido. Nós removemos seu contato da nossa lista de envios automáticos e você não receberá novas mensagens. Desculpe-nos pelo incômodo! 👍";
+          console.log(`[Webhook] Enviando confirmação de exclusão para ${clientNumber}...`);
+          await fetch(`${EVOLUTION_API_URL}/message/sendText/${instance}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: EVOLUTION_API_KEY,
+            },
+            body: JSON.stringify({
+              number: clientNumber,
+              text: confirmText,
+              options: {
+                delay: 1200,
+                presence: "composing",
+              },
+            }),
+          });
+
+          // Notificar o telefone de atendimento
+          const optoutNotifyText = `🚫 *[DentOS] Paciente solicitou exclusão!*\n\n*Paciente:* +${clientNumber} (${pushName})\n*Mensagem recebida:* _${clientMessageText}_\n\n_(O status deste paciente foi alterado para *Desabilitado* e suas mensagens pendentes na fila foram excluídas.)_`;
+          await fetch(`${EVOLUTION_API_URL}/message/sendText/${instance}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: EVOLUTION_API_KEY,
+            },
+            body: JSON.stringify({
+              number: cleanRedirectNumber,
+              text: optoutNotifyText,
+              options: {
+                delay: 1200,
+                presence: "composing",
+              },
+            }),
+          });
+
+          return; // Finaliza processamento deste webhook
+        }
+
 
         // 5. Aguardar delay de 7 a 15 segundos (simular tempo de digitação humana)
         const delayMs = Math.floor(Math.random() * 8000) + 7000;
