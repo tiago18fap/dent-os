@@ -48,7 +48,7 @@ const Assinatura = () => {
   const [selectedPlanoForCheckout, setSelectedPlanoForCheckout] = useState<string | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [processandoCheckout, setProcessandoCheckout] = useState(false);
-  const [checkoutMethod, setCheckoutMethod] = useState<"trial" | "pay">("trial");
+  const [iniciarTrial, setIniciarTrial] = useState(false);
 
   // Detecta checkout automático por query param ou localStorage
   useEffect(() => {
@@ -401,41 +401,16 @@ const Assinatura = () => {
               <span>Checkout do Plano</span>
             </DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground mt-1">
-              Escolha como deseja iniciar o plano <strong className="capitalize text-foreground font-semibold">{selectedPlanoForCheckout}</strong>.
+              Selecione a forma de pagamento do plano <strong className="capitalize text-foreground font-semibold">{selectedPlanoForCheckout}</strong>.
             </DialogDescription>
           </DialogHeader>
 
-          {/* Opções de Escolha: Teste Grátis vs Pagamento */}
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => setCheckoutMethod("trial")}
-              className={`p-3 rounded-lg border text-left transition-all flex flex-col justify-between h-20 outline-none ${
-                checkoutMethod === "trial"
-                  ? "border-primary bg-primary/5 ring-1 ring-primary"
-                  : "border-muted bg-card hover:bg-accent/50"
-              }`}
-            >
-              <span className="font-bold text-xs">7 Dias Grátis</span>
-              <span className="text-[10px] text-muted-foreground leading-snug">Experimente sem compromisso</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setCheckoutMethod("pay")}
-              className={`p-3 rounded-lg border text-left transition-all flex flex-col justify-between h-20 outline-none ${
-                checkoutMethod === "pay"
-                  ? "border-primary bg-primary/5 ring-1 ring-primary"
-                  : "border-muted bg-card hover:bg-accent/50"
-              }`}
-            >
-              <span className="font-bold text-xs">Pagar Agora</span>
-              <span className="text-[10px] text-muted-foreground leading-snug">Cartão de Crédito ou Pix</span>
-            </button>
-          </div>
-
           {/* Corpo do Checkout Dinâmico */}
-          {checkoutMethod === "trial" ? (
-            <div className="pt-4">
+          {iniciarTrial ? (
+            <div className="pt-2 space-y-4">
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-foreground leading-relaxed">
+                Você escolheu iniciar o plano <strong className="capitalize">{selectedPlanoForCheckout}</strong> no período de testes. Seu acesso será liberado por <strong>7 dias totalmente grátis</strong> sem nenhuma cobrança ou cadastro de cartão hoje.
+              </div>
               <Button
                 className="w-full bg-[hsl(var(--login-primary))] hover:bg-[hsl(var(--login-primary))]/90 text-primary-foreground font-semibold py-6 flex items-center justify-center gap-2"
                 onClick={async () => {
@@ -487,7 +462,7 @@ const Assinatura = () => {
               </Button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 pt-4">
+            <div className="grid grid-cols-1 gap-3 pt-2">
               <Button
                 className="h-24 flex flex-col items-start p-4 hover:border-primary border border-muted bg-card hover:bg-primary/5 transition-all text-left group"
                 variant="outline"
@@ -519,6 +494,20 @@ const Assinatura = () => {
               </Button>
             </div>
           )}
+
+          {/* Checkbox para optar pelo Trial de 7 Dias Grátis */}
+          <div className="flex items-center space-x-2 border-t pt-4 mt-2">
+            <input
+              id="trial-checkbox"
+              type="checkbox"
+              checked={iniciarTrial}
+              onChange={(e) => setIniciarTrial(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-[hsl(var(--login-primary))] focus:ring-[hsl(var(--login-primary))] cursor-pointer accent-[hsl(var(--login-primary))]"
+            />
+            <label htmlFor="trial-checkbox" className="text-xs text-muted-foreground font-semibold cursor-pointer select-none">
+              Iniciar com 7 dias grátis de teste (sem pagar agora)
+            </label>
+          </div>
         </DialogContent>
       </Dialog>
     </AppLayout>
