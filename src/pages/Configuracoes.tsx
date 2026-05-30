@@ -2621,9 +2621,14 @@ const Configuracoes = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-xs text-muted-foreground">
-                  Configure as regras de envio automático de mensagens. O sistema gera a fila de envios automaticamente todos os dias às 7h da manhã e inicia o disparo às 8h, com intervalo de 1 a 2 minutos entre cada mensagem para evitar bloqueios.
-                </p>
+                <div className="space-y-2 text-xs text-muted-foreground">
+                  <p>
+                    Configure as regras de envio automático de mensagens. O sistema gera a fila de envios automaticamente todos os dias às 7h da manhã e inicia os disparos às 8h, com intervalo de 1 a 2 minutos entre cada mensagem para evitar bloqueios.
+                  </p>
+                  <p className="text-[11px] bg-primary/5 p-2.5 rounded-lg border border-primary/10 text-foreground/90">
+                    <strong>Regra de Retorno:</strong> Se um paciente com mensagem de procedimento pendente na fila realizar e concluir qualquer novo procedimento na clínica antes de receber a mensagem, o sistema identificará o retorno e <strong>excluirá a mensagem da fila de envios automaticamente</strong>.
+                  </p>
+                </div>
 
                 <form onSubmit={handleSaveQueueConfig} className="space-y-5">
                   {/* Dedup */}
