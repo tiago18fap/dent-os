@@ -1032,6 +1032,7 @@ export function Campanhas() {
       // 5. Inserir na fila prevenindo duplicados
       let inseridos = 0;
       let duplicados = 0;
+      const pacientesAdicionados: string[] = [];
 
       for (const cliente of clientes) {
         const nomePaciente = (cliente.paciente ?? "").trim();
@@ -1084,9 +1085,15 @@ export function Campanhas() {
 
         if (erroInsert) throw erroInsert;
         inseridos++;
+        pacientesAdicionados.push(nomePaciente);
       }
 
       if (inseridos > 0) {
+        await gravarLogAuditoria(
+          campanha.clinica_id,
+          "forcar_fila_procedimento",
+          `Forçado envio manual para fila da campanha '${nomesProc.join(", ")}' (Group ID: ${groupId}): adicionou ${inseridos} paciente(s): ${pacientesAdicionados.join(", ")}`
+        );
         toast({
           title: "Fila atualizada com sucesso",
           description: `${inseridos} mensagem(ns) foram adicionadas à fila de envios.${duplicados > 0 ? ` (${duplicados} já estavam na fila)` : ""}`,
