@@ -25,6 +25,7 @@ import { useClinica } from "@/contexts/ClinicaContext";
 import { DateRange } from "react-day-picker";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type PeriodoFiltro = "hoje" | "semanal" | "mensal" | "personalizado";
 
@@ -565,6 +566,7 @@ const FilaEnvios = () => {
                         )}
                         <TableHead>Origem</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead className="hidden md:table-cell">Interação</TableHead>
                         <TableHead className="hidden sm:table-cell text-right">Custo</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -592,6 +594,80 @@ const FilaEnvios = () => {
                             )}
                             <TableCell>{getOrigemBadge(item.origem, item.campanha_ref)}</TableCell>
                             <TableCell>{getStatusBadge(item.status)}</TableCell>
+                            <TableCell className="hidden md:table-cell">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {item.status === "enviado" && (
+                                  <>
+                                    {item.lida ? (
+                                      <TooltipProvider>
+                                        <UITooltip>
+                                          <TooltipTrigger asChild>
+                                            <Badge variant="outline" className="border-blue-500/30 bg-blue-500/5 text-blue-600 flex items-center gap-1 text-[10px] cursor-help">
+                                              👁️ Lida
+                                            </Badge>
+                                          </TooltipTrigger>
+                                          <TooltipContent className="max-w-[250px] text-xs">
+                                            {item.data_leitura ? (
+                                              <p>Lida em: {new Date(item.data_leitura).toLocaleString("pt-BR")}</p>
+                                            ) : (
+                                              <p>Mensagem lida pelo paciente</p>
+                                            )}
+                                          </TooltipContent>
+                                        </UITooltip>
+                                      </TooltipProvider>
+                                    ) : (
+                                      <Badge variant="outline" className="border-slate-200 text-slate-400 bg-slate-50 text-[10px]">
+                                        Entregue
+                                      </Badge>
+                                    )}
+
+                                    {item.respondida && (
+                                      <TooltipProvider>
+                                        <UITooltip>
+                                          <TooltipTrigger asChild>
+                                            <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/5 text-emerald-600 flex items-center gap-1 text-[10px] cursor-help">
+                                              💬 Respondida
+                                            </Badge>
+                                          </TooltipTrigger>
+                                          <TooltipContent className="max-w-[250px] text-xs">
+                                            <p className="font-semibold mb-1">Resposta do Paciente:</p>
+                                            <p className="italic">"{item.mensagem_resposta || "Sem texto"}"</p>
+                                            {item.data_resposta && (
+                                              <p className="text-[10px] text-muted-foreground mt-1">
+                                                Em {new Date(item.data_resposta).toLocaleString("pt-BR")}
+                                              </p>
+                                            )}
+                                          </TooltipContent>
+                                        </UITooltip>
+                                      </TooltipProvider>
+                                    )}
+
+                                    {item.teve_retorno && (
+                                      <TooltipProvider>
+                                        <UITooltip>
+                                          <TooltipTrigger asChild>
+                                            <Badge variant="outline" className="border-violet-500/30 bg-violet-500/5 text-violet-600 flex items-center gap-1 text-[10px] cursor-help">
+                                              🔄 Retornou
+                                            </Badge>
+                                          </TooltipTrigger>
+                                          <TooltipContent className="max-w-[250px] text-xs">
+                                            <p className="font-semibold mb-1">Paciente retornou!</p>
+                                            {item.data_retorno && (
+                                              <p className="text-muted-foreground">
+                                                Retorno em: {new Date(item.data_retorno).toLocaleDateString("pt-BR")}
+                                              </p>
+                                            )}
+                                          </TooltipContent>
+                                        </UITooltip>
+                                      </TooltipProvider>
+                                    )}
+                                  </>
+                                )}
+                                {item.status !== "enviado" && (
+                                  <span className="text-muted-foreground/45 text-[10px]">—</span>
+                                )}
+                              </div>
+                            </TableCell>
                             <TableCell className="hidden sm:table-cell text-right text-destructive font-medium text-xs">-{item.custo ?? 1}</TableCell>
                           </TableRow>
                         );

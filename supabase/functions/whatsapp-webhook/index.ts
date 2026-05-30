@@ -147,6 +147,42 @@ serve(async (req) => {
           }
         }
 
+        // --- Registrar Leitura e Resposta no fila_envios ---
+        try {
+          // Busca o último envio nos últimos 30 dias para este JID e clínica
+          const searchDigits = clientNumber.slice(-8); // últimos 8 dígitos
+          const { data: ultimosEnvios, error: fetchErr } = await supabase
+            .from("fila_envios")
+            .select("id, status, telefone")
+            .eq("clinica_id", config.clinica_id)
+            .eq("status", "enviado")
+            .order("data_programada", { ascending: false })
+            .limit(10);
+
+          if (!fetchErr && ultimosEnvios && ultimosEnvios.length > 0) {
+            const match = ultimosEnvios.find(u => {
+              const uClean = (u.telefone || "").replace(/\D/g, "");
+              return uClean.endsWith(searchDigits);
+            });
+
+            if (match) {
+              console.log(`[Webhook] Marcando envio ${match.id} como LIDO e RESPONDIDO.`);
+              await supabase
+                .from("fila_envios")
+                .update({
+                  lida: true,
+                  respondida: true,
+                  data_leitura: new Date().toISOString(),
+                  data_resposta: new Date().toISOString(),
+                  mensagem_resposta: clientMessageText
+                })
+                .eq("id", match.id);
+            }
+          }
+        } catch (err) {
+          console.error("[Webhook] Falha ao registrar leitura/resposta da fila:", err);
+        }
+
         // --- Algoritmo de Detecção de Opt-Out (Saída da Lista / LGPD) ---
         const isOptOut = checkOptOutRequest(clientMessageText);
         if (isOptOut) {
