@@ -58,6 +58,7 @@ interface ProcedimentoDb {
   procedimento: string;
   mensagem: string | null;
   tempo_disparo_minutos: number | null;
+  clinica_id?: string;
 }
 
 const PROCEDIMENTO_BG_CLASSES: string[] = [
@@ -74,6 +75,7 @@ interface ConfigProcedimento {
   diasEntreEnvios: number;
   mensagem: string;
   groupId?: string;
+  clinicaId?: string;
 }
 
 interface DisparoMassaHistoricoItem {
@@ -294,6 +296,7 @@ export function Campanhas() {
           procedimento: row.procedimento ?? row.nome ?? row.descricao ?? "Procedimento sem nome",
           mensagem: row.mensagem ?? null,
           tempo_disparo_minutos: row.tempo_disparo_minutos ?? null,
+          clinica_id: row.clinica_id,
         }));
 
         // Remove procedimentos duplicados pelo nome
@@ -317,7 +320,7 @@ export function Campanhas() {
         // ─── 1. Carregar campanhas de procedimento agrupadas ───
         let procCampQuery = (supabase as any)
           .from(TABELA_CAMPANHAS_PROCEDIMENTO)
-          .select("group_id, ativo, limite_envios, dias_entre_envios, mensagem, procedimentos_ids");
+          .select("group_id, ativo, limite_envios, dias_entre_envios, mensagem, procedimentos_ids, clinica_id");
 
         if (!isSuperAdmin || isImpersonating) {
           if (clinica?.id) {
@@ -346,6 +349,7 @@ export function Campanhas() {
                 diasEntreEnvios: camp.dias_entre_envios ?? 30,
                 mensagem: camp.mensagem ?? "",
                 groupId,
+                clinicaId: camp.clinica_id,
               };
 
               // Atribui o mesmo config (com o mesmo groupId) para cada procedimento do grupo
@@ -681,10 +685,21 @@ export function Campanhas() {
     }
   };
 
-  const salvarCampanhaConfig = async (chave: string, mensagem: string, ativo: boolean) => {
+  const salvarCampanhaConfig = async (
+    chave: string,
+    mensagem: string,
+    ativo: boolean,
+    clinicaId?: string,
+  ) => {
     const mensagemLimpa = mensagem.trim();
 
     if (mensagemLimpa.length === 0 || mensagemLimpa.length > 1000) {
+      return;
+    }
+
+    const finalClinicaId = clinicaId || clinica?.id;
+    if (!finalClinicaId) {
+      console.warn("salvarCampanhaConfig ignorado: clinicaId não fornecido.");
       return;
     }
 
@@ -696,7 +711,7 @@ export function Campanhas() {
             chave,
             mensagem: mensagemLimpa,
             ativo,
-            clinica_id: clinica?.id,
+            clinica_id: finalClinicaId,
           },
           {
             onConflict: "clinica_id,chave",
@@ -706,7 +721,7 @@ export function Campanhas() {
       if (error) throw error;
 
       await gravarLogAuditoria(
-        clinica?.id,
+        finalClinicaId,
         "salvar_frase",
         `Salva frase da campanha '${chave}' (${ativo ? 'Ativa' : 'Inativa'}): "${mensagemLimpa.slice(0, 80)}${mensagemLimpa.length > 80 ? '...' : ''}"`
       );
@@ -730,17 +745,19 @@ export function Campanhas() {
   const sincronizarCampanhaGrupo = async (
     groupId: string,
     procedimentoIds: ProcedimentoId[],
-    config: Pick<ConfigProcedimento, "ativo" | "limiteEnvios" | "diasEntreEnvios" | "mensagem">,
+    config: Pick<ConfigProcedimento, "ativo" | "limiteEnvios" | "diasEntreEnvios" | "mensagem" | "clinicaId">,
   ) => {
     try {
       if (procedimentoIds.length === 0) {
-        await removerCampanhaGrupo(groupId);
+        await removerCampanhaGrupo(groupId, config.clinicaId);
         return;
       }
 
       const nomesProcedimentos = procedimentoIds
         .map((id) => procedimentos.find((p) => p.id === id)?.procedimento)
         .filter(Boolean) as string[];
+
+      const finalClinicaId = config.clinicaId || clinica?.id;
 
       const payload = {
         group_id: groupId,
@@ -750,14 +767,14 @@ export function Campanhas() {
         mensagem: config.mensagem,
         procedimentos_ids: procedimentoIds,
         procedimentos_nomes: nomesProcedimentos,
-        clinica_id: clinica?.id,
+        clinica_id: finalClinicaId,
       };
 
       // Check if exists
       const { data: existing } = await (supabase as any)
         .from(TABELA_CAMPANHAS_PROCEDIMENTO)
         .select("group_id")
-        .eq("clinica_id", clinica?.id)
+        .eq("clinica_id", finalClinicaId)
         .eq("group_id", groupId)
         .limit(1);
 
@@ -766,12 +783,12 @@ export function Campanhas() {
         const { error } = await (supabase as any)
           .from(TABELA_CAMPANHAS_PROCEDIMENTO)
           .update(payload)
-          .eq("clinica_id", clinica?.id)
+          .eq("clinica_id", finalClinicaId)
           .eq("group_id", groupId);
         if (error) throw error;
 
         await gravarLogAuditoria(
-          clinica?.id,
+          finalClinicaId,
           "editar_procedimento",
           `Atualizada frase da campanha de procedimento (Group ID: ${groupId}): "${config.mensagem.slice(0, 80)}${config.mensagem.length > 80 ? '...' : ''}"`
         );
@@ -783,7 +800,7 @@ export function Campanhas() {
         if (error) throw error;
 
         await gravarLogAuditoria(
-          clinica?.id,
+          finalClinicaId,
           "criar_procedimento",
           `Criada campanha de procedimento (Group ID: ${groupId}): "${config.mensagem.slice(0, 80)}${config.mensagem.length > 80 ? '...' : ''}"`
         );
@@ -798,15 +815,16 @@ export function Campanhas() {
     }
   };
  
-  const removerCampanhaGrupo = async (groupId: string) => {
+  const removerCampanhaGrupo = async (groupId: string, clinicaId?: string) => {
     try {
       let query = (supabase as any)
         .from(TABELA_CAMPANHAS_PROCEDIMENTO)
         .delete()
         .eq("group_id", groupId);
 
-      if (clinica?.id) {
-        query = query.eq("clinica_id", clinica.id);
+      const finalClinicaId = clinicaId || clinica?.id;
+      if (finalClinicaId) {
+        query = query.eq("clinica_id", finalClinicaId);
       }
 
       const { error } = await query;
@@ -815,7 +833,7 @@ export function Campanhas() {
         console.error("Erro ao remover resumo de campanha por procedimento", error);
       } else {
         await gravarLogAuditoria(
-          clinica?.id,
+          finalClinicaId,
           "deletar_procedimento",
           `Excluída campanha de procedimento (Group ID: ${groupId})`
         );
@@ -876,7 +894,7 @@ export function Campanhas() {
       // 2. Buscar procedimentos da clínica que combinem com os nomes da campanha
       let procQuery = (supabase as any)
         .from("procedimentos")
-        .select("nome_paciente, data_finalizacao, procedimento")
+        .select("nome_paciente, data_finalizacao, procedimento, clinica_id")
         .in("procedimento", nomesProc);
 
       if (!isSuperAdmin || isImpersonating) {
@@ -1027,7 +1045,7 @@ export function Campanhas() {
         const { count: dupCount, error: erroDup } = await (supabase as any)
           .from("fila_envios")
           .select("id", { count: "exact", head: true })
-          .eq("clinica_id", clinica?.id)
+          .eq("clinica_id", campanha.clinica_id)
           .eq("paciente_id", cliente.id)
           .eq("origem", "procedimento")
           .eq("campanha_ref", groupId)
@@ -1060,7 +1078,7 @@ export function Campanhas() {
             status: "pendente",
             custo: 1,
             origem: "procedimento",
-            clinica_id: clinica?.id,
+            clinica_id: campanha.clinica_id,
             campanha_ref: groupId,
           });
 
@@ -1092,7 +1110,9 @@ export function Campanhas() {
     }
   };
 
-  const removerProcedimento = async (id: ProcedimentoId) => {
+  const removerProcedimento = async (id: ProcedimentoId, clinicaId?: string) => {
+    const finalClinicaId = clinicaId || configsProcedimentos[id]?.clinicaId || clinica?.id;
+
     // Remove do estado (tela)
     setConfigsProcedimentos((prev) => {
       const novo = { ...prev } as Record<ProcedimentoId, ConfigProcedimento>;
@@ -1107,8 +1127,8 @@ export function Campanhas() {
         .delete()
         .eq("chave", `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${id}`);
 
-      if (clinica?.id) {
-        query = query.eq("clinica_id", clinica.id);
+      if (finalClinicaId) {
+        query = query.eq("clinica_id", finalClinicaId);
       }
 
       const { error } = await query;
@@ -1206,10 +1226,11 @@ export function Campanhas() {
 
                   const grupoAtual = campanhasPorConfig[alvo.groupId];
                   const ids = grupoAtual?.procedimentoIds ?? [];
+                  const clinicaId = grupoAtual?.config?.clinicaId;
 
                   try {
-                    await Promise.all(ids.map((id) => removerProcedimento(id)));
-                    await removerCampanhaGrupo(alvo.groupId);
+                    await Promise.all(ids.map((id) => removerProcedimento(id, clinicaId)));
+                    await removerCampanhaGrupo(alvo.groupId, clinicaId);
 
                     setNovoProcedimentoPorGrupo((prev) => {
                       if (!(alvo.groupId in prev)) return prev;
@@ -2008,6 +2029,7 @@ export function Campanhas() {
                               diasEntreEnvios,
                               mensagem: mensagemBase,
                               groupId: novoGrupoId,
+                              clinicaId: proc.clinica_id,
                             };
 
                             idsAdicionados.push(procId);
@@ -2034,6 +2056,7 @@ export function Campanhas() {
                                 `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${id}`,
                                 configsParaAdicionar[id].mensagem,
                                 configsParaAdicionar[id].ativo,
+                                configsParaAdicionar[id].clinicaId,
                               ),
                             ),
                           );
@@ -2102,6 +2125,7 @@ export function Campanhas() {
                                      `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${id}`,
                                      configAtualizada.mensagem,
                                      checked,
+                                     grupo.config.clinicaId,
                                    );
                                  });
 
@@ -2177,7 +2201,7 @@ export function Campanhas() {
                                     type="button"
                                      onClick={() => {
                                        const idsAtualizados = grupo.procedimentoIds.filter((pid) => pid !== idProcedimento);
-                                       void removerProcedimento(idProcedimento).then(() => {
+                                       void removerProcedimento(idProcedimento, grupo.config.clinicaId).then(() => {
                                          void sincronizarCampanhaGrupo(chaveGrupo, idsAtualizados, grupo.config);
                                        });
                                      }}
@@ -2270,6 +2294,7 @@ export function Campanhas() {
                                      `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${selecionado}`,
                                      grupo.config.mensagem,
                                      grupo.config.ativo,
+                                     grupo.config.clinicaId,
                                    );
 
                                    void sincronizarCampanhaGrupo(chaveGrupo, idsAtualizados, grupo.config);
@@ -2323,6 +2348,7 @@ export function Campanhas() {
                                         `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${idProcedimento}`,
                                         grupo.config.mensagem,
                                         grupo.config.ativo,
+                                        grupo.config.clinicaId,
                                       );
                                     });
                                   }
@@ -2354,6 +2380,7 @@ export function Campanhas() {
                                           `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${idProcedimento}`,
                                           grupo.config.mensagem,
                                           grupo.config.ativo,
+                                          grupo.config.clinicaId,
                                         );
                                       });
                                     }}
@@ -2386,6 +2413,7 @@ export function Campanhas() {
                                       `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${idProcedimento}`,
                                       grupo.config.mensagem,
                                       grupo.config.ativo,
+                                      grupo.config.clinicaId,
                                     );
                                   });
                                   void sincronizarCampanhaGrupo(chaveGrupo, grupo.procedimentoIds, grupo.config);
