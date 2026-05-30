@@ -5,18 +5,29 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Check, Facebook, Instagram, Linkedin, LogIn, MessageCircle, Shield, Star, UserPlus, Zap } from "lucide-react";
-import { useEffect, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 const Landing = () => {
   const navigate = useNavigate();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
     document.title = "DentOS | Alertas por WhatsApp para dentistas";
+    
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsLoggedIn(!!session);
+    });
   }, []);
 
-  const handleStartTrial = () => {
-    navigate("/app");
+  const handleSelectPlano = (planoId: string) => {
+    localStorage.setItem("pending_checkout_plano", planoId);
+    if (isLoggedIn) {
+      navigate(`/app/assinatura?checkout=true&plano=${planoId}`);
+    } else {
+      navigate(`/auth?mode=signup&plano=${planoId}`);
+    }
   };
 
   return (
@@ -189,11 +200,11 @@ const Landing = () => {
           </div>
 
           <div className="mt-4 grid gap-5 md:grid-cols-3">
-            {/* Basic */}
+            {/* Bronze */}
             <Card className="flex flex-col border-border/80 bg-card/90 hover-scale">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-base">
-                  <span>Plano Básico</span>
+                  <span>Plano Bronze</span>
                   <span className="rounded-full bg-secondary/10 px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">
                     Ideal para começar
                   </span>
@@ -202,76 +213,72 @@ const Landing = () => {
               <CardContent className="flex flex-1 flex-col justify-between gap-4 text-sm">
                 <div className="space-y-2">
                   <p className="text-2xl font-semibold">
-                    R$ 99<span className="text-sm font-normal text-muted-foreground">/mês</span>
+                    R$ 89,00<span className="text-sm font-normal text-muted-foreground">/mês</span>
                   </p>
                   <ul className="space-y-1.5 text-muted-foreground">
                     <li className="flex gap-2">
                       <Check className="mt-0.5 h-3.5 w-3.5 text-secondary" />
-                      <span>Até 1.000 contatos ativos.</span>
+                      <span>100 mensagens/mês.</span>
                     </li>
                     <li className="flex gap-2">
                       <Check className="mt-0.5 h-3.5 w-3.5 text-secondary" />
-                      <span>Lembretes básicos de consulta.</span>
+                      <span>Até 10 campanhas de procedimento.</span>
                     </li>
                     <li className="flex gap-2">
                       <Check className="mt-0.5 h-3.5 w-3.5 text-secondary" />
-                      <span>Suporte por e-mail.</span>
+                      <span>Suporte em até 48h.</span>
                     </li>
                   </ul>
                 </div>
-                <Button className="w-full" onClick={handleStartTrial}>
-                  Testar grátis
+                <Button className="w-full" onClick={() => handleSelectPlano("bronze")}>
+                  Escolher Bronze
                 </Button>
               </CardContent>
             </Card>
 
-            {/* Premium */}
+            {/* Prata */}
             <Card className="flex flex-col border-secondary/70 bg-gradient-to-b from-secondary/15 via-background to-background shadow-lg shadow-secondary/20 hover-scale">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-base">
-                  <span>Plano Premium</span>
+                  <span>Plano Prata</span>
                   <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-semibold text-secondary-foreground">
-                    Mais usado
+                    Mais popular
                   </span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="flex flex-1 flex-col justify-between gap-4 text-sm">
                 <div className="space-y-2">
                   <p className="text-2xl font-semibold">
-                    R$ 179<span className="text-sm font-normal text-muted-foreground">/mês</span>
+                    R$ 139,00<span className="text-sm font-normal text-muted-foreground">/mês</span>
                   </p>
                   <ul className="space-y-1.5 text-muted-foreground">
                     <li className="flex gap-2">
                       <Check className="mt-0.5 h-3.5 w-3.5 text-secondary" />
-                      <span>Até 5.000 contatos ativos.</span>
+                      <span>1.000 mensagens/mês.</span>
                     </li>
                     <li className="flex gap-2">
                       <Check className="mt-0.5 h-3.5 w-3.5 text-secondary" />
-                      <span>Campanhas por procedimento e aniversariantes.</span>
+                      <span>Até 30 campanhas de procedimento.</span>
                     </li>
                     <li className="flex gap-2">
                       <Check className="mt-0.5 h-3.5 w-3.5 text-secondary" />
-                      <span>Módulo Indique e Ganhe.</span>
-                    </li>
-                    <li className="flex gap-2">
-                      <Check className="mt-0.5 h-3.5 w-3.5 text-secondary" />
-                      <span>Suporte prioritário por WhatsApp.</span>
+                      <span>Suporte em até 24h.</span>
                     </li>
                   </ul>
                 </div>
-                <Button className="w-full" onClick={handleStartTrial}>
-                  Começar no Premium
+                <Button className="w-full" onClick={() => handleSelectPlano("prata")}>
+                  Escolher Prata
                 </Button>
               </CardContent>
             </Card>
 
-            {/* Enterprise */}
+            {/* Ouro */}
             <Card className="flex flex-col border-border/80 bg-card/90 hover-scale">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-base">
-                  <span>Plano Enterprise</span>
+                  <span>Plano Ouro</span>
                   <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                    Sob consulta
+                    Ilimitado
                   </span>
                 </CardTitle>
               </CardHeader>
@@ -283,19 +290,19 @@ const Landing = () => {
                   <ul className="space-y-1.5 text-muted-foreground">
                     <li className="flex gap-2">
                       <Check className="mt-0.5 h-3.5 w-3.5 text-secondary" />
-                      <span>Clínicas e redes com alto volume.</span>
+                      <span>Volume de mensagens personalizado.</span>
                     </li>
                     <li className="flex gap-2">
                       <Check className="mt-0.5 h-3.5 w-3.5 text-secondary" />
-                      <span>Onboarding dedicado e consultoria.</span>
+                      <span>Campanhas de procedimento ilimitadas.</span>
                     </li>
                     <li className="flex gap-2">
                       <Check className="mt-0.5 h-3.5 w-3.5 text-secondary" />
-                      <span>Integrações avançadas e SLA personalizado.</span>
+                      <span>Gerente de contas dedicado.</span>
                     </li>
                   </ul>
                 </div>
-                <Button variant="outline" className="w-full" onClick={() => window.open("https://wa.me/55", "_blank") }>
+                <Button variant="outline" className="w-full" onClick={() => window.open("https://wa.me/55", "_blank")}>
                   Falar com time comercial
                 </Button>
               </CardContent>

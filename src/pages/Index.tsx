@@ -71,8 +71,9 @@ const CardInfo = ({ text }: { text: string }) => (
 
 const Index = () => {
   const navigate = useNavigate();
-  const { clinica, loading: clinicaLoading } = useClinica();
+  const { clinica, loading: clinicaLoading, isSuperAdmin, isImpersonating } = useClinica();
   const clinicaId = clinica?.id;
+  const isConsolidated = isSuperAdmin && !isImpersonating;
 
   // Estado do Modo Demonstração
   const [demoMode, setDemoMode] = useState<boolean>(true);
@@ -84,43 +85,46 @@ const Index = () => {
 
   // 1. Query para total de pacientes
   const { data: totalPacientes = 0, isLoading: loadingPacientes } = useQuery({
-    queryKey: ["dashboard_total_pacientes", clinicaId],
+    queryKey: ["dashboard_total_pacientes", clinicaId, isConsolidated],
     queryFn: async () => {
-      if (!clinicaId) return 0;
-      const { count, error } = await supabase
-        .from("clientes")
-        .select("*", { count: "exact", head: true })
-        .eq("clinica_id", clinicaId);
+      let query = supabase.from("clientes").select("*", { count: "exact", head: true });
+      if (!isConsolidated) {
+        if (!clinicaId) return 0;
+        query = query.eq("clinica_id", clinicaId);
+      }
+      const { count, error } = await query;
       if (error) throw error;
       return count || 0;
     },
-    enabled: !!clinicaId,
+    enabled: !!clinicaId || isConsolidated,
   });
 
   // 2. Query para total de procedimentos
   const { data: totalProcedimentos = 0, isLoading: loadingProcedimentos } = useQuery({
-    queryKey: ["dashboard_total_procedimentos", clinicaId],
+    queryKey: ["dashboard_total_procedimentos", clinicaId, isConsolidated],
     queryFn: async () => {
-      if (!clinicaId) return 0;
-      const { count, error } = await supabase
-        .from("procedimentos")
-        .select("*", { count: "exact", head: true })
-        .eq("clinica_id", clinicaId);
+      let query = supabase.from("procedimentos").select("*", { count: "exact", head: true });
+      if (!isConsolidated) {
+        if (!clinicaId) return 0;
+        query = query.eq("clinica_id", clinicaId);
+      }
+      const { count, error } = await query;
       if (error) throw error;
       return count || 0;
     },
-    enabled: !!clinicaId,
+    enabled: !!clinicaId || isConsolidated,
   });
 
   // 3. Query para estatísticas da fila (mensagens pendentes)
   const { data: queueStats = { pendente: 0, enviado: 0, falhou: 0 }, isLoading: loadingQueueStats } = useQuery({
-    queryKey: ["dashboard_queue_stats", clinicaId],
+    queryKey: ["dashboard_queue_stats", clinicaId, isConsolidated],
     queryFn: async () => {
-      if (!clinicaId) return { pendente: 0, enviado: 0, falhou: 0 };
-      const { data, error } = await supabase
-        .from("fila_envios")
-        .select("status")
-        .eq("clinica_id", clinicaId);
+      let query = supabase.from("fila_envios").select("status");
+      if (!isConsolidated) {
+        if (!clinicaId) return { pendente: 0, enviado: 0, falhou: 0 };
+        query = query.eq("clinica_id", clinicaId);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       
       const stats = { pendente: 0, enviado: 0, falhou: 0 };
@@ -131,53 +135,57 @@ const Index = () => {
       });
       return stats;
     },
-    enabled: !!clinicaId,
+    enabled: !!clinicaId || isConsolidated,
   });
 
   // 4. Query para as últimas 3 sincronizações do Easy Dental
   const { data: syncLogs = [], isLoading: loadingSyncLogs } = useQuery({
-    queryKey: ["dashboard_sync_logs", clinicaId],
+    queryKey: ["dashboard_sync_logs", clinicaId, isConsolidated],
     queryFn: async () => {
-      if (!clinicaId) return [];
-      const { data, error } = await supabase
-        .from("sync_logs")
-        .select("*")
-        .eq("clinica_id", clinicaId)
+      let query = supabase.from("sync_logs").select("*");
+      if (!isConsolidated) {
+        if (!clinicaId) return [];
+        query = query.eq("clinica_id", clinicaId);
+      }
+      const { data, error } = await query
         .order("created_at", { ascending: false })
         .limit(3);
       if (error) throw error;
       return data || [];
     },
-    enabled: !!clinicaId,
+    enabled: !!clinicaId || isConsolidated,
   });
 
   // 5. Query para os próximos 5 envios programados na fila (pendente)
   const { data: upcomingMessages = [], isLoading: loadingUpcoming } = useQuery({
-    queryKey: ["dashboard_upcoming_messages", clinicaId],
+    queryKey: ["dashboard_upcoming_messages", clinicaId, isConsolidated],
     queryFn: async () => {
-      if (!clinicaId) return [];
-      const { data, error } = await supabase
-        .from("fila_envios")
+      let query = supabase.from("fila_envios")
         .select("id, paciente_nome, mensagem, data_programada, origem")
-        .eq("clinica_id", clinicaId)
-        .eq("status", "pendente")
+        .eq("status", "pendente");
+      if (!isConsolidated) {
+        if (!clinicaId) return [];
+        query = query.eq("clinica_id", clinicaId);
+      }
+      const { data, error } = await query
         .order("data_programada", { ascending: true })
         .limit(5);
       if (error) throw error;
       return data || [];
     },
-    enabled: !!clinicaId,
+    enabled: !!clinicaId || isConsolidated,
   });
 
   // 6. Query para distribuição de pacientes por situação
   const { data: patientDistribution = [], isLoading: loadingDistribution } = useQuery({
-    queryKey: ["dashboard_patient_distribution", clinicaId],
+    queryKey: ["dashboard_patient_distribution", clinicaId, isConsolidated],
     queryFn: async () => {
-      if (!clinicaId) return [];
-      const { data, error } = await supabase
-        .from("clientes")
-        .select("situacao")
-        .eq("clinica_id", clinicaId);
+      let query = supabase.from("clientes").select("situacao");
+      if (!isConsolidated) {
+        if (!clinicaId) return [];
+        query = query.eq("clinica_id", clinicaId);
+      }
+      const { data, error } = await query;
       if (error) throw error;
       
       const counts: Record<string, number> = {};
@@ -191,21 +199,22 @@ const Index = () => {
         value: counts[key]
       }));
     },
-    enabled: !!clinicaId,
+    enabled: !!clinicaId || isConsolidated,
   });
 
   // 7. Query para estatísticas reais de conversão e retornos pós-mensagem
   const { data: realConversionStats = { retornos: 0, conversaoRate: 0, faturamentoRecuperado: 0, tempoRetornoDias: 0 }, isLoading: loadingConversion } = useQuery({
-    queryKey: ["dashboard_real_conversion", clinicaId],
+    queryKey: ["dashboard_real_conversion", clinicaId, isConsolidated],
     queryFn: async () => {
-      if (!clinicaId) return { retornos: 0, conversaoRate: 0, faturamentoRecuperado: 0, tempoRetornoDias: 0 };
-      
       // Buscar mensagens enviadas
-      const { data: sentMessages, error: msgError } = await supabase
-        .from("fila_envios")
+      let msgQuery = supabase.from("fila_envios")
         .select("paciente_nome, created_at")
-        .eq("clinica_id", clinicaId)
         .eq("status", "enviado");
+      if (!isConsolidated) {
+        if (!clinicaId) return { retornos: 0, conversaoRate: 0, faturamentoRecuperado: 0, tempoRetornoDias: 0 };
+        msgQuery = msgQuery.eq("clinica_id", clinicaId);
+      }
+      const { data: sentMessages, error: msgError } = await msgQuery;
         
       if (msgError) throw msgError;
       if (!sentMessages || sentMessages.length === 0) {
@@ -213,10 +222,11 @@ const Index = () => {
       }
       
       // Buscar todos os procedimentos para ver quais foram realizados depois do envio da campanha correspondente
-      const { data: procs, error: procError } = await supabase
-        .from("procedimentos")
-        .select("nome_paciente, data_finalizacao")
-        .eq("clinica_id", clinicaId);
+      let procQuery = supabase.from("procedimentos").select("nome_paciente, data_finalizacao");
+      if (!isConsolidated) {
+        procQuery = procQuery.eq("clinica_id", clinicaId);
+      }
+      const { data: procs, error: procError } = await procQuery;
         
       if (procError) throw procError;
       
@@ -262,7 +272,7 @@ const Index = () => {
         tempoRetornoDias: avgTempoRetorno
       };
     },
-    enabled: !!clinicaId,
+    enabled: !!clinicaId || isConsolidated,
   });
 
   // Inicializa o modo de demonstração caso a clínica não tenha envios reais
@@ -363,7 +373,7 @@ const Index = () => {
             Dashboard Analítico
           </h1>
           <p className="text-xs text-muted-foreground">
-            Acompanhe o desempenho das suas automações na clínica <span className="font-semibold text-foreground">{clinica?.nome || "Carregando..."}</span>
+            Acompanhe o desempenho das suas automações na clínica <span className="font-semibold text-foreground">{isConsolidated ? "Consolidado (Todas as clínicas)" : (clinica?.nome || "Carregando...")}</span>
           </p>
         </div>
         

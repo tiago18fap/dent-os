@@ -25,11 +25,19 @@ const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [clinicaNome, setClinicaNome] = useState("");
   const [loading, setLoading] = useState(false);
   
   // Verifica se veio da Landing com mode=signup ou mode=login
   const initialMode = searchParams.get("mode") === "signup" ? true : false;
   const [isSignUp, setIsSignUp] = useState(initialMode);
+  const plano = searchParams.get("plano");
+
+  useEffect(() => {
+    if (plano) {
+      localStorage.setItem("pending_checkout_plano", plano);
+    }
+  }, [plano]);
 
   useEffect(() => {
     document.title = "Login - DentOS";
@@ -124,6 +132,15 @@ const Auth = () => {
       return;
     }
 
+    if (!clinicaNome.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Nome da clínica obrigatório",
+        description: "Por favor, informe o nome da sua clínica.",
+      });
+      return;
+    }
+
     setLoading(true);
  
     try {
@@ -152,6 +169,8 @@ const Auth = () => {
           emailRedirectTo: redirectUrl,
           data: {
             full_name: fullName.trim(),
+            clinica_nome: clinicaNome.trim(),
+            plano_pretendido: plano || "bronze",
           },
         },
       });
@@ -219,18 +238,37 @@ const Auth = () => {
         <CardContent>
           <form onSubmit={isSignUp ? handleSignUp : handleSignIn} className="space-y-4">
             {isSignUp && (
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Nome completo</Label>
-                <Input
-                  id="fullName"
-                  type="text"
-                  placeholder="Seu nome completo"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  required={isSignUp}
-                  disabled={loading}
-                />
-              </div>
+              <>
+                {plano && (
+                  <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 mb-2 text-center text-xs text-foreground">
+                    Você está se cadastrando no plano: <span className="font-bold capitalize text-primary">{plano}</span>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="fullName">Nome completo</Label>
+                  <Input
+                    id="fullName"
+                    type="text"
+                    placeholder="Seu nome completo"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required={isSignUp}
+                    disabled={loading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="clinicaNome">Nome da Clínica</Label>
+                  <Input
+                    id="clinicaNome"
+                    type="text"
+                    placeholder="Nome da sua clínica"
+                    value={clinicaNome}
+                    onChange={(e) => setClinicaNome(e.target.value)}
+                    required={isSignUp}
+                    disabled={loading}
+                  />
+                </div>
+              </>
             )}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
