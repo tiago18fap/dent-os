@@ -24,7 +24,7 @@ const Landing = () => {
   const handleSelectPlano = (planoId: string) => {
     localStorage.setItem("pending_checkout_plano", planoId);
     if (isLoggedIn) {
-      navigate(`/app/assinatura?checkout=true&plano=${planoId}`);
+      navigate(`/assinatura?checkout=true&plano=${planoId}`);
     } else {
       navigate(`/auth?mode=signup&plano=${planoId}`);
     }
