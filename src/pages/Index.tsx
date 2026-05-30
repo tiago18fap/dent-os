@@ -1,122 +1,749 @@
 import { AppLayout } from "@/layouts/AppLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Upload, Megaphone, Gift, FileSpreadsheet, Calendar, RefreshCcw } from "lucide-react";
-import { useEffect } from "react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import { 
+  Users, 
+  Clock, 
+  TrendingUp, 
+  DollarSign, 
+  Sparkles, 
+  ArrowRight, 
+  RefreshCcw, 
+  Loader2, 
+  AlertCircle,
+  HelpCircle,
+  Calendar
+} from "lucide-react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useWhatsappStatus } from "@/hooks/use-whatsapp-status";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useClinica } from "@/contexts/ClinicaContext";
+import { 
+  AreaChart, 
+  Area, 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  PieChart, 
+  Pie, 
+  Cell, 
+  Legend 
+} from "recharts";
+
+// Cores para o gráfico de pizza (Situação dos Pacientes)
+const PIE_COLORS = ["hsl(var(--login-primary))", "#f59e0b", "#94a3b8"];
 
 const Index = () => {
   const navigate = useNavigate();
-  const whatsappStatusQuery = useWhatsappStatus();
-  const isAutomaticImport = Boolean(whatsappStatusQuery.data?.easydental_usuario);
+  const { clinica, loading: clinicaLoading } = useClinica();
+  const clinicaId = clinica?.id;
+
+  // Estado do Modo Demonstração
+  const [demoMode, setDemoMode] = useState<boolean>(true);
+  const [hasInitializedDemo, setHasInitializedDemo] = useState(false);
 
   useEffect(() => {
     document.title = "Dashboard DentOS";
   }, []);
 
-  const today = new Date();
-  const aniversariantesMes = 42;
+  // 1. Query para total de pacientes
+  const { data: totalPacientes = 0, isLoading: loadingPacientes } = useQuery({
+    queryKey: ["dashboard_total_pacientes", clinicaId],
+    queryFn: async () => {
+      if (!clinicaId) return 0;
+      const { count, error } = await supabase
+        .from("clientes")
+        .select("*", { count: "exact", head: true })
+        .eq("clinica_id", clinicaId);
+      if (error) throw error;
+      return count || 0;
+    },
+    enabled: !!clinicaId,
+  });
+
+  // 2. Query para total de procedimentos
+  const { data: totalProcedimentos = 0, isLoading: loadingProcedimentos } = useQuery({
+    queryKey: ["dashboard_total_procedimentos", clinicaId],
+    queryFn: async () => {
+      if (!clinicaId) return 0;
+      const { count, error } = await supabase
+        .from("procedimentos")
+        .select("*", { count: "exact", head: true })
+        .eq("clinica_id", clinicaId);
+      if (error) throw error;
+      return count || 0;
+    },
+    enabled: !!clinicaId,
+  });
+
+  // 3. Query para estatísticas da fila (mensagens pendentes)
+  const { data: queueStats = { pendente: 0, enviado: 0, falhou: 0 }, isLoading: loadingQueueStats } = useQuery({
+    queryKey: ["dashboard_queue_stats", clinicaId],
+    queryFn: async () => {
+      if (!clinicaId) return { pendente: 0, enviado: 0, falhou: 0 };
+      const { data, error } = await supabase
+        .from("fila_envios")
+        .select("status")
+        .eq("clinica_id", clinicaId);
+      if (error) throw error;
+      
+      const stats = { pendente: 0, enviado: 0, falhou: 0 };
+      data.forEach((item: any) => {
+        if (item.status === "pendente") stats.pendente++;
+        else if (item.status === "enviado") stats.enviado++;
+        else if (item.status === "falhou" || item.status === "error") stats.falhou++;
+      });
+      return stats;
+    },
+    enabled: !!clinicaId,
+  });
+
+  // 4. Query para as últimas 3 sincronizações do Easy Dental
+  const { data: syncLogs = [], isLoading: loadingSyncLogs } = useQuery({
+    queryKey: ["dashboard_sync_logs", clinicaId],
+    queryFn: async () => {
+      if (!clinicaId) return [];
+      const { data, error } = await supabase
+        .from("sync_logs")
+        .select("*")
+        .eq("clinica_id", clinicaId)
+        .order("created_at", { ascending: false })
+        .limit(3);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!clinicaId,
+  });
+
+  // 5. Query para os próximos 5 envios programados na fila (pendente)
+  const { data: upcomingMessages = [], isLoading: loadingUpcoming } = useQuery({
+    queryKey: ["dashboard_upcoming_messages", clinicaId],
+    queryFn: async () => {
+      if (!clinicaId) return [];
+      const { data, error } = await supabase
+        .from("fila_envios")
+        .select("id, paciente_nome, mensagem, data_programada, origem")
+        .eq("clinica_id", clinicaId)
+        .eq("status", "pendente")
+        .order("data_programada", { ascending: true })
+        .limit(5);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!clinicaId,
+  });
+
+  // 6. Query para distribuição de pacientes por situação
+  const { data: patientDistribution = [], isLoading: loadingDistribution } = useQuery({
+    queryKey: ["dashboard_patient_distribution", clinicaId],
+    queryFn: async () => {
+      if (!clinicaId) return [];
+      const { data, error } = await supabase
+        .from("clientes")
+        .select("situacao")
+        .eq("clinica_id", clinicaId);
+      if (error) throw error;
+      
+      const counts: Record<string, number> = {};
+      data.forEach((item: any) => {
+        const sit = item.situacao || "Outros";
+        counts[sit] = (counts[sit] || 0) + 1;
+      });
+      
+      return Object.keys(counts).map(key => ({
+        name: key,
+        value: counts[key]
+      }));
+    },
+    enabled: !!clinicaId,
+  });
+
+  // 7. Query para estatísticas reais de conversão e retornos pós-mensagem
+  const { data: realConversionStats = { retornos: 0, conversaoRate: 0, faturamentoRecuperado: 0, tempoRetornoDias: 0 }, isLoading: loadingConversion } = useQuery({
+    queryKey: ["dashboard_real_conversion", clinicaId],
+    queryFn: async () => {
+      if (!clinicaId) return { retornos: 0, conversaoRate: 0, faturamentoRecuperado: 0, tempoRetornoDias: 0 };
+      
+      // Buscar mensagens enviadas
+      const { data: sentMessages, error: msgError } = await supabase
+        .from("fila_envios")
+        .select("paciente_nome, created_at")
+        .eq("clinica_id", clinicaId)
+        .eq("status", "enviado");
+        
+      if (msgError) throw msgError;
+      if (!sentMessages || sentMessages.length === 0) {
+        return { retornos: 0, conversaoRate: 0, faturamentoRecuperado: 0, tempoRetornoDias: 0 };
+      }
+      
+      // Buscar todos os procedimentos para ver quais foram realizados depois do envio da campanha correspondente
+      const { data: procs, error: procError } = await supabase
+        .from("procedimentos")
+        .select("nome_paciente, data_finalizacao")
+        .eq("clinica_id", clinicaId);
+        
+      if (procError) throw procError;
+      
+      const uniquePatientsMessaged = new Set(sentMessages.map(m => m.paciente_nome.trim().toUpperCase()));
+      const uniqueReturns = new Set<string>();
+      let totalDaysSaved = 0;
+      let returnCount = 0;
+      
+      sentMessages.forEach(msg => {
+        const msgDate = new Date(msg.created_at);
+        const name = msg.paciente_nome.trim().toUpperCase();
+        
+        // Encontra procedimentos finalizados após o envio da mensagem para esse paciente
+        const matchingProcs = procs.filter(p => {
+          if (p.nome_paciente.trim().toUpperCase() !== name) return false;
+          if (!p.data_finalizacao) return false;
+          const procDate = new Date(p.data_finalizacao);
+          return procDate > msgDate;
+        });
+        
+        if (matchingProcs.length > 0) {
+          uniqueReturns.add(name);
+          matchingProcs.forEach(p => {
+            const procDate = new Date(p.data_finalizacao);
+            const diffTime = Math.abs(procDate.getTime() - msgDate.getTime());
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            totalDaysSaved += diffDays;
+            returnCount++;
+          });
+        }
+      });
+      
+      const totalContatados = uniquePatientsMessaged.size;
+      const totalRetornos = uniqueReturns.size;
+      const conversaoRate = totalContatados > 0 ? (totalRetornos / totalContatados) * 100 : 0;
+      const faturamentoRecuperado = totalRetornos * 150; // Média estimada de R$ 150 por consulta/retorno simples
+      const avgTempoRetorno = returnCount > 0 ? Math.round(totalDaysSaved / returnCount) : 0;
+      
+      return {
+        retornos: totalRetornos,
+        conversaoRate: Math.round(conversaoRate * 10) / 10,
+        faturamentoRecuperado,
+        tempoRetornoDias: avgTempoRetorno
+      };
+    },
+    enabled: !!clinicaId,
+  });
+
+  // Inicializa o modo de demonstração caso a clínica não tenha envios reais
+  useEffect(() => {
+    if (!loadingQueueStats && !hasInitializedDemo) {
+      const hasRealEnvios = queueStats.enviado > 0 || realConversionStats.retornos > 0;
+      // Se não há envios reais, ativa o modo demo por padrão para não mostrar tela vazia
+      setDemoMode(!hasRealEnvios);
+      setHasInitializedDemo(true);
+    }
+  }, [queueStats.enviado, realConversionStats.retornos, loadingQueueStats, hasInitializedDemo]);
+
+  // --- DADOS SIMULADOS PARA MODO DEMO ---
+  const demoStats = {
+    retornos: 147,
+    conversaoRate: 15.3,
+    faturamentoRecuperado: 22050,
+    tempoRetornoReduzido: 45 // Redução média em dias no intervalo
+  };
+
+  const demoFaturamentoTrend = [
+    { name: "Jan", valor: 2500 },
+    { name: "Fev", valor: 5400 },
+    { name: "Mar", valor: 11200 },
+    { name: "Abr", valor: 16800 },
+    { name: "Mai", valor: 22050 }
+  ];
+
+  const demoTempoRetorno = [
+    { name: "Disparo Geral", Antes: 180, Depois: 135 },
+    { name: "Procedimentos", Antes: 210, Depois: 145 },
+    { name: "Aniversariantes", Antes: 150, Depois: 110 }
+  ];
+
+  const demoFunil = [
+    { name: "Importados", qtd: 1915 },
+    { name: "Contatados", qtd: 960 },
+    { name: "Agendados", qtd: 220 },
+    { name: "Concluídos", qtd: 147 }
+  ];
+
+  // --- DADOS REAIS ---
+  const activeStats = demoMode ? demoStats : {
+    retornos: realConversionStats.retornos,
+    conversaoRate: realConversionStats.conversaoRate,
+    faturamentoRecuperado: realConversionStats.faturamentoRecuperado,
+    tempoRetornoReduzido: realConversionStats.tempoRetornoDias > 0 ? 60 - realConversionStats.tempoRetornoDias : 0 // Compara com baseline de 60 dias
+  };
+
+  const faturamentoTrend = demoMode ? demoFaturamentoTrend : [
+    { name: "Atual", valor: realConversionStats.faturamentoRecuperado }
+  ];
+
+  const tempoRetorno = demoMode ? demoTempoRetorno : [
+    { name: "Geral", Antes: 180, Depois: realConversionStats.tempoRetornoDias || 180 }
+  ];
+
+  const funilData = demoMode ? demoFunil : [
+    { name: "Importados", qtd: totalPacientes },
+    { name: "Contatados", qtd: queueStats.enviado },
+    { name: "Agendados", qtd: realConversionStats.retornos },
+    { name: "Concluídos", qtd: realConversionStats.retornos }
+  ];
+
+  const isDemoActive = demoMode;
+
+  const getBadgeOrigem = (origem: string) => {
+    switch (origem) {
+      case "procedimento":
+        return <Badge variant="outline" className="border-blue-500/30 bg-blue-500/10 text-blue-600">Procedimento</Badge>;
+      case "aniversario_mes":
+      case "aniversario":
+        return <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600">Aniversário</Badge>;
+      default:
+        return <Badge variant="outline">{origem}</Badge>;
+    }
+  };
+
+  if (clinicaLoading) {
+    return (
+      <AppLayout>
+        <div className="flex h-[50vh] flex-col items-center justify-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Carregando dados do painel analítico...</p>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>
-      <section className="grid grid-cols-2 gap-3 md:gap-4 md:grid-cols-4" aria-label="Resumo principal">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Importações recentes</CardTitle>
-            <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+      {/* Top Header com Título e Switch de Demonstração */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b pb-4">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <LayoutDashboard className="h-5 w-5 text-[hsl(var(--login-primary))]" />
+            Dashboard Analítico
+          </h1>
+          <p className="text-xs text-muted-foreground">
+            Acompanhe o desempenho das suas automações na clínica <span className="font-semibold text-foreground">{clinica?.nome || "Carregando..."}</span>
+          </p>
+        </div>
+        
+        <div className="flex items-center gap-2.5 rounded-full border bg-card px-4 py-2 shadow-sm shrink-0 self-start sm:self-center">
+          <Switch 
+            id="demo-toggle" 
+            checked={demoMode} 
+            onCheckedChange={setDemoMode} 
+          />
+          <Label htmlFor="demo-toggle" className="text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
+            <Sparkles className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+            Modo Demonstração
+          </Label>
+        </div>
+      </div>
+
+      {/* Banner explicativo do Modo Demo */}
+      {isDemoActive && (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 flex gap-3 text-sm animate-in fade-in slide-in-from-top-3 duration-300">
+          <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold text-amber-800">Modo Demonstração Ativo</p>
+            <p className="text-xs text-amber-700/90 leading-relaxed">
+              Como sua clínica ainda não enviou mensagens reais (existem {queueStats.pendente} mensagens aguardando conexão na Fila de Envios), os gráficos de faturamento e taxas de retorno estão exibindo dados simulados. KPIs reais como <strong>Pacientes</strong>, <strong>Procedimentos</strong> e <strong>Fila</strong> continuam exibindo os dados reais do seu banco de dados.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Grid de Cards de KPIs */}
+      <section className="grid grid-cols-2 gap-3 md:gap-4 md:grid-cols-4" aria-label="Indicadores Chave de Performance">
+        <Card className="hover:shadow-md transition-all duration-300">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-xs font-medium text-muted-foreground">Total de Pacientes</CardTitle>
+            <Users className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
-            <p className="text-xl sm:text-2xl font-semibold">3 arquivos</p>
-            <p className="text-xs text-muted-foreground">Últimos 7 dias (dados de exemplo)</p>
+            {loadingPacientes ? (
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            ) : (
+              <p className="text-xl sm:text-2xl font-bold">{totalPacientes.toLocaleString("pt-BR")}</p>
+            )}
+            <p className="text-[10px] text-muted-foreground mt-1">Sincronizados da Easy Dental</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Campanhas do mês</CardTitle>
-            <Megaphone className="h-4 w-4 text-muted-foreground" />
+
+        <Card className="hover:shadow-md transition-all duration-300">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-xs font-medium text-muted-foreground">Mensagens em Fila</CardTitle>
+            <Clock className="h-4 w-4 text-amber-500 animate-pulse" />
           </CardHeader>
           <CardContent>
-            <p className="text-xl sm:text-2xl font-semibold">4 campanhas</p>
-            <p className="text-xs text-muted-foreground">1200 mensagens simuladas</p>
+            {loadingQueueStats ? (
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            ) : (
+              <p className="text-xl sm:text-2xl font-bold">{queueStats.pendente}</p>
+            )}
+            <p className="text-[10px] text-muted-foreground mt-1">Aguardando envio pelo WhatsApp</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Indicações</CardTitle>
-            <Gift className="h-4 w-4 text-muted-foreground" />
+
+        <Card className="hover:shadow-md transition-all duration-300 border-[hsl(var(--login-primary))]/20 bg-[hsl(var(--login-primary))]/5">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-xs font-medium text-[hsl(var(--login-primary))]">Retornos Convertidos</CardTitle>
+            <TrendingUp className="h-4 w-4 text-[hsl(var(--login-primary))]" />
           </CardHeader>
           <CardContent>
-            <p className="text-xl sm:text-2xl font-semibold">5 convertidas</p>
-            <p className="text-xs text-muted-foreground">R$ 500,00 em desconto simulado</p>
+            {loadingConversion ? (
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            ) : (
+              <div className="flex items-baseline gap-2">
+                <p className="text-xl sm:text-2xl font-bold text-foreground">{activeStats.retornos}</p>
+                <Badge className="bg-[hsl(var(--login-primary))] text-[10px] font-normal text-white">
+                  {activeStats.conversaoRate}% conversão
+                </Badge>
+              </div>
+            )}
+            <p className="text-[10px] text-muted-foreground mt-1">Pacientes que voltaram à clínica</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Aniversariantes do mês</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+
+        <Card className="hover:shadow-md transition-all duration-300 border-green-500/20 bg-green-500/5">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-xs font-medium text-green-600">Receita Recuperada</CardTitle>
+            <DollarSign className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <p className="text-xl sm:text-2xl font-semibold">{aniversariantesMes}</p>
-            <p className="text-xs text-muted-foreground">Pacientes com aniversário neste mês (exemplo)</p>
+            <p className="text-xl sm:text-2xl font-bold text-green-700">
+              {activeStats.faturamentoRecuperado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {isDemoActive ? "Simulação de ROI com base nos retornos" : "Cálculo real pós-disparos realizados"}
+            </p>
           </CardContent>
         </Card>
       </section>
 
-      <section className="grid gap-3 md:gap-4 md:grid-cols-[2fr,1fr]" aria-label="Ações rápidas">
-        <Card>
+      {/* Seção de Gráficos Analíticos */}
+      <section className="grid gap-4 md:grid-cols-2" aria-label="Visualização de Dados e Gráficos">
+        {/* Gráfico 1: Evolução de Receita Recuperada */}
+        <Card className="hover:shadow-md transition-shadow duration-300">
           <CardHeader>
-            <CardTitle>Bem-vindo ao DentOS</CardTitle>
+            <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+              <DollarSign className="h-4 w-4 text-green-600" />
+              <span>Receita Recuperada Acumulada</span>
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Histórico financeiro de tratamentos concluídos pós-comunicação ativa
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm text-muted-foreground">
-            <p>
-              {isAutomaticImport
-                ? "Seu sistema está configurado para importar dados automaticamente via Easy Dental. Gerencie suas campanhas e acompanhe os resultados."
-                : "Conecte o seu ERP odontológico ao DentOS para importar clientes e procedimentos e automatizar a comunicação com seus pacientes."}
-            </p>
-            <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3">
-              {!isAutomaticImport && (
-                <Button size="sm" onClick={() => navigate("/importacoes")}>
-                  <Upload className="mr-2 h-4 w-4" />
-                  Importar dados agora
-                </Button>
-              )}
-              {isAutomaticImport && (
-                <Button size="sm" variant="outline" onClick={() => navigate("/configuracoes?tab=sistema")}>
-                  <RefreshCcw className="mr-2 h-4 w-4" />
-                  Ver integração automática
-                </Button>
-              )}
-              <Button size="sm" variant="outline" onClick={() => navigate("/campanhas")}>
-                <Megaphone className="mr-2 h-4 w-4" />
-                Criar campanha
-              </Button>
-            </div>
+          <CardContent className="h-64">
+            {faturamentoTrend.length === 1 && faturamentoTrend[0].valor === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center text-center text-xs text-muted-foreground gap-2">
+                <AlertCircle className="h-8 w-8 text-muted-foreground/60" />
+                <span>Nenhuma receita recuperada registrada ainda. <br/> Os envios precisam iniciar para gerar conversões financeiras.</span>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={faturamentoTrend} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorFaturamento" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--login-primary))" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="hsl(var(--login-primary))" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                  <XAxis dataKey="name" className="text-[10px] fill-muted-foreground" />
+                  <YAxis className="text-[10px] fill-muted-foreground" tickFormatter={(val) => `R$ ${val}`} />
+                  <Tooltip 
+                    formatter={(value: any) => [value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), "Faturamento"]}
+                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))" }}
+                  />
+                  <Area type="monotone" dataKey="valor" stroke="hsl(var(--login-primary))" strokeWidth={2} fillOpacity={1} fill="url(#colorFaturamento)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
-        <Card aria-label="Próximos passos simulados">
+
+        {/* Gráfico 2: Redução no Intervalo de Retorno */}
+        <Card className="hover:shadow-md transition-shadow duration-300">
           <CardHeader>
-            <CardTitle>Próximos passos</CardTitle>
+            <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+              <Clock className="h-4 w-4 text-blue-500" />
+              <span>Intervalo de Retorno do Paciente (Dias)</span>
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Tempo médio que o paciente leva para retornar à clínica com vs sem campanhas
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2 text-xs text-muted-foreground">
-            <div className="flex items-center justify-between gap-2 rounded-md bg-card px-3 py-2">
-              <div>
-                <p className="font-medium text-foreground">Configurar fluxo de importação</p>
-                <p>Garanta que o .xlsx exportado do ERP contém as colunas esperadas.</p>
+          <CardContent className="h-64">
+            {tempoRetorno.length === 1 && tempoRetorno[0].Depois === 180 ? (
+              <div className="flex h-full flex-col items-center justify-center text-center text-xs text-muted-foreground gap-2">
+                <AlertCircle className="h-8 w-8 text-muted-foreground/60" />
+                <span>Sem dados históricos suficientes de novos retornos reais para comparação.</span>
               </div>
-              <ArrowRight className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <div className="flex items-center justify-between gap-2 rounded-md bg-card px-3 py-2">
-              <div>
-                <p className="font-medium text-foreground">Criar modelo de mensagem</p>
-                <p>Defina o tom de voz da sua clínica para as campanhas automáticas.</p>
-              </div>
-              <ArrowRight className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <p className="pt-2 text-[11px]">
-              Data de hoje: {today.toLocaleDateString("pt-BR")} — Todos os números exibidos são apenas exemplos.
-            </p>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={tempoRetorno} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                  <XAxis dataKey="name" className="text-[10px] fill-muted-foreground" />
+                  <YAxis className="text-[10px] fill-muted-foreground" suffix=" dias" />
+                  <Tooltip 
+                    formatter={(value: any) => [`${value} dias`]}
+                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))" }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 10 }} />
+                  <Bar dataKey="Antes" fill="#94a3b8" radius={[4, 4, 0, 0]} name="Sem Automação (Baseline)" />
+                  <Bar dataKey="Depois" fill="hsl(var(--login-primary))" radius={[4, 4, 0, 0]} name="Com DentOS (Atual)" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
+        </Card>
+
+        {/* Gráfico 3: Funil de Conversão */}
+        <Card className="hover:shadow-md transition-shadow duration-300">
+          <CardHeader>
+            <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              <span>Funil de Engajamento e Conversão</span>
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Fluxo desde o paciente cadastrado até o tratamento efetivado pós-mensagem
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart layout="vertical" data={funilData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                <XAxis type="number" className="text-[10px] fill-muted-foreground" />
+                <YAxis dataKey="name" type="category" className="text-[10px] fill-muted-foreground" />
+                <Tooltip 
+                  formatter={(value: any) => [`${value} pacientes`]}
+                  contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))" }}
+                />
+                <Bar dataKey="qtd" fill="hsl(var(--login-primary))" radius={[0, 4, 4, 0]} name="Pacientes">
+                  {funilData.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={
+                        index === 0 ? "hsl(var(--muted-foreground)/40)" :
+                        index === 1 ? "rgba(var(--primary-rgb), 0.6)" :
+                        index === 2 ? "rgba(var(--primary-rgb), 0.8)" :
+                        "hsl(var(--login-primary))"
+                      } 
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Gráfico 4: Pizza de Situação da Base de Pacientes */}
+        <Card className="hover:shadow-md transition-shadow duration-300">
+          <CardHeader>
+            <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+              <Users className="h-4 w-4 text-primary" />
+              <span>Situação Clínico-Operacional dos Pacientes</span>
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Distribuição e saúde atual do cadastro de pacientes (banco de dados real)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="h-64">
+            {loadingDistribution ? (
+              <div className="flex h-full items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : patientDistribution.length === 0 ? (
+              <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                Nenhum paciente cadastrado para exibição de status.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={patientDistribution}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {patientDistribution.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(value: any) => [`${value} pacientes`]}
+                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))" }}
+                  />
+                  <Legend 
+                    layout="horizontal" 
+                    verticalAlign="bottom" 
+                    align="center"
+                    wrapperStyle={{ fontSize: 10 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Seção Inferior: Fila de Envios do Dia & Logs de Sincronizações */}
+      <section className="grid gap-4 md:grid-cols-[5fr,4fr]" aria-label="Monitoramento em Tempo Real">
+        {/* Fila de Envios Programados */}
+        <Card className="hover:shadow-md transition-shadow duration-300 flex flex-col justify-between">
+          <div>
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+                  <Clock className="h-4 w-4 text-amber-500" />
+                  <span>Próximos Envios Agendados na Fila</span>
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Próximos contatos agendados gerados automaticamente pelos critérios de campanhas
+                </CardDescription>
+              </div>
+              <Button variant="ghost" size="sm" className="h-7 text-xs text-primary" onClick={() => navigate("/fila-envios")}>
+                Ver Fila Completa
+                <ArrowRight className="ml-1 h-3.5 w-3.5" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {loadingUpcoming ? (
+                <div className="flex justify-center p-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : upcomingMessages.length === 0 ? (
+                <div className="text-center p-8 border rounded-lg border-dashed text-xs text-muted-foreground">
+                  Nenhum envio programado na fila. Configure campanhas ou force uma atualização.
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-md border bg-card">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Paciente</TableHead>
+                        <TableHead className="text-xs">Mensagem (Trecho)</TableHead>
+                        <TableHead className="text-xs">Origem</TableHead>
+                        <TableHead className="text-xs text-right">Programado</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {upcomingMessages.map((msg: any) => (
+                        <TableRow key={msg.id} className="hover:bg-muted/30">
+                          <TableCell className="text-xs font-medium max-w-[120px] truncate">{msg.paciente_nome}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{msg.mensagem}</TableCell>
+                          <TableCell className="text-xs">{getBadgeOrigem(msg.origem)}</TableCell>
+                          <TableCell className="text-xs text-right text-muted-foreground font-mono">
+                            {new Date(msg.data_programada).toLocaleTimeString("pt-BR", { hour: '2-digit', minute: '2-digit' })}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </div>
+        </Card>
+
+        {/* Histórico de Sincronizações (Easy Dental) */}
+        <Card className="hover:shadow-md transition-shadow duration-300 flex flex-col justify-between">
+          <div>
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+                  <RefreshCcw className="h-4 w-4 text-[hsl(var(--login-primary))]" />
+                  <span>Sincronizações Recentes (Easy Dental)</span>
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Histórico de importações automáticas executadas pelo worker
+                </CardDescription>
+              </div>
+              <Button variant="ghost" size="sm" className="h-7 text-xs text-primary" onClick={() => navigate("/configuracoes?tab=sistema")}>
+                Configurações
+                <ArrowRight className="ml-1 h-3.5 w-3.5" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {loadingSyncLogs ? (
+                <div className="flex justify-center p-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : syncLogs.length === 0 ? (
+                <div className="text-center p-8 border rounded-lg border-dashed text-xs text-muted-foreground">
+                  Nenhuma sincronização executada ainda.
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-md border bg-card">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Data/Hora</TableHead>
+                        <TableHead className="text-xs">Resultados</TableHead>
+                        <TableHead className="text-xs text-right">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {syncLogs.map((log: any) => (
+                        <TableRow key={log.id} className="hover:bg-muted/30">
+                          <TableCell className="text-xs text-muted-foreground font-mono">
+                            {new Date(log.created_at).toLocaleString("pt-BR", { 
+                              day: '2-digit', 
+                              month: '2-digit', 
+                              hour: '2-digit', 
+                              minute: '2-digit' 
+                            })}
+                          </TableCell>
+                          <TableCell className="text-xs space-y-0.5">
+                            <span className="block text-[11px] font-medium text-foreground">
+                              {log.pacientes_importados} pacientes
+                            </span>
+                            <span className="block text-[10px] text-muted-foreground">
+                              {log.procedimentos_importados} procedimentos
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-xs text-right">
+                            <Badge 
+                              className={
+                                log.status === "sucesso" 
+                                  ? "bg-green-500 hover:bg-green-600 text-white font-normal text-[10px]" 
+                                  : "bg-red-500 hover:bg-red-600 text-white font-normal text-[10px]"
+                              }
+                            >
+                              {log.status === "sucesso" ? "Sucesso" : "Falhou"}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </div>
         </Card>
       </section>
     </AppLayout>
