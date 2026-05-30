@@ -299,11 +299,9 @@ const Configuracoes = () => {
     try {
       setLoadingClinicaUsers(true);
       const { data, error } = await supabase
-        .from("perfis")
-        .select("id, full_name, role")
-        .eq("clinica_id", clinicaId);
+        .rpc("get_clinica_users", { target_clinica_id: clinicaId });
       if (error) throw error;
-      setClinicaUsers((data || []).filter(u => u.role !== 'super_admin' && u.role !== 'admin_master'));
+      setClinicaUsers((data || []).filter((u: any) => u.role !== 'super_admin' && u.role !== 'admin_master'));
     } catch (error: any) {
       console.error("Erro ao carregar usuários da clínica:", error);
       toast({
@@ -1976,7 +1974,7 @@ const Configuracoes = () => {
                               <TableRow key={user.id}>
                                 <TableCell className="text-xs">
                                   <p className="font-medium text-foreground">{user.full_name || "(Sem nome)"}</p>
-                                  <span className="text-[10px] text-muted-foreground block font-mono mt-0.5">ID: {user.id}</span>
+                                  <span className="text-[10px] text-muted-foreground block font-mono mt-0.5">{user.email}</span>
                                 </TableCell>
                                 <TableCell className="text-xs uppercase font-medium">
                                   <Badge variant="outline" className="text-[10px] font-normal">
