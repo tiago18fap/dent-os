@@ -2454,30 +2454,59 @@ const Configuracoes = () => {
                 <CardTitle className="text-sm">Dados de perfil</CardTitle>
               </CardHeader>
               <CardContent>
-                <form className="grid gap-4 md:grid-cols-2">
+                <form className="grid gap-4 md:grid-cols-2" onSubmit={async (e) => {
+                  e.preventDefault();
+                  try {
+                    // Salvar nome do perfil
+                    if (perfil?.id) {
+                      await supabase.from("perfis").update({ full_name: currentUserName }).eq("id", perfil.id);
+                    }
+                    // Salvar dados da clínica
+                    if (clinica?.id) {
+                      await (supabase as any).from("clinicas").update({
+                        nome: clinicaNome,
+                        telefone: (document.getElementById("telefone-perfil") as HTMLInputElement)?.value || null,
+                        whatsapp_atendimento: (document.getElementById("whatsapp-perfil") as HTMLInputElement)?.value || null,
+                      }).eq("id", clinica.id);
+                    }
+                    toast({ title: "Dados salvos!", description: "Suas informações foram atualizadas." });
+                  } catch (err: any) {
+                    toast({ variant: "destructive", title: "Erro ao salvar", description: err.message });
+                  }
+                }}>
                   <div className="space-y-2">
-                    <Label htmlFor="nome">Nome completo</Label>
-                    <Input id="nome" name="nome" placeholder="Digite seu nome" value={currentUserName} readOnly />
+                    <Label htmlFor="nome-perfil">Nome completo</Label>
+                    <Input id="nome-perfil" name="nome" placeholder="Digite seu nome" value={currentUserName} onChange={(e) => setCurrentUserName(e.target.value)} />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="email" className="flex items-center gap-1.5">E-mail <Lock className="h-3 w-3 text-muted-foreground" /></Label>
-                    <Input id="email" name="email" type="email" placeholder="seuemail@clinica.com" value={currentUserEmail} readOnly className="bg-muted cursor-not-allowed" />
+                    <Label htmlFor="email-perfil" className="flex items-center gap-1.5">E-mail <Lock className="h-3 w-3 text-muted-foreground" /></Label>
+                    <Input id="email-perfil" name="email" type="email" value={currentUserEmail} readOnly className="bg-muted cursor-not-allowed opacity-70" tabIndex={-1} />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="clinica">Nome da clínica</Label>
-                    <Input id="clinica" name="clinica" placeholder="Nome fantasia da clínica" value={clinicaNome} readOnly />
+                    <Label htmlFor="clinica-perfil">Nome da clínica</Label>
+                    <Input id="clinica-perfil" name="clinica" placeholder="Nome fantasia da clínica" value={clinicaNome} onChange={(e) => setClinicaNome(e.target.value)} />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="cnpj" className="flex items-center gap-1.5">CNPJ <Lock className="h-3 w-3 text-muted-foreground" /></Label>
-                    <Input id="cnpj" name="cnpj" placeholder="00.000.000/0000-00" value={clinica?.cnpj ? clinica.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5") : "Não informado"} readOnly className="bg-muted cursor-not-allowed" />
+                    <Label htmlFor="cnpj-perfil" className="flex items-center gap-1.5">CNPJ <Lock className="h-3 w-3 text-muted-foreground" /></Label>
+                    <Input id="cnpj-perfil" name="cnpj" value={
+                      clinica?.cnpj
+                        ? clinica.cnpj.replace(/\D/g, "").replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")
+                        : ""
+                    } placeholder="Não informado" readOnly className="bg-muted cursor-not-allowed opacity-70" tabIndex={-1} />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="telefone">Telefone da clínica</Label>
-                    <Input id="telefone" name="telefone" type="tel" placeholder="(00) 0000-0000" disabled />
+                    <Label htmlFor="telefone-perfil">Telefone da clínica</Label>
+                    <Input id="telefone-perfil" name="telefone" type="tel" placeholder="(00) 0000-0000" />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="whatsapp">WhatsApp de contato</Label>
-                    <Input id="whatsapp" name="whatsapp" type="tel" placeholder="(00) 00000-0000" disabled />
+                    <Label htmlFor="whatsapp-perfil">WhatsApp para atendimento</Label>
+                    <Input id="whatsapp-perfil" name="whatsapp" type="tel" placeholder="(00) 00000-0000" />
+                  </div>
+                  <div className="col-span-full flex justify-end pt-2">
+                    <Button type="submit" size="sm" className="gap-2">
+                      <Check className="h-4 w-4" />
+                      Salvar alterações
+                    </Button>
                   </div>
                 </form>
               </CardContent>
