@@ -901,7 +901,7 @@ const Configuracoes = () => {
 
   const handleConnectClick = async () => {
     if (!clinica?.id) {
-      toast({ variant: "destructive", title: "Erro", description: "Nenhuma clínica selecionada." });
+      toast({ variant: "destructive", title: "Aguarde", description: "Os dados da sua clínica ainda estão sendo carregados. Tente novamente em instantes." });
       return;
     }
 
@@ -2395,9 +2395,7 @@ const Configuracoes = () => {
                     <Label htmlFor="whatsapp">WhatsApp de contato</Label>
                     <Input id="whatsapp" name="whatsapp" type="tel" placeholder="(00) 00000-0000" disabled />
                   </div>
-                  <p className="col-span-full text-xs text-muted-foreground">
-                    Estes dados são carregados a partir da sua conta Supabase ativa.
-                  </p>
+
                 </form>
               </CardContent>
             </Card>
