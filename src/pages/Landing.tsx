@@ -26,7 +26,7 @@ const Landing = () => {
     if (isLoggedIn) {
       navigate(`/assinatura?checkout=true&plano=${planoId}`);
     } else {
-      navigate(`/auth?mode=signup&plano=${planoId}`);
+      navigate(`/checkout/${planoId}`);
     }
   };
 
