@@ -124,7 +124,7 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
 
       const { data: clinicaData, error: clinicaError } = await (supabase as any)
         .from("clinicas")
-        .select("*")
+        .select("id, nome, plano, status_pagamento, limite_mensagens, limite_procedimentos, data_fim_teste, cnpj, reativacao_pendente")
         .eq("id", targetClinicaId)
         .single();
 
