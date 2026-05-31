@@ -104,6 +104,14 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
 
       if (!clinicaError && clinicaData) {
         const c = clinicaData as Clinica;
+        // Ensure defaults for fields that might be null in old records
+        if (!c.plano) c.plano = "bronze";
+        if (!c.status_pagamento) c.status_pagamento = "teste_gratis";
+        if (!c.limite_mensagens && c.limite_mensagens !== 0) c.limite_mensagens = 100;
+        if (!c.limite_procedimentos && c.limite_procedimentos !== 0) c.limite_procedimentos = 10;
+        if (!c.data_fim_teste && c.status_pagamento === "teste_gratis") {
+          c.data_fim_teste = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        }
         if (c.plano === "ilimitado_premium") {
           c.status_pagamento = "ativo";
         } else if (c.status_pagamento === "teste_gratis" && c.data_fim_teste) {
