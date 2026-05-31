@@ -12,7 +12,7 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const { clinica, loading: clinicaLoading } = useClinica();
+  const { clinica, loading: clinicaLoading, isSuperAdmin } = useClinica();
   const location = useLocation();
 
   useEffect(() => {
@@ -50,6 +50,16 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   // Verifica se está inadimplente e se não está na tela de assinatura
   if (clinica?.status_pagamento === "inadimplente" && location.pathname !== "/assinatura") {
     return <Navigate to="/assinatura" replace />;
+  }
+
+  // Verifica se tem reativação pendente (pós-bloqueio) e redireciona
+  if (
+    !isSuperAdmin &&
+    clinica?.reativacao_pendente === true &&
+    location.pathname !== "/reativacao" &&
+    location.pathname !== "/assinatura"
+  ) {
+    return <Navigate to="/reativacao" replace />;
   }
 
   return <>{children}</>;

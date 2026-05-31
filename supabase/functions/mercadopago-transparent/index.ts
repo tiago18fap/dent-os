@@ -103,6 +103,22 @@ serve(async (req) => {
           saldo: planoId === "prata" ? 1000 : 100
         });
 
+      // Check if there are past-due pending messages → trigger reactivation screen
+      const { data: pendingPastMock } = await supabaseAdmin
+        .from("fila_envios")
+        .select("id")
+        .eq("clinica_id", clinicaId)
+        .eq("status", "pendente")
+        .lt("data_programada", new Date().toISOString())
+        .limit(1);
+
+      if (pendingPastMock && pendingPastMock.length > 0) {
+        await supabaseAdmin
+          .from("clinicas")
+          .update({ reativacao_pendente: true })
+          .eq("id", clinicaId);
+      }
+
       return new Response(JSON.stringify({ success: true, simulated: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
@@ -171,6 +187,22 @@ serve(async (req) => {
           saldo: planoId === "prata" ? 1000 : 100
         });
 
+      // Check if there are past-due pending messages → trigger reactivation screen
+      const { data: pendingPastSub } = await supabaseAdmin
+        .from("fila_envios")
+        .select("id")
+        .eq("clinica_id", clinicaId)
+        .eq("status", "pendente")
+        .lt("data_programada", new Date().toISOString())
+        .limit(1);
+
+      if (pendingPastSub && pendingPastSub.length > 0) {
+        await supabaseAdmin
+          .from("clinicas")
+          .update({ reativacao_pendente: true })
+          .eq("id", clinicaId);
+      }
+
       return new Response(JSON.stringify({ success: true, id: data.id }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
@@ -234,6 +266,22 @@ serve(async (req) => {
             clinica_id: clinicaId,
             saldo: planoId === "prata" ? 1000 : 100
           });
+
+        // Check if there are past-due pending messages → trigger reactivation screen
+        const { data: pendingPastAvulso } = await supabaseAdmin
+          .from("fila_envios")
+          .select("id")
+          .eq("clinica_id", clinicaId)
+          .eq("status", "pendente")
+          .lt("data_programada", new Date().toISOString())
+          .limit(1);
+
+        if (pendingPastAvulso && pendingPastAvulso.length > 0) {
+          await supabaseAdmin
+            .from("clinicas")
+            .update({ reativacao_pendente: true })
+            .eq("id", clinicaId);
+        }
 
         return new Response(JSON.stringify({ success: true, id: data.id }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
