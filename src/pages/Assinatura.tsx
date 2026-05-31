@@ -210,6 +210,22 @@ const Assinatura = () => {
 
           if (errorCarteira) throw errorCarteira;
 
+          // Check if there are past-due pending messages
+          const { data: pendingPast } = await (supabase as any)
+            .from("fila_envios")
+            .select("id")
+            .eq("clinica_id", clinica.id)
+            .eq("status", "pendente")
+            .lt("data_programada", new Date().toISOString())
+            .limit(1);
+
+          if (pendingPast && pendingPast.length > 0) {
+            await (supabase as any)
+              .from("clinicas")
+              .update({ reativacao_pendente: true })
+              .eq("id", clinica.id);
+          }
+
           toast({
             title: "Parabéns! Assinatura Ativada!",
             description: `Seu plano ${planoAtivo.toUpperCase()} foi ativado com sucesso.`,
@@ -351,6 +367,22 @@ const Assinatura = () => {
             title: "Plano ativado!",
             description: `Seu plano ${selectedPlanoForCheckout.toUpperCase()} foi ativado com sucesso!`,
           });
+
+          // Check if there are past-due pending messages
+          const { data: pendingPast } = await (supabase as any)
+            .from("fila_envios")
+            .select("id")
+            .eq("clinica_id", clinica.id)
+            .eq("status", "pendente")
+            .lt("data_programada", new Date().toISOString())
+            .limit(1);
+
+          if (pendingPast && pendingPast.length > 0) {
+            await (supabase as any)
+              .from("clinicas")
+              .update({ reativacao_pendente: true })
+              .eq("id", clinica.id);
+          }
           
           localStorage.removeItem("pending_checkout_plano");
           setSelectedPlanoForCheckout(null);

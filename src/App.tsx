@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -16,6 +17,7 @@ import Clientes from "./pages/Clientes";
 import Procedimentos from "./pages/Procedimentos";
 import FilaEnvios from "./pages/FilaEnvios";
 import Assinatura from "./pages/Assinatura";
+const ReativacaoPosBloqueio = lazy(() => import("./pages/ReativacaoPosBloqueio"));
 import ProtectedRoute from "./components/ProtectedRoute";
 import { ClinicaProvider } from "./contexts/ClinicaContext";
 
@@ -41,6 +43,7 @@ const App = () => (
             <Route path="/dados/procedimentos" element={<ProtectedRoute><Procedimentos /></ProtectedRoute>} />
             <Route path="/fila-envios" element={<ProtectedRoute><FilaEnvios /></ProtectedRoute>} />
             <Route path="/assinatura" element={<ProtectedRoute><Assinatura /></ProtectedRoute>} />
+            <Route path="/reativacao" element={<ProtectedRoute><Suspense fallback={<div>Carregando...</div>}><ReativacaoPosBloqueio /></Suspense></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><Configuracoes /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

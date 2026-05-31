@@ -10,6 +10,7 @@ interface Clinica {
   limite_procedimentos: number;
   data_fim_teste?: string;
   cnpj?: string;
+  reativacao_pendente?: boolean;
 }
 
 interface Perfil {
