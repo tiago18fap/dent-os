@@ -275,6 +275,9 @@ export async function configureWebhook(
  * Útil quando o usuário está no celular e não consegue escanear o QR.
  * Requer o número do WhatsApp para gerar o código.
  * O pairing code é um código curto tipo "ABCD-EFGH" de 8 caracteres.
+ * 
+ * IMPORTANTE: A Evolution API só gera pairing code em instâncias recém-criadas.
+ * Se a instância já existe, é necessário deletar e recriar.
  */
 export async function getPairingCode(
   clinicaId: string,
@@ -288,35 +291,38 @@ export async function getPairingCode(
   }
 
   try {
-    // 1. Garantir que a instância existe
-    const stateRes = await fetch(
-      `${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`,
-      { method: "GET", headers: headers() }
-    );
-
-    if (!stateRes.ok) {
-      // Instância não existe, criar primeiro (sem QR, modo pairing)
-      await fetch(`${EVOLUTION_API_URL}/instance/create`, {
-        method: "POST",
-        headers: headers(),
-        body: JSON.stringify({
-          instanceName,
-          integration: "WHATSAPP-BAILEYS",
-          qrcode: true,
-        }),
+    // 1. Deletar instância existente (pairing code só funciona com instância nova)
+    try {
+      await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, {
+        method: "DELETE", headers: headers()
       });
-      // Aguardar instância ficar pronta
-      await new Promise(resolve => setTimeout(resolve, 2000));
-    }
+    } catch { /* ignore */ }
 
-    // 2. Solicitar pairing code passando o número na URL
-    // Este é o endpoint correto que retorna o código curto de pareamento
+    try {
+      await fetch(`${EVOLUTION_API_URL}/instance/delete/${instanceName}`, {
+        method: "DELETE", headers: headers()
+      });
+    } catch { /* ignore */ }
+
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 2. Criar instância nova sem QR code
+    await fetch(`${EVOLUTION_API_URL}/instance/create`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({
+        instanceName,
+        integration: "WHATSAPP-BAILEYS",
+        qrcode: false,
+      }),
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // 3. Solicitar pairing code passando o número na URL
     const pairingRes = await fetch(
       `${EVOLUTION_API_URL}/instance/connect/${instanceName}?number=${cleanNumber}`,
-      {
-        method: "GET",
-        headers: headers(),
-      }
+      { method: "GET", headers: headers() }
     );
 
     if (!pairingRes.ok) {
@@ -325,20 +331,13 @@ export async function getPairingCode(
     }
 
     const data = await pairingRes.json();
-    
-    // O pairing code é um código curto (ex: "ABCD-EFGH"), não um base64 longo
     const pairingCode = data?.pairingCode ?? null;
     
-    if (pairingCode && pairingCode.length <= 20) {
+    if (pairingCode && typeof pairingCode === "string" && pairingCode.length <= 20) {
       return { code: pairingCode };
     }
 
-    // Se retornou algo muito longo, é o QR code base64, não o pairing code
-    if (data?.code && data.code.length <= 20) {
-      return { code: data.code };
-    }
-
-    return { code: null, error: "Código de pareamento não disponível para este número. Verifique se o número está correto e tente novamente." };
+    return { code: null, error: "Código não gerado. Verifique se o número está correto com código do país (ex: 5521999999999)." };
   } catch (err: any) {
     return { code: null, error: err.message || "Erro ao obter código de pareamento." };
   }
