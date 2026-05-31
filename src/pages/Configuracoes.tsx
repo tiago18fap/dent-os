@@ -1596,122 +1596,118 @@ const Configuracoes = () => {
           </Button>
         </div>
 
-        <Dialog open={connectDialogOpen} onOpenChange={(open) => { setConnectDialogOpen(open); if (!open) stopPolling(); }}>
-          <DialogContent className="max-w-sm">
+        <Dialog open={connectDialogOpen} onOpenChange={(open) => { setConnectDialogOpen(open); if (!open) { stopPolling(); setPairingCode(null); setPairingNumber(""); setPairingCopied(false); } }}>
+          <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Escaneie o QR Code</DialogTitle>
+              <DialogTitle>Conectar WhatsApp</DialogTitle>
               <DialogDescription>
-                Use o WhatsApp do seu celular para ler o código abaixo e concluir a conexão.
+                Escaneie o QR Code ou use o código de pareamento para conectar.
               </DialogDescription>
             </DialogHeader>
             {qrImage ? (
-              <div className="space-y-4">
-                <div className="flex justify-center py-4">
+              <div className="space-y-3">
+                {/* QR Code */}
+                <div className="flex justify-center">
                   <img
                     src={qrImage}
                     alt="QR Code para conectar WhatsApp"
-                    className="h-64 w-64 rounded-md bg-white p-2 shadow"
+                    className="h-52 w-52 rounded-md bg-white p-2 shadow"
                   />
                 </div>
                 {pollingConnection && (
-                  <div className="flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                  <div className="flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
+                    <Loader2 className="h-3 w-3 animate-spin" />
                     <span>Aguardando leitura do QR Code...</span>
                   </div>
                 )}
-                <div className="space-y-2 rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-primary" />
-                    <p>Abra o WhatsApp no celular → Menu ⋮ → Dispositivos vinculados → Vincular dispositivo.</p>
+
+                {/* Instruções compactas */}
+                <div className="space-y-1 rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  <div className="flex items-start gap-1.5">
+                    <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
+                    <p>WhatsApp → Menu ⋮ → Dispositivos vinculados → Vincular dispositivo</p>
                   </div>
-                  <div className="flex items-start gap-2">
-                    <Clock className="mt-0.5 h-4 w-4 text-primary" />
+                  <div className="flex items-start gap-1.5">
+                    <Clock className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
                     <p>Após escanear, a conexão será detectada automaticamente.</p>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <RefreshCcw className="mt-0.5 h-4 w-4 text-primary" />
-                    <p>
-                      Se o QR expirar, feche e clique em
-                      <span className="ml-1 font-medium text-foreground">"Conectar Agora"</span> novamente.
-                    </p>
                   </div>
                 </div>
 
-                {/* Código de Pareamento - conectar sem QR */}
-                <div className="border-t pt-3 space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Smartphone className="h-4 w-4 text-primary" />
-                    <span>Conectar pelo celular (sem QR Code)</span>
-                  </div>
-                  
-                  {!pairingCode ? (
-                    <div className="space-y-2">
-                      <div className="flex gap-2">
-                        <Input
-                          type="tel"
-                          placeholder="5511999999999"
-                          value={pairingNumber}
-                          onChange={(e) => setPairingNumber(e.target.value)}
-                          className="flex-1 text-sm"
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={pairingLoading || !pairingNumber.trim()}
-                          onClick={async () => {
-                            if (!clinica?.id) return;
-                            setPairingLoading(true);
-                            try {
-                              const result = await getPairingCode(clinica.id, pairingNumber);
-                              if (result.code) {
-                                setPairingCode(result.code);
-                              } else {
-                                toast({ variant: "destructive", title: "Erro", description: result.error || "Não foi possível gerar o código." });
-                              }
-                            } catch {
-                              toast({ variant: "destructive", title: "Erro", description: "Falha ao gerar código de pareamento." });
-                            } finally {
-                              setPairingLoading(false);
-                            }
-                          }}
-                        >
-                          {pairingLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Gerar Código"}
-                        </Button>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground">
-                        Digite o número do WhatsApp com DDD e código do país (ex: 5511999999999)
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 rounded-lg border-2 border-primary bg-primary/5 p-3">
-                        <code className="flex-1 text-center text-2xl font-bold tracking-[0.3em] text-primary">
-                          {pairingCode}
-                        </code>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="shrink-0"
-                          onClick={() => {
-                            navigator.clipboard.writeText(pairingCode);
-                            setPairingCopied(true);
-                            toast({ title: "Código copiado!", description: "Cole no WhatsApp para conectar." });
-                            setTimeout(() => setPairingCopied(false), 3000);
-                          }}
-                        >
-                          {pairingCopied ? (
-                            <Check className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <Clipboard className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground text-center">
-                        No WhatsApp: Menu ⋮ → Dispositivos vinculados → Vincular dispositivo → <strong>Vincular com número</strong>
-                      </p>
-                    </div>
-                  )}
+                {/* Divisor */}
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+                  <div className="relative flex justify-center text-xs"><span className="bg-background px-2 text-muted-foreground">ou conecte sem QR Code</span></div>
                 </div>
+
+                {/* Pairing Code */}
+                {!pairingCode ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-1.5 text-xs font-medium">
+                      <Smartphone className="h-3.5 w-3.5 text-primary" />
+                      <span>Conectar pelo número</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        type="tel"
+                        placeholder="5511999999999"
+                        value={pairingNumber}
+                        onChange={(e) => setPairingNumber(e.target.value)}
+                        className="flex-1 text-sm h-8"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs"
+                        disabled={pairingLoading || !pairingNumber.trim()}
+                        onClick={async () => {
+                          if (!clinica?.id) return;
+                          setPairingLoading(true);
+                          try {
+                            const result = await getPairingCode(clinica.id, pairingNumber);
+                            if (result.code) {
+                              setPairingCode(result.code);
+                            } else {
+                              toast({ variant: "destructive", title: "Erro", description: result.error || "Não foi possível gerar o código." });
+                            }
+                          } catch {
+                            toast({ variant: "destructive", title: "Erro", description: "Falha ao gerar código de pareamento." });
+                          } finally {
+                            setPairingLoading(false);
+                          }
+                        }}
+                      >
+                        {pairingLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Gerar"}
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Número com código do país + DDD (ex: 5511999999999)
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 rounded-lg border-2 border-primary bg-primary/5 p-2.5">
+                      <code className="flex-1 text-center text-xl font-bold tracking-[0.25em] text-primary">
+                        {pairingCode}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="shrink-0 h-7 w-7 p-0"
+                        onClick={() => {
+                          navigator.clipboard.writeText(pairingCode);
+                          setPairingCopied(true);
+                          toast({ title: "Código copiado!", description: "Cole no WhatsApp para conectar." });
+                          setTimeout(() => setPairingCopied(false), 3000);
+                        }}
+                      >
+                        {pairingCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Clipboard className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground text-center">
+                      WhatsApp → Vincular dispositivo → <strong>Vincular com número</strong>
+                    </p>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex flex-col items-center gap-3 py-8">
