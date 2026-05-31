@@ -9,6 +9,7 @@ interface Clinica {
   limite_mensagens: number;
   limite_procedimentos: number;
   data_fim_teste?: string;
+  cnpj?: string;
 }
 
 interface Perfil {
