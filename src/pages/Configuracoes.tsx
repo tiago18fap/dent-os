@@ -17,8 +17,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, EyeOff, Loader2, Wifi, WifiOff, Send, Settings2, Monitor, Lock, Users } from "lucide-react";
-import { createInstance, connectInstance, getConnectionState, disconnectAndDelete, fetchInstanceInfo, sendTextMessage, configureWebhook } from "@/services/evolutionApi";
+import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, EyeOff, Loader2, Wifi, WifiOff, Send, Settings2, Monitor, Lock, Users, Clipboard, Smartphone, Check } from "lucide-react";
+import { createInstance, connectInstance, getConnectionState, disconnectAndDelete, fetchInstanceInfo, sendTextMessage, configureWebhook, getPairingCode } from "@/services/evolutionApi";
 import { gravarLogAuditoria } from "@/utils/auditoria";
 
 interface ImportLogItem {
@@ -77,6 +77,10 @@ const Configuracoes = () => {
 
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [connectLoading, setConnectLoading] = useState(false);
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [pairingLoading, setPairingLoading] = useState(false);
+  const [pairingNumber, setPairingNumber] = useState("");
+  const [pairingCopied, setPairingCopied] = useState(false);
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [loadingLogout, setLoadingLogout] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -1632,6 +1636,82 @@ const Configuracoes = () => {
                     </p>
                   </div>
                 </div>
+
+                {/* Código de Pareamento - conectar sem QR */}
+                <div className="border-t pt-3 space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Smartphone className="h-4 w-4 text-primary" />
+                    <span>Conectar pelo celular (sem QR Code)</span>
+                  </div>
+                  
+                  {!pairingCode ? (
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <Input
+                          type="tel"
+                          placeholder="5511999999999"
+                          value={pairingNumber}
+                          onChange={(e) => setPairingNumber(e.target.value)}
+                          className="flex-1 text-sm"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={pairingLoading || !pairingNumber.trim()}
+                          onClick={async () => {
+                            if (!clinica?.id) return;
+                            setPairingLoading(true);
+                            try {
+                              const result = await getPairingCode(clinica.id, pairingNumber);
+                              if (result.code) {
+                                setPairingCode(result.code);
+                              } else {
+                                toast({ variant: "destructive", title: "Erro", description: result.error || "Não foi possível gerar o código." });
+                              }
+                            } catch {
+                              toast({ variant: "destructive", title: "Erro", description: "Falha ao gerar código de pareamento." });
+                            } finally {
+                              setPairingLoading(false);
+                            }
+                          }}
+                        >
+                          {pairingLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Gerar Código"}
+                        </Button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Digite o número do WhatsApp com DDD e código do país (ex: 5511999999999)
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 rounded-lg border-2 border-primary bg-primary/5 p-3">
+                        <code className="flex-1 text-center text-2xl font-bold tracking-[0.3em] text-primary">
+                          {pairingCode}
+                        </code>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="shrink-0"
+                          onClick={() => {
+                            navigator.clipboard.writeText(pairingCode);
+                            setPairingCopied(true);
+                            toast({ title: "Código copiado!", description: "Cole no WhatsApp para conectar." });
+                            setTimeout(() => setPairingCopied(false), 3000);
+                          }}
+                        >
+                          {pairingCopied ? (
+                            <Check className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <Clipboard className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground text-center">
+                        No WhatsApp: Menu ⋮ → Dispositivos vinculados → Vincular dispositivo → <strong>Vincular com número</strong>
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-3 py-8">
@@ -2380,12 +2460,16 @@ const Configuracoes = () => {
                     <Input id="nome" name="nome" placeholder="Digite seu nome" value={currentUserName} readOnly />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="email">E-mail</Label>
-                    <Input id="email" name="email" type="email" placeholder="seuemail@clinica.com" value={currentUserEmail} readOnly />
+                    <Label htmlFor="email" className="flex items-center gap-1.5">E-mail <Lock className="h-3 w-3 text-muted-foreground" /></Label>
+                    <Input id="email" name="email" type="email" placeholder="seuemail@clinica.com" value={currentUserEmail} readOnly className="bg-muted cursor-not-allowed" />
                   </div>
-                  <div className="space-y-2 md:col-span-2">
+                  <div className="space-y-2">
                     <Label htmlFor="clinica">Nome da clínica</Label>
                     <Input id="clinica" name="clinica" placeholder="Nome fantasia da clínica" value={clinicaNome} readOnly />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="cnpj" className="flex items-center gap-1.5">CNPJ <Lock className="h-3 w-3 text-muted-foreground" /></Label>
+                    <Input id="cnpj" name="cnpj" placeholder="00.000.000/0000-00" value={clinica?.cnpj ? clinica.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5") : "Não informado"} readOnly className="bg-muted cursor-not-allowed" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="telefone">Telefone da clínica</Label>
@@ -2395,7 +2479,6 @@ const Configuracoes = () => {
                     <Label htmlFor="whatsapp">WhatsApp de contato</Label>
                     <Input id="whatsapp" name="whatsapp" type="tel" placeholder="(00) 00000-0000" disabled />
                   </div>
-
                 </form>
               </CardContent>
             </Card>

@@ -270,3 +270,80 @@ export async function configureWebhook(
   }
 }
 
+/**
+ * Obtém um código de pareamento (pairing code) para conectar sem QR Code.
+ * Útil quando o usuário está no celular e não consegue escanear o QR.
+ * Requer o número do WhatsApp para gerar o código.
+ */
+export async function getPairingCode(
+  clinicaId: string,
+  phoneNumber: string
+): Promise<{ code: string | null; error?: string }> {
+  const instanceName = getInstanceName(clinicaId);
+  const cleanNumber = phoneNumber.replace(/\D/g, "");
+
+  if (!cleanNumber || cleanNumber.length < 10) {
+    return { code: null, error: "Número de telefone inválido." };
+  }
+
+  try {
+    // A Evolution API retorna o pairing code ao conectar com número
+    const res = await fetch(
+      `${EVOLUTION_API_URL}/instance/connect/${instanceName}`,
+      {
+        method: "GET",
+        headers: headers(),
+      }
+    );
+
+    if (!res.ok) {
+      // Se instância não existe, criar primeiro
+      const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({
+          instanceName,
+          integration: "WHATSAPP-BAILEYS",
+          number: cleanNumber,
+          qrcode: false,
+        }),
+      });
+
+      const createData = await createRes.json();
+      const pairingCode = createData?.pairingCode ?? createData?.code ?? null;
+      
+      if (pairingCode) {
+        return { code: pairingCode };
+      }
+
+      return { code: null, error: "Não foi possível gerar o código de pareamento." };
+    }
+
+    const data = await res.json();
+    const pairingCode = data?.pairingCode ?? data?.code ?? null;
+    
+    if (pairingCode) {
+      return { code: pairingCode };
+    }
+
+    // Tentar via endpoint específico de pairing code
+    const pairingRes = await fetch(
+      `${EVOLUTION_API_URL}/instance/connect/${instanceName}?number=${cleanNumber}`,
+      {
+        method: "GET",
+        headers: headers(),
+      }
+    );
+
+    if (pairingRes.ok) {
+      const pairingData = await pairingRes.json();
+      const code = pairingData?.pairingCode ?? pairingData?.code ?? null;
+      if (code) return { code };
+    }
+
+    return { code: null, error: "Código de pareamento não disponível. Use o QR Code." };
+  } catch (err: any) {
+    return { code: null, error: err.message || "Erro ao obter código de pareamento." };
+  }
+}
+
