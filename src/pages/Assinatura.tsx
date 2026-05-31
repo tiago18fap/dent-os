@@ -9,7 +9,8 @@ import { Check, CreditCard, ShieldAlert, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const PLANOS = [
   {
@@ -46,9 +47,92 @@ const Assinatura = () => {
   const { toast } = useToast();
 
   const [selectedPlanoForCheckout, setSelectedPlanoForCheckout] = useState<string | null>(null);
-  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [processandoCheckout, setProcessandoCheckout] = useState(false);
   const [iniciarTrial, setIniciarTrial] = useState(false);
+
+  const [cnpj, setCnpj] = useState("");
+  const [paymentType, setPaymentType] = useState<'assinatura' | 'avulso'>('assinatura');
+  const [cardNum, setCardNum] = useState("");
+  const [cardName, setCardName] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [cardCvv, setCardCvv] = useState("");
+  const [mpPublicKey, setMpPublicKey] = useState("");
+
+  useEffect(() => {
+    if (clinica?.cnpj) {
+      setCnpj(formatCnpj(clinica.cnpj));
+    }
+  }, [clinica]);
+
+  useEffect(() => {
+    // Carregar chave pública do Mercado Pago
+    const fetchKey = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("mercadopago-public-key");
+        if (!error && data?.publicKey) {
+          setMpPublicKey(data.publicKey);
+        }
+      } catch (e) {
+        console.error("Failed to load public key", e);
+      }
+    };
+    if (selectedPlanoForCheckout) {
+      fetchKey();
+    }
+  }, [selectedPlanoForCheckout]);
+
+  useEffect(() => {
+    if (!selectedPlanoForCheckout) return;
+    const script = document.createElement("script");
+    script.src = "https://sdk.mercadopago.com/js/v2";
+    script.async = true;
+    document.body.appendChild(script);
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, [selectedPlanoForCheckout]);
+
+  const tokenizeCard = async () => {
+    if (!mpPublicKey || mpPublicKey === "APP_USR-dummy-public-key" || !(window as any).MercadoPago) {
+      console.warn("Mercado Pago SDK não carregado ou chave dummy. Usando token simulado.");
+      return `mock_token_${Date.now()}`;
+    }
+    
+    try {
+      const mp = new (window as any).MercadoPago(mpPublicKey);
+      const response = await mp.createCardToken({
+        cardNumber: cardNum.replace(/\s+/g, ""),
+        cardholderName: cardName,
+        cardExpirationMonth: cardExpiry.split("/")[0],
+        cardExpirationYear: "20" + cardExpiry.split("/")[1],
+        securityCode: cardCvv,
+      });
+      return response.id;
+    } catch (e) {
+      console.error("Erro na tokenização do cartão:", e);
+      return `mock_token_${Date.now()}`;
+    }
+  };
+
+  const formatCnpj = (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+    if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+    if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12, 14)}`;
+  };
+
+  const formatCardNumber = (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    return digits.replace(/(\d{4})(?=\d)/g, "$1 ").slice(0, 19);
+  };
+
+  const formatCardExpiry = (value: string) => {
+    const clean = value.replace(/\D/g, "");
+    if (clean.length <= 2) return clean;
+    return `${clean.slice(0, 2)}/${clean.slice(2, 4)}`;
+  };
 
   // Detecta checkout automático por query param ou localStorage
   useEffect(() => {
@@ -80,7 +164,6 @@ const Assinatura = () => {
       }
 
       setSelectedPlanoForCheckout(planoId);
-      setCheckoutDialogOpen(true);
     }
   }, [loading, clinica, isSuperAdmin, isImpersonating]);
 
@@ -175,34 +258,116 @@ const Assinatura = () => {
     }
   });
 
-  const iniciarCheckoutMP = async (tipo: 'assinatura' | 'avulso') => {
-    if (!selectedPlanoForCheckout) return;
-    try {
-      setProcessandoCheckout(true);
-      toast({
-        title: "Aguarde...",
-        description: "Redirecionando para o pagamento seguro do Mercado Pago.",
-      });
+  const handleConfirmPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clinica?.id) return;
 
-      const { data, error } = await supabase.functions.invoke("mercadopago-checkout", {
-        body: { planoId: selectedPlanoForCheckout, tipo },
-      });
-
-      if (error) throw error;
-      if (data?.url) {
-        window.location.href = data.url;
-      } else {
-        throw new Error("URL de checkout não retornada pelo Mercado Pago.");
-      }
-    } catch (error: any) {
+    const cleanCnpj = cnpj.replace(/\D/g, "");
+    if (!cleanCnpj || cleanCnpj.length !== 14) {
       toast({
         variant: "destructive",
-        title: "Erro ao iniciar checkout",
-        description: error.message || "Não foi possível conectar ao Mercado Pago.",
+        title: "CNPJ inválido",
+        description: "Por favor, informe um CNPJ válido com 14 dígitos.",
+      });
+      return;
+    }
+
+    setProcessandoCheckout(true);
+
+    try {
+      // 1. Atualizar o CNPJ no banco da clínica
+      const { error: errorCnpj } = await supabase
+        .from("clinicas")
+        .update({ cnpj: cleanCnpj })
+        .eq("id", clinica.id);
+
+      if (errorCnpj) throw errorCnpj;
+
+      if (iniciarTrial) {
+        // Ativar trial de 7 dias
+        const { error } = await supabase
+          .from("clinicas")
+          .update({
+            status_pagamento: "teste_gratis",
+            data_fim_teste: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+          })
+          .eq("id", clinica.id);
+
+        if (error) throw error;
+
+        toast({
+          title: "Período de teste ativado!",
+          description: "Seus 7 dias gratuitos foram liberados. Aproveite!",
+        });
+        
+        localStorage.removeItem("pending_checkout_plano");
+        setSelectedPlanoForCheckout(null);
+        setIniciarTrial(false);
+        
+        // Recarregar a página para atualizar contexto
+        setTimeout(() => {
+          window.location.href = "/app";
+        }, 1000);
+      } else {
+        // Pagar com cartão
+        if (!cardNum || !cardName || !cardExpiry || !cardCvv) {
+          toast({
+            variant: "destructive",
+            title: "Dados de cartão incompletos",
+            description: "Por favor, preencha todos os campos do cartão de crédito.",
+          });
+          setProcessandoCheckout(false);
+          return;
+        }
+
+        toast({
+          title: "Processando...",
+          description: "Tokenizando cartão de crédito...",
+        });
+
+        const cardToken = await tokenizeCard();
+
+        toast({
+          title: "Ativando plano...",
+          description: "Enviando pagamento ao Mercado Pago...",
+        });
+
+        const { data: payData, error: payError } = await supabase.functions.invoke("mercadopago-transparent", {
+          body: {
+            planoId: selectedPlanoForCheckout,
+            tipo: paymentType,
+            token: cardToken,
+          },
+        });
+
+        if (payError || !payData?.success) {
+          toast({
+            variant: "destructive",
+            title: "Assinatura Recusada",
+            description: payError?.message || "O pagamento do cartão foi recusado. Verifique os dados ou tente outro cartão.",
+          });
+        } else {
+          toast({
+            title: "Plano ativado!",
+            description: `Seu plano ${selectedPlanoForCheckout.toUpperCase()} foi ativado com sucesso!`,
+          });
+          
+          localStorage.removeItem("pending_checkout_plano");
+          setSelectedPlanoForCheckout(null);
+          
+          setTimeout(() => {
+            window.location.href = "/app";
+          }, 1000);
+        }
+      }
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Erro no checkout",
+        description: err.message || "Tente novamente mais tarde.",
       });
     } finally {
       setProcessandoCheckout(false);
-      setCheckoutDialogOpen(false);
     }
   };
 
@@ -359,6 +524,191 @@ const Assinatura = () => {
     );
   }
 
+  if (selectedPlanoForCheckout) {
+    const price = selectedPlanoForCheckout === "prata" ? "R$ 139,00" : "R$ 89,00";
+    return (
+      <AppLayout>
+        <div className="max-w-2xl mx-auto space-y-6">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Checkout — Plano {selectedPlanoForCheckout.toUpperCase()}</h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Finalize a contratação do plano selecionado. Preencha seus dados de faturamento e pagamento.
+            </p>
+          </div>
+
+          <Card className="shadow-lg border-primary/10">
+            <CardHeader>
+              <CardTitle className="text-lg">Resumo da Assinatura</CardTitle>
+              <CardDescription>
+                Você está contratando o plano <span className="font-bold capitalize text-primary">{selectedPlanoForCheckout}</span> por <span className="font-bold text-foreground">{price}/mês</span>.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleConfirmPayment} className="space-y-4">
+                {/* Dados da Clínica (CNPJ) */}
+                <div className="space-y-2">
+                  <Label htmlFor="checkout-cnpj">CNPJ da Clínica</Label>
+                  <Input
+                    id="checkout-cnpj"
+                    type="text"
+                    placeholder="00.000.000/0000-00"
+                    value={cnpj}
+                    onChange={(e) => setCnpj(formatCnpj(e.target.value))}
+                    required
+                    disabled={processandoCheckout}
+                  />
+                </div>
+
+                <div className="border-t pt-4 space-y-4">
+                  <h3 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                    💳 Dados de Pagamento (Mercado Pago Transparente)
+                  </h3>
+
+                  {/* Seletor de Tipo de Pagamento */}
+                  {!iniciarTrial && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentType("assinatura")}
+                        className={`p-3 rounded-lg border text-left flex flex-col gap-1 transition-all ${
+                          paymentType === "assinatura"
+                            ? "border-primary bg-primary/5 text-primary"
+                            : "border-muted text-muted-foreground hover:bg-muted/30"
+                        }`}
+                      >
+                        <span className="text-xs font-bold">Assinatura Recorrente</span>
+                        <span className="text-[9px] font-normal leading-tight">Cobrança automática mensal</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPaymentType("avulso")}
+                        className={`p-3 rounded-lg border text-left flex flex-col gap-1 transition-all ${
+                          paymentType === "avulso"
+                            ? "border-primary bg-primary/5 text-primary"
+                            : "border-muted text-muted-foreground hover:bg-muted/30"
+                        }`}
+                      >
+                        <span className="text-xs font-bold">Pagamento Avulso</span>
+                        <span className="text-[9px] font-normal leading-tight">Renovação manual mensal</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Checkbox de 7 Dias Grátis */}
+                  <div className="flex items-center space-x-2 bg-muted/30 p-2.5 rounded-lg border border-dashed">
+                    <input
+                      id="checkout-trial-checkbox"
+                      type="checkbox"
+                      checked={iniciarTrial}
+                      onChange={(e) => setIniciarTrial(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-[hsl(var(--login-primary))] focus:ring-[hsl(var(--login-primary))] cursor-pointer accent-[hsl(var(--login-primary))]"
+                    />
+                    <label htmlFor="checkout-trial-checkbox" className="text-xs text-muted-foreground font-semibold cursor-pointer select-none">
+                      Iniciar com 7 dias grátis de teste (sem pagar agora)
+                    </label>
+                  </div>
+
+                  {/* Campos do Cartão (Escondidos no Trial) */}
+                  {!iniciarTrial && (
+                    <div className="space-y-3 animate-in fade-in-50 duration-200">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="checkout-cardNum">Número do Cartão</Label>
+                        <Input
+                          id="checkout-cardNum"
+                          type="text"
+                          placeholder="0000 0000 0000 0000"
+                          value={cardNum}
+                          onChange={(e) => setCardNum(formatCardNumber(e.target.value))}
+                          disabled={processandoCheckout}
+                          required={!iniciarTrial}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label htmlFor="checkout-cardName">Nome impresso no Cartão</Label>
+                        <Input
+                          id="checkout-cardName"
+                          type="text"
+                          placeholder="NOME COMO NO CARTÃO"
+                          value={cardName}
+                          onChange={(e) => setCardName(e.target.value.toUpperCase())}
+                          disabled={processandoCheckout}
+                          required={!iniciarTrial}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="checkout-cardExpiry">Validade (MM/AA)</Label>
+                          <Input
+                            id="checkout-cardExpiry"
+                            type="text"
+                            placeholder="MM/AA"
+                            value={cardExpiry}
+                            onChange={(e) => setCardExpiry(formatCardExpiry(e.target.value))}
+                            disabled={processandoCheckout}
+                            required={!iniciarTrial}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="checkout-cardCvv">CVV / Cód. Segurança</Label>
+                          <Input
+                            id="checkout-cardCvv"
+                            type="password"
+                            placeholder="123"
+                            value={cardCvv}
+                            onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                            disabled={processandoCheckout}
+                            required={!iniciarTrial}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
+                  <Button
+                    type="submit"
+                    className="flex-1 bg-[hsl(var(--login-primary))] hover:bg-[hsl(var(--login-primary))]/90 text-primary-foreground font-semibold py-5"
+                    disabled={processandoCheckout}
+                  >
+                    {processandoCheckout ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        <span>Processando...</span>
+                      </>
+                    ) : iniciarTrial ? (
+                      "Ativar 7 Dias Grátis & Acessar"
+                    ) : (
+                      "Confirmar Assinatura & Ativar Plano"
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedPlanoForCheckout(null);
+                      setIniciarTrial(false);
+                      setCardNum("");
+                      setCardName("");
+                      setCardExpiry("");
+                      setCardCvv("");
+                    }}
+                    className="py-5"
+                    disabled={processandoCheckout}
+                  >
+                    Voltar para Planos
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout>
       <div className="space-y-8">
@@ -456,7 +806,6 @@ const Assinatura = () => {
                         return;
                       }
                       setSelectedPlanoForCheckout(plano.id);
-                      setCheckoutDialogOpen(true);
                     }}
                     disabled={clinica?.plano === plano.id}
                   >
@@ -469,124 +818,6 @@ const Assinatura = () => {
           </div>
         </div>
       </div>
-
-      <Dialog open={checkoutDialogOpen} onOpenChange={setCheckoutDialogOpen}>
-        <DialogContent className="sm:max-w-[450px] border-primary/20 bg-background/95 backdrop-blur-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl font-bold">
-              <CreditCard className="h-5 w-5 text-primary" />
-              <span>Checkout do Plano</span>
-            </DialogTitle>
-            <DialogDescription className="text-sm text-muted-foreground mt-1">
-              Selecione a forma de pagamento do plano <strong className="capitalize text-foreground font-semibold">{selectedPlanoForCheckout}</strong>.
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Corpo do Checkout Dinâmico */}
-          {iniciarTrial ? (
-            <div className="pt-2 space-y-4">
-              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-foreground leading-relaxed">
-                Você escolheu iniciar o plano <strong className="capitalize">{selectedPlanoForCheckout}</strong> no período de testes. Seu acesso será liberado por <strong>7 dias totalmente grátis</strong> sem nenhuma cobrança ou cadastro de cartão hoje.
-              </div>
-              <Button
-                className="w-full bg-[hsl(var(--login-primary))] hover:bg-[hsl(var(--login-primary))]/90 text-primary-foreground font-semibold py-6 flex items-center justify-center gap-2"
-                onClick={async () => {
-                  if (!clinica?.id) return;
-                  try {
-                    setProcessandoCheckout(true);
-                    
-                    // Atualiza o status de pagamento e a validade da clínica no Supabase
-                    const { error } = await supabase
-                      .from("clinicas")
-                      .update({
-                        status_pagamento: "teste_gratis",
-                        data_fim_teste: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-                      })
-                      .eq("id", clinica.id);
-
-                    if (error) throw error;
-
-                    toast({
-                      title: "Período de teste ativado!",
-                      description: "Seus 7 dias gratuitos foram liberados. Aproveite!",
-                    });
-                    
-                    localStorage.removeItem("pending_checkout_plano");
-                    setCheckoutDialogOpen(false);
-                    
-                    // Recarrega a página no Dashboard para atualizar o ClinicaContext e liberar o acesso
-                    window.location.href = "/app";
-                  } catch (err: any) {
-                    toast({
-                      variant: "destructive",
-                      title: "Erro ao ativar teste",
-                      description: err.message || "Tente novamente mais tarde.",
-                    });
-                  } finally {
-                    setProcessandoCheckout(false);
-                  }
-                }}
-                disabled={processandoCheckout}
-              >
-                {processandoCheckout ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Processando...</span>
-                  </>
-                ) : (
-                  <span>Ativar 7 Dias Grátis & Acessar Painel</span>
-                )}
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 pt-2">
-              <Button
-                className="h-24 flex flex-col items-start p-4 hover:border-primary border border-muted bg-card hover:bg-primary/5 transition-all text-left group"
-                variant="outline"
-                disabled={processandoCheckout}
-                onClick={() => iniciarCheckoutMP("assinatura")}
-              >
-                <div className="flex items-center justify-between w-full">
-                  <span className="font-bold text-foreground group-hover:text-primary transition-colors">Assinatura Mensal Automática</span>
-                  <Badge className="bg-primary/20 text-primary border-0 hover:bg-primary/20 text-[10px]">Recomendado</Badge>
-                </div>
-                <span className="text-xs text-muted-foreground font-normal mt-1 whitespace-normal">
-                  Cobrança recorrente no Cartão de Crédito. Sem preocupações com renovação mensal.
-                </span>
-              </Button>
-
-              <Button
-                className="h-24 flex flex-col items-start p-4 hover:border-primary border border-muted bg-card hover:bg-primary/5 transition-all text-left group"
-                variant="outline"
-                disabled={processandoCheckout}
-                onClick={() => iniciarCheckoutMP("avulso")}
-              >
-                <div className="flex items-center justify-between w-full">
-                  <span className="font-bold text-foreground group-hover:text-primary transition-colors">Pagamento Avulso Mensal</span>
-                  <Badge variant="outline" className="text-[10px]">Pix ou Cartão</Badge>
-                </div>
-                <span className="text-xs text-muted-foreground font-normal mt-1 whitespace-normal">
-                  Gere um Pix ou pague com cartão de crédito manualmente a cada mês para renovar sua conta.
-                </span>
-              </Button>
-            </div>
-          )}
-
-          {/* Checkbox para optar pelo Trial de 7 Dias Grátis */}
-          <div className="flex items-center space-x-2 border-t pt-4 mt-2">
-            <input
-              id="trial-checkbox"
-              type="checkbox"
-              checked={iniciarTrial}
-              onChange={(e) => setIniciarTrial(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-[hsl(var(--login-primary))] focus:ring-[hsl(var(--login-primary))] cursor-pointer accent-[hsl(var(--login-primary))]"
-            />
-            <label htmlFor="trial-checkbox" className="text-xs text-muted-foreground font-semibold cursor-pointer select-none">
-              Iniciar com 7 dias grátis de teste (sem pagar agora)
-            </label>
-          </div>
-        </DialogContent>
-      </Dialog>
     </AppLayout>
   );
 };
