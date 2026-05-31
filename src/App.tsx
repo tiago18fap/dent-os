@@ -7,6 +7,7 @@ import Landing from "./pages/Landing";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
+import Checkout from "./pages/Checkout";
 import Importacoes from "./pages/Importacoes";
 import Campanhas from "./pages/Campanhas";
 import IndiqueEGanhe from "./pages/IndiqueEGanhe";
@@ -30,6 +31,8 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/checkout/:plano" element={<Checkout />} />
+            <Route path="/checkout" element={<Checkout />} />
             <Route path="/app" element={<ProtectedRoute><Index /></ProtectedRoute>} />
             <Route path="/importacoes" element={<ProtectedRoute><Importacoes /></ProtectedRoute>} />
             <Route path="/campanhas" element={<ProtectedRoute><Campanhas /></ProtectedRoute>} />
