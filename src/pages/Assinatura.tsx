@@ -741,11 +741,26 @@ const Assinatura = () => {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg bg-muted/50 border">
               <div>
                 <p className="text-sm text-muted-foreground">Plano</p>
-                <p className="text-xl font-bold capitalize">{clinica?.plano || "Nenhum"}</p>
+                <p className="text-xl font-bold capitalize">
+                  {clinica?.status_pagamento === "teste_gratis"
+                    ? "7 Dias Grátis"
+                    : clinica?.plano || "Nenhum"}
+                </p>
+                {clinica?.status_pagamento === "teste_gratis" && clinica?.plano && (
+                  <p className="text-xs text-muted-foreground mt-0.5">Base: {clinica.plano.charAt(0).toUpperCase() + clinica.plano.slice(1)}</p>
+                )}
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Status</p>
                 <div className="mt-1">{getStatusBadge(clinica?.status_pagamento)}</div>
+                {clinica?.status_pagamento === "teste_gratis" && clinica?.data_fim_teste && (
+                  <p className="text-[10px] text-blue-600 mt-1">
+                    {(() => {
+                      const dias = Math.max(0, Math.ceil((new Date(clinica.data_fim_teste).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                      return dias > 0 ? `${dias} dia${dias > 1 ? "s" : ""} restante${dias > 1 ? "s" : ""}` : "Período expirado";
+                    })()}
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Limite Mensal</p>

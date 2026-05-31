@@ -38,6 +38,8 @@ const Checkout = () => {
   const [clinicaNome, setClinicaNome] = useState("");
   const [cnpj, setCnpj] = useState("");
   const [loading, setLoading] = useState(false);
+  const [cnpjError, setCnpjError] = useState<string | null>(null);
+  const [cnpjChecking, setCnpjChecking] = useState(false);
 
   // Payment states
   const [iniciarTrial, setIniciarTrial] = useState(false);
@@ -110,6 +112,30 @@ const Checkout = () => {
     return `${clean.slice(0, 2)}/${clean.slice(2, 4)}`;
   };
 
+  // ──── Check CNPJ on blur ────
+  const checkCnpjExists = async (value: string) => {
+    const clean = value.replace(/\D/g, "");
+    if (clean.length !== 14) {
+      setCnpjError(null);
+      return;
+    }
+    setCnpjChecking(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("check-cnpj", {
+        body: { cnpj: clean },
+      });
+      if (!error && data?.exists) {
+        setCnpjError(`Este CNPJ já está cadastrado${data.clinicaNome ? ` (${data.clinicaNome})` : ""}. Faça login para acessar.`);
+      } else {
+        setCnpjError(null);
+      }
+    } catch {
+      setCnpjError(null);
+    } finally {
+      setCnpjChecking(false);
+    }
+  };
+
   // ──── Tokenize Card ────
   const tokenizeCard = async () => {
     if (!mpPublicKey || mpPublicKey === "APP_USR-dummy-public-key" || !(window as any).MercadoPago) {
@@ -147,6 +173,10 @@ const Checkout = () => {
     const cleanCnpj = cnpj.replace(/\D/g, "");
     if (!cleanCnpj || cleanCnpj.length !== 14) {
       toast({ variant: "destructive", title: "CNPJ inválido", description: "Por favor, informe um CNPJ válido com 14 dígitos." });
+      return;
+    }
+    if (cnpjError) {
+      toast({ variant: "destructive", title: "CNPJ já cadastrado", description: "Este CNPJ já possui uma clínica cadastrada. Faça login." });
       return;
     }
     if (!iniciarTrial && (!cardNum || !cardName || !cardExpiry || !cardCvv)) {
@@ -305,7 +335,26 @@ const Checkout = () => {
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="checkout-cnpj" className="text-xs">CNPJ</Label>
-                      <Input id="checkout-cnpj" type="text" placeholder="00.000.000/0000-00" value={cnpj} onChange={(e) => setCnpj(formatCnpj(e.target.value))} required disabled={loading} />
+                      <Input
+                        id="checkout-cnpj"
+                        type="text"
+                        placeholder="00.000.000/0000-00"
+                        value={cnpj}
+                        onChange={(e) => { setCnpj(formatCnpj(e.target.value)); setCnpjError(null); }}
+                        onBlur={() => checkCnpjExists(cnpj)}
+                        required
+                        disabled={loading}
+                        className={cnpjError ? "border-red-500 focus-visible:ring-red-500" : ""}
+                      />
+                      {cnpjChecking && <p className="text-[10px] text-muted-foreground">Verificando CNPJ...</p>}
+                      {cnpjError && (
+                        <div className="rounded-md bg-red-50 border border-red-200 p-2 mt-1">
+                          <p className="text-[11px] text-red-700 font-medium">⚠️ {cnpjError}</p>
+                          <button type="button" onClick={() => navigate("/auth?mode=login")} className="text-[11px] text-red-600 font-bold underline underline-offset-2 mt-0.5 hover:text-red-800">
+                            Ir para o login →
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardContent>
