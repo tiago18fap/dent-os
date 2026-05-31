@@ -59,13 +59,31 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      const { data: perfilData, error: perfilError } = await supabase
-        .from("perfis")
-        .select("*")
-        .eq("id", session.user.id)
-        .single();
+      // Retry logic: o trigger handle_new_user pode não ter criado o perfil ainda
+      let perfilData: any = null;
+      let perfilError: any = null;
+      
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const result = await supabase
+          .from("perfis")
+          .select("*")
+          .eq("id", session.user.id)
+          .single();
+        
+        perfilData = result.data;
+        perfilError = result.error;
+        
+        if (perfilData) break;
+        
+        // Aguardar 1.5s antes de tentar novamente (trigger pode estar executando)
+        if (attempt < 3) {
+          console.log(`[ClinicaContext] Perfil não encontrado, tentativa ${attempt + 1}/4...`);
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+      }
 
       if (perfilError || !perfilData) {
+        console.error("[ClinicaContext] Perfil não encontrado após 4 tentativas:", perfilError);
         setLoading(false);
         return;
       }
@@ -98,7 +116,13 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
       setIsImpersonating(impActive);
       setPerfil(targetPerfil as Perfil);
 
-      const { data: clinicaData, error: clinicaError } = await supabase
+      if (!targetClinicaId) {
+        console.error("[ClinicaContext] Perfil sem clinica_id:", perfilData);
+        setLoading(false);
+        return;
+      }
+
+      const { data: clinicaData, error: clinicaError } = await (supabase as any)
         .from("clinicas")
         .select("*")
         .eq("id", targetClinicaId)
@@ -123,6 +147,8 @@ export const ClinicaProvider = ({ children }: { children: ReactNode }) => {
           }
         }
         setClinica(c);
+      } else {
+        console.error("[ClinicaContext] Clínica não encontrada:", targetClinicaId, clinicaError);
       }
     } catch (error) {
       console.error("Erro ao carregar contexto da clínica:", error);
