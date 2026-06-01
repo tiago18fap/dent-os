@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 
-import logoDentosFull from "@/assets/logo-dentos.png";
+import logoDentosFull from "@/assets/logo-dentos.svg";
+import logoDentosIcon from "@/assets/logo-dentos-icon.svg";
 import type { ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -259,6 +260,7 @@ export const AppLayout = ({ children }: AppLayoutProps) => {
         <header className="flex h-14 sm:h-16 items-center gap-2 sm:gap-3 border-b border-border bg-gradient-to-r from-primary/5 via-accent/10 to-secondary/10 px-3 sm:px-4">
           <div className="flex items-center gap-3">
             <SidebarTrigger className="md:hidden" />
+            <img src={logoDentosIcon} alt="DentOS" className="h-7 w-auto md:hidden" />
             <div className="hidden items-center gap-2 md:flex" />
           </div>
           <div className="flex flex-1 items-center justify-between gap-4 overflow-hidden">

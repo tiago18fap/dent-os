@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import logoFull from "@/assets/logo-dentos.png";
+import logoFull from "@/assets/logo-dentos.svg";
 import { z } from "zod";
 
 const emailSchema = z
