@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { getConnectionState, fetchInstanceInfo } from "@/services/evolutionApi";
+import { getConnectionState, fetchInstanceInfo, checkAndReconnect } from "@/services/evolutionApi";
 
 export interface WhatsappConfig {
   id: string;
@@ -33,6 +33,8 @@ export const useWhatsappStatus = () => {
       dedup_dias: number;
       horario_inicio: string;
       horario_fim: string;
+      needsReconnect: boolean;
+      reconnectAttempted: boolean;
     } | null> => {
       const { data: userData, error: userError } = await supabase.auth.getUser();
 
@@ -80,17 +82,62 @@ export const useWhatsappStatus = () => {
       let realConectado = data ? (data as WhatsappConfig).conectado : false;
       let realNumero = data ? (data as WhatsappConfig).numero : null;
       let checkSuccess = false;
+      let needsReconnect = false;
+      let reconnectAttempted = false;
       
       try {
         const conn = await getConnectionState(targetClinicaId);
-        realConectado = (conn.state === "open");
         checkSuccess = true;
-        
-        if (realConectado) {
+
+        if (conn.state === "open") {
+          // Tudo ok — conectado
+          realConectado = true;
           const info = await fetchInstanceInfo(targetClinicaId);
           realNumero = info.number;
         } else {
-          realNumero = null;
+          // Conexão caiu ou não está ativa
+          const dbConectado = data ? (data as WhatsappConfig).conectado : false;
+
+          if (dbConectado) {
+            // O banco diz conectado mas a Evolution diz que não está
+            // → Tentar reconexão automática
+            console.log("[useWhatsappStatus] Conexão perdida detectada! Tentando reconectar...");
+            reconnectAttempted = true;
+
+            try {
+              const reconnResult = await checkAndReconnect(targetClinicaId);
+
+              if (reconnResult.reconnected) {
+                // Reconexão automática bem-sucedida!
+                console.log("[useWhatsappStatus] Reconexão automática bem-sucedida!");
+                realConectado = true;
+                const info = await fetchInstanceInfo(targetClinicaId);
+                realNumero = info.number;
+                needsReconnect = false;
+              } else if (reconnResult.needsQrScan) {
+                // Precisa escanear QR code novamente
+                console.log("[useWhatsappStatus] Reconexão requer novo QR code scan.");
+                realConectado = false;
+                realNumero = null;
+                needsReconnect = true;
+              } else {
+                // Falhou completamente
+                console.log("[useWhatsappStatus] Reconexão falhou. Estado:", reconnResult.state);
+                realConectado = false;
+                realNumero = null;
+                needsReconnect = true;
+              }
+            } catch (reconnErr) {
+              console.error("[useWhatsappStatus] Erro na tentativa de reconexão:", reconnErr);
+              realConectado = false;
+              realNumero = null;
+              needsReconnect = true;
+            }
+          } else {
+            // Banco já sabe que está desconectado — nada a fazer
+            realConectado = false;
+            realNumero = null;
+          }
         }
       } catch (e) {
         console.error("Erro ao verificar status na Evolution API:", e);
@@ -147,7 +194,14 @@ export const useWhatsappStatus = () => {
         easydental_usuario: data ? (data as any).easydental_usuario ?? null : null,
         easydental_senha: data ? (data as any).easydental_senha ?? null : null,
         ultima_sync_sucesso: data ? (data as any).ultima_sync_sucesso ?? null : null,
+        needsReconnect,
+        reconnectAttempted,
       };
     },
+    // Verificar saúde da conexão a cada 60 segundos para detecção rápida de quedas
+    refetchInterval: 60_000,
+    // Não refetch em background quando a janela não está focada (evita reconexões desnecessárias)
+    refetchIntervalInBackground: false,
   });
 };
+
