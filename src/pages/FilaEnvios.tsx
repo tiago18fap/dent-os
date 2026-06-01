@@ -765,7 +765,7 @@ const FilaEnvios = () => {
               <div>
                 <CardTitle className="text-lg">Solicitações de Saída (Opt-Out)</CardTitle>
                 <CardDescription className="text-xs">
-                  Pacientes que pediram para não receber mais mensagens. Eles são desabilitados automaticamente.
+                  Pacientes que pediram para não receber mais mensagens. Revise a mensagem e confiança antes de tomar ação.
                 </CardDescription>
               </div>
               {optOuts && optOuts.length > 0 && (
@@ -792,7 +792,9 @@ const FilaEnvios = () => {
                       <TableHead>Paciente</TableHead>
                       <TableHead>Telefone</TableHead>
                       <TableHead>Mensagem Recebida</TableHead>
+                      <TableHead className="text-center">Confiança</TableHead>
                       <TableHead className="text-center">Status</TableHead>
+                      <TableHead className="text-center">Ação</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -800,20 +802,104 @@ const FilaEnvios = () => {
                       const dataFormatada = item.created_at
                         ? new Date(item.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })
                         : "—";
+                      const confianca = (item.confianca ?? "alta").toLowerCase();
+                      const isReativado = item.status === "reativado";
+
                       return (
-                        <TableRow key={item.id}>
+                        <TableRow key={item.id} className={isReativado ? "opacity-60" : ""}>
                           <TableCell className="whitespace-nowrap text-xs font-medium">{dataFormatada}</TableCell>
                           <TableCell className="text-xs font-medium">{item.paciente_nome || "—"}</TableCell>
                           <TableCell className="text-xs">{item.telefone || "—"}</TableCell>
                           <TableCell className="text-xs text-muted-foreground max-w-[300px]">
-                            <span className="italic" title={item.mensagem_recebida}>
-                              "{item.mensagem_recebida ? (item.mensagem_recebida.length > 80 ? item.mensagem_recebida.slice(0, 80) + "…" : item.mensagem_recebida) : "—"}"
-                            </span>
+                            <TooltipProvider>
+                              <UITooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="italic cursor-help">
+                                    "{item.mensagem_recebida ? (item.mensagem_recebida.length > 60 ? item.mensagem_recebida.slice(0, 60) + "…" : item.mensagem_recebida) : "—"}"
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-[400px] text-xs whitespace-pre-wrap">
+                                  <p className="font-semibold mb-1">Mensagem completa:</p>
+                                  <p className="italic">"{item.mensagem_recebida || "—"}"</p>
+                                </TooltipContent>
+                              </UITooltip>
+                            </TooltipProvider>
                           </TableCell>
                           <TableCell className="text-center">
-                            <Badge variant="destructive" className="flex items-center gap-1 w-fit mx-auto text-[10px]">
-                              <Ban className="w-3 h-3" /> Desabilitado
-                            </Badge>
+                            {confianca === "alta" && (
+                              <Badge className="bg-red-500 hover:bg-red-600 text-[10px]">🔴 Alta</Badge>
+                            )}
+                            {confianca === "media" && (
+                              <Badge className="bg-amber-500 hover:bg-amber-600 text-[10px]">🟡 Média</Badge>
+                            )}
+                            {confianca === "baixa" && (
+                              <Badge variant="outline" className="border-blue-300 text-blue-500 text-[10px]">🔵 Baixa (Revisão)</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {isReativado ? (
+                              <Badge variant="outline" className="border-green-400 text-green-600 bg-green-50 flex items-center gap-1 w-fit mx-auto text-[10px]">
+                                <CheckCircle2 className="w-3 h-3" /> Reativado
+                              </Badge>
+                            ) : (
+                              <Badge variant="destructive" className="flex items-center gap-1 w-fit mx-auto text-[10px]">
+                                <Ban className="w-3 h-3" /> Desabilitado
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {!isReativado && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs gap-1 border-green-300 text-green-600 hover:bg-green-50 hover:text-green-700"
+                                onClick={async () => {
+                                  try {
+                                    // 1. Reativar paciente na tabela clientes
+                                    if (item.cliente_id) {
+                                      const { error: reativError } = await supabase
+                                        .from("clientes")
+                                        .update({ situacao: "Ativo" })
+                                        .eq("id", item.cliente_id);
+
+                                      if (reativError) throw reativError;
+                                    }
+
+                                    // 2. Atualizar status do opt-out
+                                    const { error: optError } = await (supabase as any)
+                                      .from("solicitacoes_optout")
+                                      .update({
+                                        status: "reativado",
+                                        reativado_em: new Date().toISOString(),
+                                        reativado_por: "admin",
+                                      })
+                                      .eq("id", item.id);
+
+                                    if (optError) throw optError;
+
+                                    toast({
+                                      title: "Paciente reativado",
+                                      description: `${item.paciente_nome || "Paciente"} voltou a receber mensagens.`,
+                                    });
+
+                                    queryClient.invalidateQueries({ queryKey: ["solicitacoes_optout"] });
+                                  } catch (err: any) {
+                                    toast({
+                                      title: "Erro ao reativar",
+                                      description: err.message || "Tente novamente.",
+                                      variant: "destructive",
+                                    });
+                                  }
+                                }}
+                              >
+                                <RefreshCcw className="w-3 h-3" /> Reativar
+                              </Button>
+                            )}
+                            {isReativado && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {item.reativado_em ? new Date(item.reativado_em).toLocaleDateString("pt-BR") : "—"}
+                              </span>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
