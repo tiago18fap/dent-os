@@ -19,7 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Wallet, Clock, CheckCircle2, XCircle, RefreshCcw, CalendarDays, Megaphone, Cake, Send, AlertTriangle } from "lucide-react";
+import { Wallet, Clock, CheckCircle2, XCircle, RefreshCcw, CalendarDays, Megaphone, Cake, Send, AlertTriangle, ShieldAlert, Ban } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useClinica } from "@/contexts/ClinicaContext";
 import { DateRange } from "react-day-picker";
@@ -170,6 +170,29 @@ const FilaEnvios = () => {
       const { data, error } = await query;
       if (error) throw error;
       return data ?? [];
+    },
+    enabled: !loading,
+  });
+
+  // Carregar solicitações de opt-out
+  const { data: optOuts, isLoading: optOutsLoading } = useQuery({
+    queryKey: ["solicitacoes_optout", clinica?.id, isSuperAdmin, isImpersonating],
+    queryFn: async () => {
+      let query = (supabase as any)
+        .from("solicitacoes_optout")
+        .select("*");
+
+      if (!isSuperAdmin || isImpersonating) {
+        if (clinica?.id) {
+          query = query.eq("clinica_id", clinica.id);
+        } else {
+          return [];
+        }
+      }
+
+      const { data, error } = await query.order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
     },
     enabled: !loading,
   });
@@ -727,6 +750,76 @@ const FilaEnvios = () => {
                     </Pagination>
                   </div>
                 )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Seção de Opt-Outs (Solicitações de Saída) */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-red-500/10">
+                <ShieldAlert className="h-5 w-5 text-red-500" />
+              </div>
+              <div>
+                <CardTitle className="text-lg">Solicitações de Saída (Opt-Out)</CardTitle>
+                <CardDescription className="text-xs">
+                  Pacientes que pediram para não receber mais mensagens. Eles são desabilitados automaticamente.
+                </CardDescription>
+              </div>
+              {optOuts && optOuts.length > 0 && (
+                <Badge variant="destructive" className="ml-auto text-sm">
+                  {optOuts.length}
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {optOutsLoading && <p className="text-sm text-muted-foreground">Carregando…</p>}
+            {!optOutsLoading && (!optOuts || optOuts.length === 0) && (
+              <div className="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
+                <CheckCircle2 className="h-8 w-8 opacity-30" />
+                <p className="text-sm">Nenhuma solicitação de saída registrada.</p>
+              </div>
+            )}
+            {!optOutsLoading && optOuts && optOuts.length > 0 && (
+              <div className="rounded-md border bg-card">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Paciente</TableHead>
+                      <TableHead>Telefone</TableHead>
+                      <TableHead>Mensagem Recebida</TableHead>
+                      <TableHead className="text-center">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(optOuts as any[]).map((item: any) => {
+                      const dataFormatada = item.created_at
+                        ? new Date(item.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })
+                        : "—";
+                      return (
+                        <TableRow key={item.id}>
+                          <TableCell className="whitespace-nowrap text-xs font-medium">{dataFormatada}</TableCell>
+                          <TableCell className="text-xs font-medium">{item.paciente_nome || "—"}</TableCell>
+                          <TableCell className="text-xs">{item.telefone || "—"}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground max-w-[300px]">
+                            <span className="italic" title={item.mensagem_recebida}>
+                              "{item.mensagem_recebida ? (item.mensagem_recebida.length > 80 ? item.mensagem_recebida.slice(0, 80) + "…" : item.mensagem_recebida) : "—"}"
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="destructive" className="flex items-center gap-1 w-fit mx-auto text-[10px]">
+                              <Ban className="w-3 h-3" /> Desabilitado
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
               </div>
             )}
           </CardContent>

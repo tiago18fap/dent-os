@@ -382,6 +382,23 @@ serve(async (req) => {
           continue;
         }
 
+        // ═══ PROTEÇÃO OPT-OUT: Verificar se paciente ainda está Ativo ═══
+        if (msg.paciente_id) {
+          const { data: paciente } = await supabase
+            .from("clientes")
+            .select("situacao")
+            .eq("id", msg.paciente_id)
+            .single();
+
+          const situacao = (paciente?.situacao ?? "").toLowerCase();
+          if (situacao === "desabilitado" || situacao === "inativo") {
+            console.warn(`[processar-fila] Paciente ${msg.paciente_nome} está ${situacao}. Cancelando msg ${msg.id}.`);
+            await supabase.from("fila_envios").update({ status: "cancelado", updated_at: new Date().toISOString() }).eq("id", msg.id);
+            summary.push({ clinica_id: clinicaId, status: "optout_cancelado", detail: `${msg.paciente_nome} está ${situacao}` });
+            continue;
+          }
+        }
+
         // Regra de Retorno de Paciente: se o paciente realizou o procedimento mais recentemente, cancela o envio.
         if (msg.origem === "procedimento" && msg.campanha_ref) {
           try {
