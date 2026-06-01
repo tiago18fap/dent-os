@@ -9,3 +9,11 @@ verify_jwt = false
 [functions.whatsapp-webhook]
 verify_jwt = false
 
+[functions.processar-fila]
+verify_jwt = false
+
+[functions.gerar-fila-diaria]
+verify_jwt = false
+
+[functions.easydental-sync]
+verify_jwt = false
