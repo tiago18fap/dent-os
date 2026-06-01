@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, EyeOff, Loader2, Wifi, WifiOff, Send, Settings2, Monitor, Lock, Users, Clipboard, Smartphone, Check } from "lucide-react";
-import { createInstance, connectInstance, getConnectionState, disconnectAndDelete, fetchInstanceInfo, sendTextMessage, configureWebhook, getPairingCode } from "@/services/evolutionApi";
+import { createInstance, connectInstance, getConnectionState, disconnectAndDelete, fetchInstanceInfo, sendTextMessage, configureWebhook, getPairingCode, restartInstance, checkAndReconnect } from "@/services/evolutionApi";
 import { gravarLogAuditoria } from "@/utils/auditoria";
 
 interface ImportLogItem {
@@ -913,39 +913,100 @@ const Configuracoes = () => {
       setConnectLoading(true);
       setQrImage(null);
 
-      // 1. Criar instância (ou reconectar se já existe)
-      const result = await createInstance(clinica.id);
+      // Usar restartInstance que trata todos os cenários:
+      // - Instância existente e conectada → retorna imediatamente
+      // - Instância existente mas desconectada → tenta reconectar → gera QR se necessário
+      // - Instância não existe → cria nova → gera QR ou conecta via sessão cached
+      const result = await restartInstance(clinica.id);
 
-      if (!result.qrcode) {
-        // Se não retornou QR, pode já estar conectado — verificar
-        const { state } = await getConnectionState(clinica.id);
-        if (state === "open") {
-          toast({ title: "WhatsApp já está conectado!", description: "A instância já está ativa." });
-          return;
-        }
-        // Tentar reconectar para pegar novo QR
-        const reconnect = await connectInstance(clinica.id);
-        if (!reconnect.qrcode) {
-          // Último recurso: apagar e recriar
-          await disconnectAndDelete(clinica.id);
-          const fresh = await createInstance(clinica.id);
-          if (!fresh.qrcode) {
-            throw new Error("Não foi possível gerar o QR Code. Tente novamente.");
-          }
-          const src = fresh.qrcode.startsWith("data:image") ? fresh.qrcode : `data:image/png;base64,${fresh.qrcode}`;
-          setQrImage(src);
-        } else {
-          const src = reconnect.qrcode.startsWith("data:image") ? reconnect.qrcode : `data:image/png;base64,${reconnect.qrcode}`;
-          setQrImage(src);
-        }
-      } else {
-        const src = result.qrcode.startsWith("data:image") ? result.qrcode : `data:image/png;base64,${result.qrcode}`;
-        setQrImage(src);
+      if (result.action === "connected") {
+        // Já estava conectado
+        toast({ title: "WhatsApp já está conectado!", description: "A instância já está ativa." });
+        queryClient.invalidateQueries({ queryKey: ["whatsapp_status"] });
+        return;
       }
 
-      setConnectDialogOpen(true);
-      // Iniciar polling para detectar quando escanear
-      startPolling();
+      if (result.state === "open") {
+        // Reconectou automaticamente (sessão cached) — sem necessidade de QR
+        const { number } = await fetchInstanceInfo(clinica.id);
+
+        await (supabase as any)
+          .from("whatsapp_config")
+          .upsert({
+            clinica_id: clinica.id,
+            conectado: true,
+            numero: number ?? "Conectado",
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "clinica_id" });
+
+        await gravarLogAuditoria(
+          clinica.id,
+          "reconectar_whatsapp",
+          `WhatsApp reconectado automaticamente (${result.action}). Número: ${number || "Não informado"}`
+        );
+
+        queryClient.invalidateQueries({ queryKey: ["whatsapp_status"] });
+
+        // Se o redirecionamento estiver ativo, registra o webhook
+        if (redirecionarAtivo) {
+          try {
+            await configureWebhook(clinica.id, true);
+          } catch (webErr) {
+            console.error("[handleConnectClick] Erro ao registrar webhook:", webErr);
+          }
+        }
+
+        toast({
+          title: "WhatsApp reconectado!",
+          description: number
+            ? `Número ${number} reconectado automaticamente.`
+            : "Reconexão realizada com sucesso — sessão restaurada.",
+        });
+        return;
+      }
+
+      // Precisa de QR code — abrir dialog
+      if (result.qrcode) {
+        const src = result.qrcode.startsWith("data:image")
+          ? result.qrcode
+          : `data:image/png;base64,${result.qrcode}`;
+        setQrImage(src);
+        setConnectDialogOpen(true);
+        startPolling();
+      } else {
+        // Último recurso: tentar criar diretamente e pegar QR
+        const createResult = await createInstance(clinica.id);
+        if (!createResult.qrcode) {
+          // Se não retornou QR, pode já estar conectado — verificar
+          const { state } = await getConnectionState(clinica.id);
+          if (state === "open") {
+            toast({ title: "WhatsApp já está conectado!", description: "A instância já está ativa." });
+            queryClient.invalidateQueries({ queryKey: ["whatsapp_status"] });
+            return;
+          }
+          // Tentar reconectar para pegar novo QR
+          const reconnect = await connectInstance(clinica.id);
+          if (!reconnect.qrcode) {
+            // Último recurso: apagar e recriar
+            await disconnectAndDelete(clinica.id);
+            const fresh = await createInstance(clinica.id);
+            if (!fresh.qrcode) {
+              throw new Error("Não foi possível gerar o QR Code. Tente novamente.");
+            }
+            const src2 = fresh.qrcode.startsWith("data:image") ? fresh.qrcode : `data:image/png;base64,${fresh.qrcode}`;
+            setQrImage(src2);
+          } else {
+            const src2 = reconnect.qrcode.startsWith("data:image") ? reconnect.qrcode : `data:image/png;base64,${reconnect.qrcode}`;
+            setQrImage(src2);
+          }
+        } else {
+          const src2 = createResult.qrcode.startsWith("data:image") ? createResult.qrcode : `data:image/png;base64,${createResult.qrcode}`;
+          setQrImage(src2);
+        }
+
+        setConnectDialogOpen(true);
+        startPolling();
+      }
     } catch (error: any) {
       console.error("Erro ao conectar WhatsApp:", error);
       toast({

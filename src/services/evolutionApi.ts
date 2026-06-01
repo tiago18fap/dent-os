@@ -271,6 +271,152 @@ export async function configureWebhook(
 }
 
 /**
+ * Tenta reconectar uma instância existente ou recria se necessário.
+ * Fluxo:
+ *   1. Verifica se a instância existe na Evolution API
+ *   2. Se existe e está "close", tenta conectar (connect)
+ *   3. Se connect falhar ou instância não existir, deleta e recria
+ *   4. Retorna o estado final e se gerou novo QR code
+ *
+ * Usado quando a conexão WhatsApp cai inesperadamente.
+ */
+export async function restartInstance(
+  clinicaId: string
+): Promise<{
+  state: string;
+  qrcode: string | null;
+  reconnected: boolean;
+  action: "connected" | "reconnected" | "recreated" | "failed";
+}> {
+  const instanceName = getInstanceName(clinicaId);
+
+  // 1. Verificar se a instância existe
+  const info = await fetchInstanceInfo(clinicaId);
+
+  if (info.exists) {
+    // 2. Verificar estado atual
+    const conn = await getConnectionState(clinicaId);
+
+    if (conn.state === "open") {
+      return { state: "open", qrcode: null, reconnected: false, action: "connected" };
+    }
+
+    // 3. Tentar reconectar na instância existente
+    try {
+      const connectResult = await connectInstance(clinicaId);
+      if (connectResult.qrcode) {
+        return {
+          state: "connecting",
+          qrcode: connectResult.qrcode,
+          reconnected: true,
+          action: "reconnected",
+        };
+      }
+
+      // Esperar um pouco e verificar se conectou automaticamente
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      const recheck = await getConnectionState(clinicaId);
+      if (recheck.state === "open") {
+        return { state: "open", qrcode: null, reconnected: true, action: "reconnected" };
+      }
+    } catch (e) {
+      console.warn("[restartInstance] Falha ao reconectar, tentando recriar:", e);
+    }
+
+    // 4. Se reconectar falhou, deletar e recriar
+    try {
+      await disconnectAndDelete(clinicaId);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    } catch (e) {
+      console.warn("[restartInstance] Erro ao deletar instância antiga:", e);
+    }
+  }
+
+  // 5. Criar nova instância
+  try {
+    const createResult = await createInstance(clinicaId);
+    if (createResult.qrcode) {
+      return {
+        state: "connecting",
+        qrcode: createResult.qrcode,
+        reconnected: true,
+        action: "recreated",
+      };
+    }
+
+    // Verificar se criou e conectou automaticamente (sessão cached)
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const finalCheck = await getConnectionState(clinicaId);
+    if (finalCheck.state === "open") {
+      return { state: "open", qrcode: null, reconnected: true, action: "recreated" };
+    }
+
+    return {
+      state: finalCheck.state,
+      qrcode: null,
+      reconnected: false,
+      action: "failed",
+    };
+  } catch (e) {
+    console.error("[restartInstance] Falha ao recriar instância:", e);
+    return { state: "close", qrcode: null, reconnected: false, action: "failed" };
+  }
+}
+
+/**
+ * Verifica a saúde da conexão e tenta reconectar automaticamente.
+ * Retorna o estado atualizado e se uma reconexão foi tentada.
+ *
+ * Usado pelo hook de status e pelo processador de fila para
+ * garantir que a conexão esteja ativa antes de enviar mensagens.
+ */
+export async function checkAndReconnect(
+  clinicaId: string
+): Promise<{
+  state: string;
+  wasDisconnected: boolean;
+  reconnected: boolean;
+  needsQrScan: boolean;
+  qrcode: string | null;
+}> {
+  try {
+    const conn = await getConnectionState(clinicaId);
+
+    if (conn.state === "open") {
+      return {
+        state: "open",
+        wasDisconnected: false,
+        reconnected: false,
+        needsQrScan: false,
+        qrcode: null,
+      };
+    }
+
+    // Conexão caiu — tentar restart
+    console.log(`[checkAndReconnect] Instância ${conn.instance} está ${conn.state}, tentando reconectar...`);
+
+    const result = await restartInstance(clinicaId);
+
+    return {
+      state: result.state,
+      wasDisconnected: true,
+      reconnected: result.state === "open",
+      needsQrScan: result.state !== "open" && result.qrcode !== null,
+      qrcode: result.qrcode,
+    };
+  } catch (e) {
+    console.error("[checkAndReconnect] Erro:", e);
+    return {
+      state: "close",
+      wasDisconnected: true,
+      reconnected: false,
+      needsQrScan: false,
+      qrcode: null,
+    };
+  }
+}
+
+/**
  * Obtém um código de pareamento (pairing code) para conectar sem QR Code.
  * Útil quando o usuário está no celular e não consegue escanear o QR.
  * Requer o número do WhatsApp para gerar o código.

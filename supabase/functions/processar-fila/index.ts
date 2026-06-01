@@ -125,6 +125,177 @@ serve(async (req) => {
 
       console.log(`[processar-fila] Processando clínica ${clinicaId}`);
 
+      // ═══ Verificação de saúde da conexão antes de enviar ═══
+      // Valida se a instância realmente está conectada na Evolution API
+      const instanceName = `dentos_${clinicaId.replace(/-/g, "").slice(0, 12)}`;
+      let connectionOk = false;
+
+      try {
+        const connCheckRes = await fetch(
+          `${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: EVOLUTION_API_KEY,
+            },
+          }
+        );
+
+        if (connCheckRes.ok) {
+          const connData = await connCheckRes.json();
+          const connState = (connData?.instance?.state ?? connData?.state ?? "close").toLowerCase();
+
+          if (connState === "open") {
+            connectionOk = true;
+            console.log(`[processar-fila] Clínica ${clinicaId}: conexão ativa (open)`);
+          } else {
+            console.warn(`[processar-fila] Clínica ${clinicaId}: estado=${connState}. Tentando reconectar...`);
+
+            // Tentar reconectar na instância existente
+            try {
+              const reconnRes = await fetch(
+                `${EVOLUTION_API_URL}/instance/connect/${instanceName}`,
+                { method: "GET", headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY } }
+              );
+
+              if (reconnRes.ok) {
+                // Esperar 5 segundos para a reconexão automática (sessão cached)
+                await new Promise(resolve => setTimeout(resolve, 5000));
+
+                // Verificar novamente
+                const recheckRes = await fetch(
+                  `${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`,
+                  { method: "GET", headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY } }
+                );
+
+                if (recheckRes.ok) {
+                  const recheckData = await recheckRes.json();
+                  const recheckState = (recheckData?.instance?.state ?? recheckData?.state ?? "close").toLowerCase();
+
+                  if (recheckState === "open") {
+                    connectionOk = true;
+                    console.log(`[processar-fila] Clínica ${clinicaId}: reconexão automática bem-sucedida!`);
+                  } else {
+                    console.warn(`[processar-fila] Clínica ${clinicaId}: reconexão retornou estado=${recheckState}. Tentando recriar instância...`);
+
+                    // Última tentativa: deletar e recriar a instância
+                    try {
+                      // Logout
+                      await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, {
+                        method: "DELETE", headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY }
+                      }).catch(() => {});
+
+                      // Deletar
+                      await fetch(`${EVOLUTION_API_URL}/instance/delete/${instanceName}`, {
+                        method: "DELETE", headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY }
+                      }).catch(() => {});
+
+                      await new Promise(resolve => setTimeout(resolve, 2000));
+
+                      // Recriar
+                      const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
+                        body: JSON.stringify({
+                          instanceName,
+                          qrcode: true,
+                          integration: "WHATSAPP-BAILEYS",
+                        }),
+                      });
+
+                      if (createRes.ok) {
+                        // Esperar e verificar se conectou com sessão cached
+                        await new Promise(resolve => setTimeout(resolve, 5000));
+
+                        const finalCheckRes = await fetch(
+                          `${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`,
+                          { method: "GET", headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY } }
+                        );
+
+                        if (finalCheckRes.ok) {
+                          const finalData = await finalCheckRes.json();
+                          const finalState = (finalData?.instance?.state ?? finalData?.state ?? "close").toLowerCase();
+
+                          if (finalState === "open") {
+                            connectionOk = true;
+                            console.log(`[processar-fila] Clínica ${clinicaId}: instância recriada e reconectada automaticamente!`);
+                          } else {
+                            console.error(`[processar-fila] Clínica ${clinicaId}: recriação não reconectou (${finalState}). Precisa escanear QR code.`);
+                          }
+                        }
+                      }
+                    } catch (recreateErr) {
+                      console.error(`[processar-fila] Clínica ${clinicaId}: erro ao recriar instância:`, recreateErr);
+                    }
+                  }
+                }
+              }
+            } catch (reconnErr) {
+              console.error(`[processar-fila] Clínica ${clinicaId}: erro ao reconectar:`, reconnErr);
+            }
+          }
+        } else {
+          console.warn(`[processar-fila] Clínica ${clinicaId}: instância não encontrada (HTTP ${connCheckRes.status}). Tentando recriar...`);
+
+          // Instância não existe — tentar recriar
+          try {
+            const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY },
+              body: JSON.stringify({
+                instanceName,
+                qrcode: true,
+                integration: "WHATSAPP-BAILEYS",
+              }),
+            });
+
+            if (createRes.ok) {
+              await new Promise(resolve => setTimeout(resolve, 5000));
+
+              const verifyRes = await fetch(
+                `${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`,
+                { method: "GET", headers: { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY } }
+              );
+
+              if (verifyRes.ok) {
+                const verifyData = await verifyRes.json();
+                const verifyState = (verifyData?.instance?.state ?? verifyData?.state ?? "close").toLowerCase();
+
+                if (verifyState === "open") {
+                  connectionOk = true;
+                  console.log(`[processar-fila] Clínica ${clinicaId}: instância criada e conectada automaticamente!`);
+                }
+              }
+            }
+          } catch (createErr) {
+            console.error(`[processar-fila] Clínica ${clinicaId}: erro ao criar instância:`, createErr);
+          }
+        }
+      } catch (healthErr) {
+        console.error(`[processar-fila] Clínica ${clinicaId}: erro no health check:`, healthErr);
+      }
+
+      // Se a conexão não está ativa, atualizar whatsapp_config e pular esta clínica
+      if (!connectionOk) {
+        console.error(`[processar-fila] Clínica ${clinicaId}: CONEXÃO INDISPONÍVEL. Atualizando banco e pulando envios.`);
+
+        try {
+          await supabase
+            .from("whatsapp_config")
+            .update({
+              conectado: false,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("clinica_id", clinicaId);
+        } catch (dbErr) {
+          console.error(`[processar-fila] Erro ao atualizar whatsapp_config:`, dbErr);
+        }
+
+        summary.push({ clinica_id: clinicaId, status: "desconectado", detail: "Instância desconectada — reconexão falhou" });
+        continue;
+      }
+
       // 2a. Check sending window
       if (!isWithinWindow(brazilTime.hours, brazilTime.minutes, horarioInicio, horarioFim)) {
         console.log(`[processar-fila] Clínica ${clinicaId}: fora do horário de envio (${horarioInicio}-${horarioFim})`);
