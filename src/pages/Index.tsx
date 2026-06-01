@@ -797,21 +797,19 @@ const Index = () => {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="text-xs">Programado</TableHead>
                         <TableHead className="text-xs">Paciente</TableHead>
-                        <TableHead className="text-xs">Mensagem (Trecho)</TableHead>
                         <TableHead className="text-xs">Origem</TableHead>
-                        <TableHead className="text-xs text-right">Programado</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {upcomingMessages.map((msg: any) => (
                         <TableRow key={msg.id} className="hover:bg-muted/30">
-                          <TableCell className="text-xs font-medium max-w-[120px] truncate">{msg.paciente_nome}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{msg.mensagem}</TableCell>
-                          <TableCell className="text-xs">{getBadgeOrigem(msg.origem)}</TableCell>
-                          <TableCell className="text-xs text-right text-muted-foreground font-mono">
+                          <TableCell className="text-xs text-muted-foreground font-mono whitespace-nowrap">
                             {new Date(msg.data_programada).toLocaleTimeString("pt-BR", { hour: '2-digit', minute: '2-digit' })}
                           </TableCell>
+                          <TableCell className="text-xs font-medium max-w-[150px] truncate">{msg.paciente_nome}</TableCell>
+                          <TableCell className="text-xs">{getBadgeOrigem(msg.origem)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
