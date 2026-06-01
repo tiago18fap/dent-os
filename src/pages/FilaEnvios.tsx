@@ -308,7 +308,7 @@ const FilaEnvios = () => {
       case 'dedup_ignorado':
         return <Badge variant="outline" className="border-slate-400 text-slate-500 flex items-center gap-1"><XCircle className="w-3 h-3" /> Dedup</Badge>;
       case 'cancelado':
-        return <Badge variant="outline" className="border-amber-400 text-amber-600 bg-amber-50 flex items-center gap-1"><XCircle className="w-3 h-3" /> Cancelado (Retornou)</Badge>;
+        return <Badge variant="outline" className="border-amber-400 text-amber-600 bg-amber-50 flex items-center gap-1"><XCircle className="w-3 h-3" /> Cancelado</Badge>;
       default:
         return <Badge variant="outline">{s || "—"}</Badge>;
     }
@@ -590,7 +590,6 @@ const FilaEnvios = () => {
                         <TableHead>Origem</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="hidden md:table-cell">Interação</TableHead>
-                        <TableHead className="hidden sm:table-cell text-right">Custo</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -613,7 +612,19 @@ const FilaEnvios = () => {
                             {isSuperAdmin && !isImpersonating ? (
                               <TableCell className="text-xs font-semibold text-primary">{item.clinica_nome}</TableCell>
                             ) : (
-                              <TableCell className="hidden sm:table-cell text-xs text-muted-foreground max-w-[200px] truncate" title={item.mensagem}>{previewMsg}</TableCell>
+                              <TableCell className="hidden sm:table-cell text-xs text-muted-foreground max-w-[250px]">
+                                <TooltipProvider>
+                                  <UITooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="cursor-help truncate block max-w-[250px]">{previewMsg}</span>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-[400px] text-xs whitespace-pre-wrap">
+                                      <p className="font-semibold mb-1">Mensagem enviada:</p>
+                                      <p>{item.mensagem || "—"}</p>
+                                    </TooltipContent>
+                                  </UITooltip>
+                                </TooltipProvider>
+                              </TableCell>
                             )}
                             <TableCell>{getOrigemBadge(item.origem, item.campanha_ref)}</TableCell>
                             <TableCell>{getStatusBadge(item.status)}</TableCell>
@@ -691,7 +702,6 @@ const FilaEnvios = () => {
                                 )}
                               </div>
                             </TableCell>
-                            <TableCell className="hidden sm:table-cell text-right text-destructive font-medium text-xs">-{item.custo ?? 1}</TableCell>
                           </TableRow>
                         );
                       })}
