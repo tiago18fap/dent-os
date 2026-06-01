@@ -12,7 +12,7 @@
     <meta property="og:type" content="website" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <link rel="icon" href="/favicon.png" type="image/png" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <style>
       /* Loading screen - shown while JS bundle loads */
       #app-loader {
@@ -39,8 +39,8 @@
       #app-loader .loader-spinner {
         width: 40px;
         height: 40px;
-        border: 3px solid rgba(99, 102, 241, 0.2);
-        border-top-color: #6366f1;
+        border: 3px solid rgba(57, 255, 20, 0.2);
+        border-top-color: #39FF14;
         border-radius: 50%;
         animation: spin 0.8s linear infinite;
       }
@@ -64,9 +64,8 @@
   <body>
     <div id="app-loader">
       <svg class="loader-logo" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="50" cy="50" r="45" stroke="#6366f1" stroke-width="2" opacity="0.3"/>
-        <path d="M35 30 Q50 20 65 30 Q75 40 70 55 Q65 70 50 75 Q35 70 30 55 Q25 40 35 30Z" fill="#6366f1" opacity="0.8"/>
-        <text x="50" y="58" text-anchor="middle" fill="white" font-size="22" font-weight="bold" font-family="sans-serif">D</text>
+        <path d="M5 10 L5 90 L40 90 C65 90 82 72 82 50 C82 28 65 10 40 10 Z M22 27 L38 27 C56 27 65 36 65 50 C65 64 56 73 38 73 L22 73 Z" fill="white"/>
+        <circle cx="72" cy="50" r="28" stroke="#39FF14" stroke-width="9" fill="none"/>
       </svg>
       <div class="loader-spinner"></div>
       <p class="loader-text">Carregando DentOS...</p>

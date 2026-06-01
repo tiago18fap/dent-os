@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 120" fill="none">
+  <!-- D letter -->
+  <path d="M10 10 L10 90 L50 90 C75 90 95 75 95 50 C95 25 75 10 50 10 Z M30 28 L48 28 C66 28 77 37 77 50 C77 63 66 72 48 72 L30 72 Z" fill="#1a1a1a"/>
+  <!-- O circle (green ring) -->
+  <circle cx="120" cy="50" r="40" stroke="#39FF14" stroke-width="12" fill="none"/>
+  <!-- DentOS text -->
+  <text x="140" y="112" text-anchor="middle" font-family="'Inter', 'Segoe UI', Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="1">
+    <tspan fill="#1a1a1a">Dent</tspan><tspan fill="#39FF14">OS</tspan>
+  </text>
+</svg>

@@ -1,4 +1,4 @@
-import logoDentos from "@/assets/logo-dentos.png";
+import logoDentos from "@/assets/logo-dentos.svg";
 import heroDentalBanner from "@/assets/hero-dental-banner-3.png";
 import headerTopo from "@/assets/header-topo-2.png";
 import { Button } from "@/components/ui/button";
