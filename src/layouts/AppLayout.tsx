@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 
-import logoDentosFull from "@/assets/logo-dentos.svg";
+import logoDentosFull from "@/assets/logo-dentos-dark.svg";
 import logoDentosIcon from "@/assets/logo-dentos-icon.svg";
 import type { ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
