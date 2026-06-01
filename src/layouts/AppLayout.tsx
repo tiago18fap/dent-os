@@ -22,8 +22,8 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 
-import logoDentosFull from "@/assets/logo-dentos-dark.svg";
-import logoDentosIcon from "@/assets/logo-dentos-icon.svg";
+import logoDentosFull from "@/assets/logo-dentos-dashboard.png";
+import logoDentosIcon from "@/assets/logo-dentos-icon.png";
 import type { ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
