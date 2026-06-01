@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" fill="none">
+  <!-- D letter (white for dark bg) -->
+  <path d="M15 10 L15 80 L48 80 C70 80 85 67 85 45 C85 23 70 10 48 10 Z M32 25 L46 25 C61 25 69 33 69 45 C69 57 61 65 46 65 L32 65 Z" fill="white"/>
+  <!-- O circle (green glow ring) -->
+  <circle cx="105" cy="45" r="32" stroke="#39FF14" stroke-width="8" fill="none" opacity="0.9"/>
+  <circle cx="105" cy="45" r="32" stroke="#39FF14" stroke-width="3" fill="none" opacity="0.3" filter="url(#glow)"/>
+  <!-- Glow filter -->
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- DentOS text -->
+  <text x="80" y="108" text-anchor="middle" font-family="'Inter', 'Segoe UI', Arial, sans-serif" font-size="20" font-weight="700" letter-spacing="1.5">
+    <tspan fill="white">Dent</tspan><tspan fill="#39FF14">OS</tspan>
+  </text>
+</svg>
