@@ -498,6 +498,41 @@ serve(async (req) => {
           break; // stop processing this clinic
         }
 
+        // ══════════════════════════════════════════════════════════════════
+        // CAMADA FINAL DE PROTEÇÃO — Verificação pré-envio
+        // ══════════════════════════════════════════════════════════════════
+
+        // PROTEÇÃO 1: Re-verificar que esta mensagem AINDA está como 'processando'
+        // Se outra instância já processou, o status terá mudado
+        const { data: msgCheck, error: checkError } = await supabase
+          .from("fila_envios")
+          .select("status")
+          .eq("id", msg.id)
+          .single();
+
+        if (checkError || !msgCheck || msgCheck.status !== "processando") {
+          console.warn(`[processar-fila] PROTEÇÃO: msg ${msg.id} status=${msgCheck?.status ?? 'desconhecido'} (esperado: processando). ABORTANDO envio.`);
+          continue;
+        }
+
+        // PROTEÇÃO 2: Verificar se este TELEFONE já recebeu msg enviada hoje (última barreira)
+        const todayUTC = new Date();
+        todayUTC.setUTCHours(0, 0, 0, 0);
+        const { count: jaEnviadoHoje } = await supabase
+          .from("fila_envios")
+          .select("id", { count: "exact", head: true })
+          .eq("clinica_id", clinicaId)
+          .eq("telefone", msg.telefone)
+          .eq("status", "enviado")
+          .gte("updated_at", todayUTC.toISOString());
+
+        if ((jaEnviadoHoje ?? 0) > 0) {
+          console.warn(`[processar-fila] PROTEÇÃO FINAL: telefone ${msg.telefone} JÁ tem ${jaEnviadoHoje} envio(s) hoje. Cancelando msg ${msg.id}.`);
+          await supabase.from("fila_envios").update({ status: "dedup_ignorado", updated_at: new Date().toISOString() }).eq("id", msg.id);
+          summary.push({ clinica_id: clinicaId, status: "dedup_final", detail: `${msg.telefone} já enviado hoje` });
+          continue;
+        }
+
         // 2e. Send message via Evolution API
         const instanceName = `dentos_${clinicaId.replace(/-/g, "").slice(0, 12)}`;
         const sendUrl = `${EVOLUTION_API_URL}/message/sendText/${instanceName}`;
@@ -535,13 +570,31 @@ serve(async (req) => {
 
         // 2f. Update message status
         if (sendSuccess) {
+          // Atualizar status para 'enviado'
           const { error: updateError } = await supabase
             .from("fila_envios")
             .update({ status: "enviado", updated_at: new Date().toISOString() })
             .eq("id", msg.id);
 
           if (updateError) {
-            console.error(`[processar-fila] Erro ao atualizar status para enviado:`, updateError);
+            console.error(`[processar-fila] ⛔ CRÍTICO: Erro ao atualizar status para enviado:`, updateError);
+            // PROTEÇÃO 3: Se não conseguiu atualizar status, PARAR TUDO para esta clínica
+            // Isso evita enviar mais mensagens sem conseguir rastrear
+            summary.push({ clinica_id: clinicaId, status: "erro_critico", detail: `Falha ao atualizar status msg ${msg.id} — processamento interrompido` });
+            break;
+          }
+
+          // PROTEÇÃO 4: Verificar se o update realmente funcionou
+          const { data: verificacao } = await supabase
+            .from("fila_envios")
+            .select("status")
+            .eq("id", msg.id)
+            .single();
+
+          if (!verificacao || verificacao.status !== "enviado") {
+            console.error(`[processar-fila] ⛔ CRÍTICO: Status não mudou para 'enviado' após update! status=${verificacao?.status}. PARANDO.`);
+            summary.push({ clinica_id: clinicaId, status: "erro_critico", detail: `Verificação pós-update falhou para msg ${msg.id}` });
+            break;
           }
 
           // Track this phone as sent
@@ -580,10 +633,10 @@ serve(async (req) => {
         }
 
         // Small delay between messages to avoid WhatsApp rate limits (2 seconds)
-        if (mensagens.indexOf(msg) < mensagens.length - 1) {
+        if (mensagensLocked.indexOf(msg) < mensagensLocked.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 2000));
         }
-      } // end for-of mensagens
+      } // end for-of mensagensLocked
     }
 
     const enviados = summary.filter((s) => s.status === "enviado").length;
