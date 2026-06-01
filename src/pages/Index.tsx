@@ -43,14 +43,12 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer, 
-  PieChart, 
-  Pie, 
   Cell, 
   Legend 
 } from "recharts";
 
-// Cores para o gráfico de pizza (Situação dos Pacientes)
-const PIE_COLORS = ["hsl(var(--login-primary))", "#f59e0b", "#94a3b8"];
+// Meses em português para labels do gráfico
+const MESES_PT = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
 const CardInfo = ({ text }: { text: string }) => (
   <UITooltip>
@@ -189,28 +187,75 @@ const Index = () => {
     enabled: !!clinicaId || isConsolidated,
   });
 
-  // 6. Query para distribuição de pacientes por situação
-  const { data: patientDistribution = [], isLoading: loadingDistribution } = useQuery({
-    queryKey: ["dashboard_patient_distribution", clinicaId, isConsolidated],
+  // 6. Query para tendência de tempo médio de retorno por mês
+  const { data: returnTimeTrend = [], isLoading: loadingReturnTime } = useQuery({
+    queryKey: ["dashboard_return_time_trend", clinicaId, isConsolidated],
     queryFn: async () => {
-      let query = supabase.from("clientes").select("situacao");
+      // Buscar mensagens enviadas com data
+      let msgQuery = supabase.from("fila_envios")
+        .select("paciente_nome, created_at")
+        .eq("status", "enviado");
       if (!isConsolidated) {
         if (!clinicaId) return [];
-        query = query.eq("clinica_id", clinicaId);
+        msgQuery = msgQuery.eq("clinica_id", clinicaId);
       }
-      const { data, error } = await query;
-      if (error) throw error;
-      
-      const counts: Record<string, number> = {};
-      data.forEach((item: any) => {
-        const sit = item.situacao || "Outros";
-        counts[sit] = (counts[sit] || 0) + 1;
+      const { data: sentMessages, error: msgError } = await msgQuery;
+      if (msgError) throw msgError;
+      if (!sentMessages || sentMessages.length === 0) return [];
+
+      // Buscar procedimentos com data de finalização
+      let procQuery = supabase.from("procedimentos").select("nome_paciente, data_finalizacao");
+      if (!isConsolidated) {
+        procQuery = procQuery.eq("clinica_id", clinicaId);
+      }
+      const { data: procs, error: procError } = await procQuery;
+      if (procError) throw procError;
+      if (!procs || procs.length === 0) return [];
+
+      // Para cada mensagem enviada, encontrar o procedimento mais próximo depois da mensagem
+      const monthlyData: Record<string, { totalDays: number; count: number }> = {};
+
+      sentMessages.forEach(msg => {
+        const msgDate = new Date(msg.created_at);
+        const name = msg.paciente_nome.trim().toUpperCase();
+
+        // Encontrar o primeiro procedimento após o envio da mensagem
+        const matchingProcs = procs
+          .filter(p => {
+            if (!p.data_finalizacao) return false;
+            if (p.nome_paciente.trim().toUpperCase() !== name) return false;
+            return new Date(p.data_finalizacao) > msgDate;
+          })
+          .sort((a, b) => new Date(a.data_finalizacao).getTime() - new Date(b.data_finalizacao).getTime());
+
+        if (matchingProcs.length > 0) {
+          const procDate = new Date(matchingProcs[0].data_finalizacao);
+          const diffDays = Math.ceil((procDate.getTime() - msgDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          // Agrupar pelo mês do procedimento (quando o paciente retornou)
+          const monthKey = `${procDate.getFullYear()}-${String(procDate.getMonth() + 1).padStart(2, '0')}`;
+          
+          if (!monthlyData[monthKey]) {
+            monthlyData[monthKey] = { totalDays: 0, count: 0 };
+          }
+          monthlyData[monthKey].totalDays += diffDays;
+          monthlyData[monthKey].count++;
+        }
       });
-      
-      return Object.keys(counts).map(key => ({
-        name: key,
-        value: counts[key]
-      }));
+
+      // Converter para array ordenado e calcular média
+      return Object.entries(monthlyData)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .slice(-12) // Últimos 12 meses
+        .map(([key, val]) => {
+          const [year, month] = key.split('-');
+          const monthIdx = parseInt(month) - 1;
+          return {
+            name: `${MESES_PT[monthIdx]}/${year.slice(2)}`,
+            dias: Math.round(val.totalDays / val.count),
+            retornos: val.count,
+          };
+        });
     },
     enabled: !!clinicaId || isConsolidated,
   });
@@ -319,6 +364,16 @@ const Index = () => {
     { name: "Procedimentos", Antes: 210, Depois: 145 },
     { name: "Aniversariantes", Antes: 150, Depois: 110 }
   ];
+
+  const demoReturnTimeTrend = [
+    { name: "Jan/26", dias: 165, retornos: 12 },
+    { name: "Fev/26", dias: 148, retornos: 18 },
+    { name: "Mar/26", dias: 132, retornos: 24 },
+    { name: "Abr/26", dias: 118, retornos: 31 },
+    { name: "Mai/26", dias: 105, retornos: 38 },
+  ];
+
+  const returnTimeData = demoMode ? demoReturnTimeTrend : returnTimeTrend;
 
   const demoFunil = [
     { name: "Importados", qtd: 1915 },
@@ -625,57 +680,81 @@ const Index = () => {
           </CardContent>
         </Card>
 
-        {/* Gráfico 4: Pizza de Situação da Base de Pacientes */}
+        {/* Gráfico 4: Evolução do Tempo Médio de Retorno */}
         <Card className="hover:shadow-md transition-shadow duration-300">
           <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
             <div className="space-y-1.5">
               <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
-                <Users className="h-4 w-4 text-primary" />
-                <span>Situação Clínico-Operacional dos Pacientes</span>
+                <Calendar className="h-4 w-4 text-emerald-500" />
+                <span>Tempo Médio de Retorno do Paciente</span>
               </CardTitle>
               <CardDescription className="text-xs">
-                Distribuição e saúde atual do cadastro de pacientes (banco de dados real)
+                Evolução mensal do tempo (em dias) entre o envio da mensagem e o retorno à clínica
               </CardDescription>
             </div>
-            <CardInfo text="Percentual e quantidade de pacientes divididos por sua situação atual cadastrada no banco de dados (ex: Ativos, Inativos, etc.), ideal para medir a saúde da base." />
+            <CardInfo text="Quanto menor esse número, mais rápido os pacientes estão retornando após receberem a comunicação ativa. Acompanhe mês a mês para ver o impacto das campanhas na redução do intervalo de retorno." />
           </CardHeader>
           <CardContent className="h-64">
-            {loadingDistribution ? (
+            {loadingReturnTime && !demoMode ? (
               <div className="flex h-full items-center justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
-            ) : patientDistribution.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                Nenhum paciente cadastrado para exibição de status.
+            ) : returnTimeData.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center text-center text-xs text-muted-foreground gap-2">
+                <AlertCircle className="h-8 w-8 text-muted-foreground/60" />
+                <span>Sem dados de retorno ainda.<br/>Os envios precisam começar e pacientes retornarem para gerar esta métrica.</span>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={patientDistribution}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {patientDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
+                <AreaChart data={returnTimeData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorReturnTime" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                  <XAxis dataKey="name" className="text-[10px] fill-muted-foreground" />
+                  <YAxis className="text-[10px] fill-muted-foreground" tickFormatter={(val) => `${val}d`} />
                   <Tooltip 
-                    formatter={(value: any) => [`${value} pacientes`]}
+                    formatter={(value: any, name: string) => {
+                      if (name === "dias") return [`${value} dias`, "Tempo médio"];
+                      if (name === "retornos") return [`${value} pacientes`, "Retornos no mês"];
+                      return [value];
+                    }}
                     contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid hsl(var(--border))" }}
                   />
-                  <Legend 
-                    layout="horizontal" 
-                    verticalAlign="bottom" 
-                    align="center"
-                    wrapperStyle={{ fontSize: 10 }}
+                  <Area 
+                    type="monotone" 
+                    dataKey="dias" 
+                    stroke="#10b981" 
+                    strokeWidth={2.5} 
+                    fillOpacity={1} 
+                    fill="url(#colorReturnTime)" 
+                    name="dias"
+                    dot={{ r: 4, fill: "#10b981", strokeWidth: 2, stroke: "#fff" }}
+                    activeDot={{ r: 6, fill: "#059669" }}
                   />
-                </PieChart>
+                </AreaChart>
               </ResponsiveContainer>
+            )}
+            {returnTimeData.length > 0 && (
+              <div className="flex items-center justify-between mt-2 px-1">
+                <p className="text-[10px] text-muted-foreground">
+                  {returnTimeData.length >= 2 && (() => {
+                    const first = returnTimeData[0].dias;
+                    const last = returnTimeData[returnTimeData.length - 1].dias;
+                    const diff = first - last;
+                    const pct = Math.round((diff / first) * 100);
+                    if (diff > 0) return `📉 Redução de ${diff} dias (${pct}%) desde ${returnTimeData[0].name}`;
+                    if (diff < 0) return `📈 Aumento de ${Math.abs(diff)} dias desde ${returnTimeData[0].name}`;
+                    return `Estável em ${last} dias`;
+                  })()}
+                </p>
+                <p className="text-[10px] font-medium text-emerald-600">
+                  Atual: {returnTimeData[returnTimeData.length - 1].dias} dias
+                </p>
+              </div>
             )}
           </CardContent>
         </Card>
