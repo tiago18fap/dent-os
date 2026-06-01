@@ -8,7 +8,7 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL") || "https://api.dentos.cloud";
+const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL") || "https://evolution-evolution-api.qfjowr.easypanel.host";
 const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "REMOVIDO_DO_GIT";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
