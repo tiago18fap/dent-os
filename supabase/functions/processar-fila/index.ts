@@ -325,9 +325,62 @@ serve(async (req) => {
         continue;
       }
 
-      // Process each pending message for this clinic
-      for (const msg of mensagens) {
+      // ═══ LOCK: Marcar como 'processando' ANTES de enviar para evitar duplicatas ═══
+      const msgIds = mensagens.map((m: any) => m.id);
+      const { error: lockError } = await supabase
+        .from("fila_envios")
+        .update({ status: "processando", updated_at: new Date().toISOString() })
+        .in("id", msgIds)
+        .eq("status", "pendente"); // Só atualiza se ainda estiver pendente (atomic guard)
+
+      if (lockError) {
+        console.error(`[processar-fila] Erro ao marcar como processando:`, lockError);
+      }
+
+      // Re-fetch only the ones we successfully locked
+      const { data: mensagensLocked } = await supabase
+        .from("fila_envios")
+        .select("*")
+        .in("id", msgIds)
+        .eq("status", "processando");
+
+      if (!mensagensLocked || mensagensLocked.length === 0) {
+        console.log(`[processar-fila] Clínica ${clinicaId}: mensagens já foram processadas por outra instância`);
+        summary.push({ clinica_id: clinicaId, status: "locked_by_other" });
+        continue;
+      }
+
+      // Track phones sent in this batch to avoid sending twice to same number
+      const phonesSentThisBatch = new Set<string>();
+
+      // Process each locked message for this clinic
+      for (const msg of mensagensLocked) {
         console.log(`[processar-fila] Mensagem ${msg.id} para ${msg.paciente_nome} (${msg.telefone})`);
+
+        // ═══ Dedup intra-batch: não enviar 2x para o mesmo telefone no mesmo lote ═══
+        if (phonesSentThisBatch.has(msg.telefone)) {
+          console.log(`[processar-fila] Telefone ${msg.telefone} já recebeu neste lote, pulando`);
+          await supabase.from("fila_envios").update({ status: "pendente", updated_at: new Date().toISOString() }).eq("id", msg.id);
+          continue;
+        }
+
+        // ═══ Dedup global: verificar se já enviamos para este telefone HOJE ═══
+        const todayStart = new Date();
+        todayStart.setUTCHours(0, 0, 0, 0);
+        const { count: sentTodayCount } = await supabase
+          .from("fila_envios")
+          .select("id", { count: "exact", head: true })
+          .eq("clinica_id", clinicaId)
+          .eq("telefone", msg.telefone)
+          .eq("status", "enviado")
+          .gte("updated_at", todayStart.toISOString());
+
+        if ((sentTodayCount ?? 0) >= 2) {
+          console.log(`[processar-fila] Telefone ${msg.telefone} já recebeu ${sentTodayCount} msgs hoje, cancelando`);
+          await supabase.from("fila_envios").update({ status: "dedup_ignorado", updated_at: new Date().toISOString() }).eq("id", msg.id);
+          summary.push({ clinica_id: clinicaId, status: "dedup_dia", detail: `${msg.telefone} já recebeu ${sentTodayCount} msgs hoje` });
+          continue;
+        }
 
         // Regra de Retorno de Paciente: se o paciente realizou o procedimento mais recentemente, cancela o envio.
         if (msg.origem === "procedimento" && msg.campanha_ref) {
@@ -490,6 +543,9 @@ serve(async (req) => {
           if (updateError) {
             console.error(`[processar-fila] Erro ao atualizar status para enviado:`, updateError);
           }
+
+          // Track this phone as sent
+          phonesSentThisBatch.add(msg.telefone);
 
           // 2g. Atomic saldo decrement using RPC-style update
           const { error: saldoError } = await supabase.rpc('decrementar_saldo', {
