@@ -2075,6 +2075,10 @@ export function Campanhas() {
                             title: "Campanhas criadas",
                             description: "As campanhas por procedimento já foram enviadas para o banco de dados.",
                           });
+
+                          // Limpar seleção para criar nova campanha do zero
+                          setProcedimentosSelecionadosIds([]);
+                          setBuscaProcedimento("");
                         }}
                         disabled={procedimentosCarregando || procedimentos.length === 0}
                       >
