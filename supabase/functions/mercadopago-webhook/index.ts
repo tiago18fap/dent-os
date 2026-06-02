@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { createHmac } from "https://deno.land/std@0.168.0/crypto/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +12,11 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
 );
 
+// ═══════════════════════════════════════════════════════════════
+// Mercado Pago Webhook — Orders API v1
+// Recebe notificações de status de pagamento via Orders API
+// ═══════════════════════════════════════════════════════════════
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -18,187 +24,150 @@ serve(async (req) => {
 
   try {
     const bodyText = await req.text();
-    console.log("[mercadopago-webhook] Webhook recebido:", bodyText);
+    console.log("[mp-webhook] Webhook recebido. Body:", bodyText);
+
+    // Log headers for debugging
+    const xSignature = req.headers.get("x-signature");
+    const xRequestId = req.headers.get("x-request-id");
+    console.log("[mp-webhook] x-signature:", xSignature);
+    console.log("[mp-webhook] x-request-id:", xRequestId);
 
     let payload: any = {};
     try {
       payload = JSON.parse(bodyText);
     } catch {
+      console.error("[mp-webhook] JSON inválido recebido");
       return new Response("Invalid JSON", { status: 400 });
     }
 
+    // ═══ Extrair dados do payload ═══
+    // Orders API: { id, type: "order", action: "order.created"|"order.updated", data: { id: "ORDER_ID" } }
+    // Legacy fallback: { type: "payment", data: { id: "PAYMENT_ID" } }
     const type = payload.type || payload.topic;
+    const action = payload.action || "";
     const dataId = payload.data?.id || payload.id;
 
+    console.log(`[mp-webhook] type=${type}, action=${action}, data.id=${dataId}`);
+
     if (!type || !dataId) {
-      console.log("[mercadopago-webhook] Payload incompleto ou de teste");
-      return new Response(JSON.stringify({ message: "Payload de teste ignorado" }), { status: 200 });
+      console.log("[mp-webhook] Payload de teste ou incompleto, ignorando");
+      return new Response(JSON.stringify({ message: "Payload de teste ignorado" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
 
-    // 1. Fetch Mercado Pago Access Token from database
+    // ═══ Buscar Access Token ═══
     const { data: mpConfig } = await supabaseAdmin
       .from("sistema_pagamento_config")
-      .select("mercado_pago_access_token")
+      .select("mercado_pago_access_token, mercado_pago_client_secret")
       .limit(1)
       .maybeSingle();
 
     const accessToken = mpConfig?.mercado_pago_access_token || Deno.env.get("MERCADOPAGO_ACCESS_TOKEN");
 
     if (!accessToken) {
-      console.error("[mercadopago-webhook] Mercado Pago Access Token não configurado.");
+      console.error("[mp-webhook] Access Token não configurado!");
       return new Response("Access Token missing", { status: 500 });
     }
 
-    // 2. Process based on webhook type
-    if (type === "payment") {
-      console.log(`[mercadopago-webhook] Processando pagamento avulso ID ${dataId}`);
-      const mpResponse = await fetch(`https://api.mercadopago.com/v1/payments/${dataId}`, {
+    // ═══════════════════════════════════════════════════════════
+    // PROCESSAMENTO POR TIPO
+    // ═══════════════════════════════════════════════════════════
+
+    if (type === "order") {
+      // ═══ ORDERS API V1 ═══
+      console.log(`[mp-webhook] Processando Order ID: ${dataId}`);
+
+      const orderResponse = await fetch(`https://api.mercadopago.com/v1/orders/${dataId}`, {
         headers: { "Authorization": `Bearer ${accessToken}` },
       });
 
-      if (!mpResponse.ok) {
-        console.error(`[mercadopago-webhook] Erro ao buscar pagamento no MP: ${await mpResponse.text()}`);
-        return new Response("Payment not found on MP", { status: 200 }); // Retorna 200 para evitar que o MP tente reenviar
+      if (!orderResponse.ok) {
+        const errorText = await orderResponse.text();
+        console.error(`[mp-webhook] Erro ao buscar order ${dataId}:`, errorText);
+        return new Response("Order not found", { status: 200 });
       }
 
-      const payment = await mpResponse.json();
+      const order = await orderResponse.json();
+      const orderStatus = order.status; // "paid", "payment_required", "reverted", "expired"
+      const externalReference = order.external_reference;
+      const totalAmount = order.total_amount;
+
+      console.log(`[mp-webhook] Order ${dataId}: status=${orderStatus}, ref=${externalReference}, amount=${totalAmount}`);
+
+      // Registrar log do webhook
+      await supabaseAdmin
+        .from("auditoria_logs")
+        .insert({
+          clinica_id: externalReference || null,
+          usuario_email: "Sistema - MP Webhook",
+          acao: "mercadopago_webhook_order",
+          descricao: `Order ${dataId}: status=${orderStatus}, action=${action}, amount=${totalAmount}`,
+        }).catch(() => {});
+
+      if (orderStatus === "paid" && externalReference) {
+        await processPaymentApproved(externalReference, totalAmount, dataId, order);
+      } else if (orderStatus === "reverted" && externalReference) {
+        await processPaymentCancelled(externalReference, dataId, "reverted");
+      } else if (orderStatus === "expired" && externalReference) {
+        await processPaymentCancelled(externalReference, dataId, "expired");
+      }
+
+    } else if (type === "payment") {
+      // ═══ FALLBACK: API LEGADA DE PAYMENTS ═══
+      console.log(`[mp-webhook] [LEGACY] Processando Payment ID: ${dataId}`);
+
+      const paymentResponse = await fetch(`https://api.mercadopago.com/v1/payments/${dataId}`, {
+        headers: { "Authorization": `Bearer ${accessToken}` },
+      });
+
+      if (!paymentResponse.ok) {
+        console.error(`[mp-webhook] [LEGACY] Erro ao buscar payment ${dataId}`);
+        return new Response("Payment not found", { status: 200 });
+      }
+
+      const payment = await paymentResponse.json();
       const status = payment.status;
       const clinicaId = payment.external_reference;
-      const transactionAmount = payment.transaction_amount;
-      const paymentMethod = payment.payment_method_id;
-      const description = payment.description || "";
+      const amount = payment.transaction_amount;
 
-      console.log(`[mercadopago-webhook] Pagamento ${dataId} status: ${status}, clinica: ${clinicaId}`);
+      console.log(`[mp-webhook] [LEGACY] Payment ${dataId}: status=${status}, clinica=${clinicaId}`);
 
       if (status === "approved" && clinicaId) {
-        // Deduzir plano a partir dos detalhes ou valor
-        let planoId = "bronze";
-        if (description.toLowerCase().includes("prata") || transactionAmount > 100) {
-          planoId = "prata";
-        }
-
-        const limiteMsg = planoId === "prata" ? 1000 : 100;
-        const limiteProc = planoId === "prata" ? 30 : 10;
-
-        console.log(`[mercadopago-webhook] Ativando clínica ${clinicaId} no plano ${planoId}`);
-
-        // Atualizar plano da clínica
-        const { error: clinicaError } = await supabaseAdmin
-          .from("clinicas")
-          .update({
-            status_pagamento: "ativo",
-            plano: planoId,
-            limite_mensagens: limiteMsg,
-            limite_procedimentos: limiteProc,
-            data_fim_teste: null,
-          })
-          .eq("id", clinicaId);
-
-        if (clinicaError) {
-          console.error("[mercadopago-webhook] Erro ao atualizar clínica:", clinicaError);
-        }
-
-        // Resetar o saldo da carteira de envios correspondente
-        const { error: walletError } = await supabaseAdmin
-          .from("carteira_envios")
-          .upsert(
-            { clinica_id: clinicaId, saldo: limiteMsg },
-            { onConflict: "clinica_id" }
-          );
-
-        if (walletError) {
-          console.error("[mercadopago-webhook] Erro ao atualizar carteira:", walletError);
-        }
-
-        // Registrar pedido
-        const { error: orderError } = await supabaseAdmin
-          .from("pedidos_assinaturas")
-          .upsert({
-            clinica_id: clinicaId,
-            plano: planoId,
-            valor: transactionAmount,
-            metodo_pagamento: paymentMethod,
-            status: "pago",
-            id_transacao_mp: String(dataId),
-            data_pagamento: new Date().toISOString(),
-          }, { onConflict: "id_transacao_mp" });
-
-        if (orderError) {
-          console.error("[mercadopago-webhook] Erro ao salvar pedido:", orderError);
-        }
+        await processPaymentApproved(clinicaId, amount, String(dataId), payment);
+      } else if (status === "refunded" && clinicaId) {
+        await processPaymentCancelled(clinicaId, String(dataId), "refunded");
       }
-    } 
-    else if (type === "subscription" || type === "preapproval" || type === "preapproval_plan") {
-      console.log(`[mercadopago-webhook] Processando assinatura/pré-autorização ID ${dataId}`);
-      const mpResponse = await fetch(`https://api.mercadopago.com/preapproval/${dataId}`, {
+
+    } else if (type === "subscription" || type === "preapproval" || type === "preapproval_plan") {
+      // ═══ FALLBACK: API LEGADA DE ASSINATURAS ═══
+      console.log(`[mp-webhook] [LEGACY] Processando Subscription ID: ${dataId}`);
+
+      const subResponse = await fetch(`https://api.mercadopago.com/preapproval/${dataId}`, {
         headers: { "Authorization": `Bearer ${accessToken}` },
       });
 
-      if (!mpResponse.ok) {
-        console.error(`[mercadopago-webhook] Erro ao buscar preapproval no MP: ${await mpResponse.text()}`);
-        return new Response("Subscription not found on MP", { status: 200 });
+      if (!subResponse.ok) {
+        console.error(`[mp-webhook] [LEGACY] Erro ao buscar subscription ${dataId}`);
+        return new Response("Subscription not found", { status: 200 });
       }
 
-      const preapproval = await mpResponse.json();
+      const preapproval = await subResponse.json();
       const status = preapproval.status;
       const clinicaId = preapproval.external_reference;
+      const amount = preapproval.auto_recurring?.transaction_amount || 89.00;
       const reason = preapproval.reason || "";
-      const transactionAmount = preapproval.auto_recurring?.transaction_amount || 89.00;
 
-      console.log(`[mercadopago-webhook] Assinatura ${dataId} status: ${status}, clinica: ${clinicaId}`);
+      console.log(`[mp-webhook] [LEGACY] Subscription ${dataId}: status=${status}, clinica=${clinicaId}`);
 
       if (status === "authorized" && clinicaId) {
-        let planoId = "bronze";
-        if (reason.toLowerCase().includes("prata") || transactionAmount > 100) {
-          planoId = "prata";
-        }
-
-        const limiteMsg = planoId === "prata" ? 1000 : 100;
-        const limiteProc = planoId === "prata" ? 30 : 10;
-
-        console.log(`[mercadopago-webhook] Ativando assinatura da clínica ${clinicaId} no plano ${planoId}`);
-
-        // Atualizar clínica
-        await supabaseAdmin
-          .from("clinicas")
-          .update({
-            status_pagamento: "ativo",
-            plano: planoId,
-            limite_mensagens: limiteMsg,
-            limite_procedimentos: limiteProc,
-            data_fim_teste: null,
-          })
-          .eq("id", clinicaId);
-
-        // Atualizar saldo da carteira
-        await supabaseAdmin
-          .from("carteira_envios")
-          .upsert(
-            { clinica_id: clinicaId, saldo: limiteMsg },
-            { onConflict: "clinica_id" }
-          );
-
-        // Registrar pedido (usa chave baseada em data para não duplicar no mesmo dia)
-        const dayKey = new Date().toISOString().slice(0, 10);
-        await supabaseAdmin
-          .from("pedidos_assinaturas")
-          .upsert({
-            clinica_id: clinicaId,
-            plano: planoId,
-            valor: transactionAmount,
-            metodo_pagamento: "cartao",
-            status: "pago",
-            id_transacao_mp: `sub_${dataId}_${dayKey}`,
-            id_assinatura_mp: String(dataId),
-            data_pagamento: new Date().toISOString(),
-          }, { onConflict: "id_transacao_mp" });
-      } else if (status === "cancelled") {
-        // Se a assinatura foi cancelada, marca a clínica correspondente
-        await supabaseAdmin
-          .from("clinicas")
-          .update({ status_pagamento: "cancelado" })
-          .eq("id", clinicaId);
+        await processPaymentApproved(clinicaId, amount, `sub_${dataId}`, { reason });
+      } else if (status === "cancelled" && clinicaId) {
+        await processPaymentCancelled(clinicaId, `sub_${dataId}`, "cancelled");
       }
+    } else {
+      console.log(`[mp-webhook] Tipo desconhecido: ${type}, ignorando`);
     }
 
     return new Response(JSON.stringify({ success: true }), {
@@ -206,10 +175,136 @@ serve(async (req) => {
       status: 200,
     });
   } catch (error: any) {
-    console.error("[mercadopago-webhook] Exceção geral:", error);
+    console.error("[mp-webhook] Exceção geral:", error);
+    // Sempre retorna 200 para o MP não ficar reenviando
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 400,
+      status: 200,
     });
   }
 });
+
+// ═══════════════════════════════════════════════════════════════
+// FUNÇÕES DE PROCESSAMENTO
+// ═══════════════════════════════════════════════════════════════
+
+async function processPaymentApproved(
+  clinicaId: string,
+  amount: number,
+  transactionId: string,
+  rawData: any
+) {
+  console.log(`[mp-webhook] ✅ Pagamento APROVADO para clínica ${clinicaId}, valor: ${amount}`);
+
+  // Deduzir plano pelo valor
+  let planoId = "bronze";
+  const description = rawData?.reason || rawData?.description || rawData?.items?.[0]?.title || "";
+  
+  if (description.toLowerCase().includes("prata") || amount > 100) {
+    planoId = "prata";
+  }
+
+  const limiteMsg = planoId === "prata" ? 1000 : 100;
+  const limiteProc = planoId === "prata" ? 30 : 10;
+
+  console.log(`[mp-webhook] Ativando clínica ${clinicaId} → Plano ${planoId} (${limiteMsg} msgs)`);
+
+  // 1. Atualizar plano da clínica
+  const { error: clinicaError } = await supabaseAdmin
+    .from("clinicas")
+    .update({
+      status_pagamento: "ativo",
+      plano: planoId,
+      limite_mensagens: limiteMsg,
+      limite_procedimentos: limiteProc,
+      data_fim_teste: null,
+    })
+    .eq("id", clinicaId);
+
+  if (clinicaError) {
+    console.error("[mp-webhook] Erro ao atualizar clínica:", clinicaError);
+  }
+
+  // 2. Resetar saldo da carteira
+  const { error: walletError } = await supabaseAdmin
+    .from("carteira_envios")
+    .upsert(
+      { clinica_id: clinicaId, saldo: limiteMsg },
+      { onConflict: "clinica_id" }
+    );
+
+  if (walletError) {
+    console.error("[mp-webhook] Erro ao atualizar carteira:", walletError);
+  }
+
+  // 3. Registrar pedido
+  const { error: orderError } = await supabaseAdmin
+    .from("pedidos_assinaturas")
+    .upsert({
+      clinica_id: clinicaId,
+      plano: planoId,
+      valor: amount,
+      metodo_pagamento: rawData?.payment_method_id || "mercadopago",
+      status: "pago",
+      id_transacao_mp: String(transactionId),
+      data_pagamento: new Date().toISOString(),
+    }, { onConflict: "id_transacao_mp" });
+
+  if (orderError) {
+    console.error("[mp-webhook] Erro ao salvar pedido:", orderError);
+  }
+
+  // 4. Verificar se há mensagens pendentes atrasadas → reativação
+  const { data: pendingPast } = await supabaseAdmin
+    .from("fila_envios")
+    .select("id")
+    .eq("clinica_id", clinicaId)
+    .eq("status", "pendente")
+    .lt("data_programada", new Date().toISOString())
+    .limit(1);
+
+  if (pendingPast && pendingPast.length > 0) {
+    await supabaseAdmin
+      .from("clinicas")
+      .update({ reativacao_pendente: true })
+      .eq("id", clinicaId);
+  }
+
+  console.log(`[mp-webhook] ✅ Clínica ${clinicaId} ativada com sucesso no plano ${planoId}`);
+}
+
+async function processPaymentCancelled(
+  clinicaId: string,
+  transactionId: string,
+  reason: string
+) {
+  console.log(`[mp-webhook] ❌ Pagamento ${reason} para clínica ${clinicaId}`);
+
+  // Marcar como cancelado
+  const { error } = await supabaseAdmin
+    .from("clinicas")
+    .update({ status_pagamento: "cancelado" })
+    .eq("id", clinicaId);
+
+  if (error) {
+    console.error("[mp-webhook] Erro ao cancelar clínica:", error);
+  }
+
+  // Atualizar pedido se existir
+  await supabaseAdmin
+    .from("pedidos_assinaturas")
+    .update({ status: reason })
+    .eq("id_transacao_mp", String(transactionId));
+
+  // Registrar auditoria
+  await supabaseAdmin
+    .from("auditoria_logs")
+    .insert({
+      clinica_id: clinicaId,
+      usuario_email: "Sistema - MP Webhook",
+      acao: "pagamento_cancelado",
+      descricao: `Pagamento ${transactionId} ${reason}. Clínica marcada como cancelada.`,
+    }).catch(() => {});
+
+  console.log(`[mp-webhook] Clínica ${clinicaId} marcada como cancelada (${reason})`);
+}
