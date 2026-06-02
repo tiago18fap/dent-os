@@ -6,8 +6,12 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ═══════════════════════════════════════════════════════════════
+// Mercado Pago Checkout — Orders API v1
+// Cria uma order e retorna a URL de pagamento (Checkout Pro)
+// ═══════════════════════════════════════════════════════════════
+
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -19,14 +23,11 @@ serve(async (req) => {
       { global: { headers: { Authorization: req.headers.get("Authorization")! } } }
     );
 
-    // Fetch user details
-    const {
-      data: { user },
-    } = await supabaseClient.auth.getUser();
-
+    // Autenticação
+    const { data: { user } } = await supabaseClient.auth.getUser();
     if (!user) throw new Error("Não autenticado");
 
-    // Fetch client_reference_id (clinica_id)
+    // Buscar clinica_id
     const { data: perfilData, error: perfilError } = await supabaseClient
       .from("perfis")
       .select("clinica_id")
@@ -39,14 +40,14 @@ serve(async (req) => {
 
     const clinicaId = perfilData.clinica_id;
 
-    // Get body parameters
-    const { planoId, tipo } = await req.json(); // planoId: 'bronze' | 'prata', tipo: 'assinatura' | 'avulso'
+    // Parâmetros do request
+    const { planoId } = await req.json(); // planoId: 'bronze' | 'prata'
 
-    if (!planoId || !tipo) {
-      throw new Error("Parâmetros inválidos: planoId e tipo são obrigatórios.");
+    if (!planoId) {
+      throw new Error("Parâmetro inválido: planoId é obrigatório.");
     }
 
-    // Fetch Mercado Pago credentials from database using service role client
+    // Buscar credenciais do MP
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
@@ -61,8 +62,8 @@ serve(async (req) => {
     const accessToken = mpConfig?.mercado_pago_access_token || Deno.env.get("MERCADOPAGO_ACCESS_TOKEN");
 
     if (!accessToken) {
-      console.warn("Mercado Pago não está configurado. Usando modo simulado para testes.");
-      const origin = req.headers.get("origin") || "http://localhost:5173";
+      console.warn("[mp-checkout] Mercado Pago não configurado. Usando modo simulado.");
+      const origin = req.headers.get("origin") || "https://dentos.com.br";
       const mockUrl = `${origin}/assinatura?success=true&plano_checkout=${planoId}`;
       return new Response(JSON.stringify({ url: mockUrl }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -70,84 +71,87 @@ serve(async (req) => {
       });
     }
 
+    // ═══ Configuração do plano ═══
     const price = planoId === "prata" ? 139.00 : 89.00;
     const planName = planoId === "prata" ? "Prata" : "Bronze";
-    const origin = req.headers.get("origin") || "http://localhost:5173";
+    const origin = req.headers.get("origin") || "https://dentos.com.br";
+    const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/mercadopago-webhook`;
 
-    let initUrl = "";
+    // ═══ Criar Order via Orders API v1 ═══
+    const idempotencyKey = crypto.randomUUID();
 
-    if (tipo === "assinatura") {
-      // 1. Criar Assinatura (Preapproval)
-      const mpResponse = await fetch("https://api.mercadopago.com/preapproval", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
+    const orderBody = {
+      type: "online",
+      processing_mode: "automatic",
+      total_amount: price,
+      external_reference: clinicaId,
+      payer: {
+        email: user.email,
+      },
+      items: [
+        {
+          id: planoId,
+          title: `DentOS - Plano ${planName} (Mensal)`,
+          unit_price: price,
+          quantity: 1,
+          category_id: "services",
         },
-        body: JSON.stringify({
-          payer_email: user.email,
-          back_url: `${origin}/assinatura?success=true`,
-          reason: `DentOS - Assinatura Plano ${planName}`,
-          external_reference: clinicaId,
-          auto_recurring: {
-            frequency: 1,
-            frequency_type: "months",
-            transaction_amount: price,
-            currency_id: "BRL",
-          },
-          status: "pending",
-        }),
-      });
+      ],
+      notification_url: webhookUrl,
+      back_urls: {
+        success: `${origin}/assinatura?success=true&plano_checkout=${planoId}`,
+        failure: `${origin}/assinatura?failure=true`,
+        pending: `${origin}/assinatura?pending=true`,
+      },
+      auto_return: "approved",
+    };
 
-      const data = await mpResponse.json();
-      if (!mpResponse.ok) {
-        throw new Error(data.message || `Erro no Mercado Pago: ${JSON.stringify(data)}`);
-      }
-      initUrl = data.init_point;
-    } else {
-      // 2. Criar Pagamento Avulso (Preference)
-      const mpResponse = await fetch("https://api.mercadopago.com/v1/checkouts/preferences", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          items: [
-            {
-              id: planoId,
-              title: `DentOS - Plano ${planName} (Mensal)`,
-              quantity: 1,
-              currency_id: "BRL",
-              unit_price: price,
-            },
-          ],
-          payer: {
-            email: user.email,
-          },
-          back_urls: {
-            success: `${origin}/assinatura?success=true`,
-            failure: `${origin}/assinatura?failure=true`,
-            pending: `${origin}/assinatura?pending=true`,
-          },
-          auto_return: "approved",
-          external_reference: clinicaId,
-        }),
-      });
+    console.log("[mp-checkout] Criando order:", JSON.stringify(orderBody));
 
-      const data = await mpResponse.json();
-      if (!mpResponse.ok) {
-        throw new Error(data.message || `Erro no Mercado Pago: ${JSON.stringify(data)}`);
-      }
-      initUrl = data.init_point;
+    const mpResponse = await fetch("https://api.mercadopago.com/v1/orders", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "X-Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify(orderBody),
+    });
+
+    const data = await mpResponse.json();
+
+    if (!mpResponse.ok) {
+      console.error("[mp-checkout] Erro do MP:", JSON.stringify(data));
+      throw new Error(data.message || `Erro no Mercado Pago: ${JSON.stringify(data)}`);
     }
 
-    return new Response(JSON.stringify({ url: initUrl }), {
+    console.log("[mp-checkout] Order criada:", data.id, "Status:", data.status);
+
+    // Extrair URL de pagamento
+    // Orders API retorna checkout_url ou init_point dependendo da config
+    const checkoutUrl = data.checkout_url || data.init_point || data.sandbox_init_point;
+
+    if (!checkoutUrl) {
+      console.error("[mp-checkout] Resposta sem URL de checkout:", JSON.stringify(data));
+      throw new Error("Mercado Pago não retornou URL de pagamento. Verifique as credenciais.");
+    }
+
+    // Registrar auditoria
+    await supabaseAdmin
+      .from("auditoria_logs")
+      .insert({
+        clinica_id: clinicaId,
+        usuario_email: user.email || "Sistema",
+        acao: "checkout_iniciado",
+        descricao: `Order ${data.id} criada para Plano ${planName} (R$${price}). URL: ${checkoutUrl}`,
+      }).catch(() => {});
+
+    return new Response(JSON.stringify({ url: checkoutUrl, orderId: data.id }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
   } catch (error: any) {
-    console.error("Erro no checkout Mercado Pago:", error);
+    console.error("[mp-checkout] Erro:", error);
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 400,
