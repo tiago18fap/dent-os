@@ -108,20 +108,14 @@ serve(async (req) => {
       // Se o último log é recente (menos de 5 min), retornar como sucesso
       const logAge = Date.now() - new Date(lastLog.created_at).getTime();
       if (logAge < 5 * 60 * 1000) {
-        // Parse resultado JSON if available
-        let resultado: any = {};
-        try {
-          resultado = typeof lastLog.resultado === 'string' ? JSON.parse(lastLog.resultado) : (lastLog.resultado || {});
-        } catch { /* ignore parse errors */ }
-
         return new Response(
           JSON.stringify({
-            status: resultado.loginSuccess ? 'sucesso' : (lastLog.tipo || 'desconhecido'),
-            pacientes_novos: resultado.pacientesNovos || 0,
-            pacientes_atualizados: resultado.pacientesAtualizados || 0,
-            procedimentos: resultado.procedimentos || 0,
-            duracao: resultado.duracao || 0,
-            message: "Dados do último sync",
+            status: lastLog.status === 'sucesso' ? 'sucesso' : 'erro',
+            pacientes_novos: 0,
+            pacientes_atualizados: lastLog.pacientes_importados || 0,
+            procedimentos: lastLog.procedimentos_importados || 0,
+            duracao: Number(lastLog.duracao_segundos) || 0,
+            message: lastLog.erro_mensagem || "Dados do último sync",
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
