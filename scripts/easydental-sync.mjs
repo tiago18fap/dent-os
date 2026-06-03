@@ -392,7 +392,10 @@ function mapearProcedimentos(rawData, clinicaId) {
 // ══════════════════════════════════════════════════════════════
 
 async function upsertBatch(table, batch, onConflict) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+  const url = onConflict
+    ? `${SUPABASE_URL}/rest/v1/${table}?on_conflict=${onConflict}`
+    : `${SUPABASE_URL}/rest/v1/${table}`;
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       apikey: SUPABASE_KEY,
@@ -408,6 +411,7 @@ async function upsertBatch(table, batch, onConflict) {
   }
   return res;
 }
+
 
 async function importarDados(clinicaId, pacientes, procedimentos) {
   log(`\nImportando dados para clínica ${clinicaId}...`);
