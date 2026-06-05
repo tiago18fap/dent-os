@@ -63,6 +63,69 @@ function getDateRange(periodo: PeriodoFiltro, customRange?: DateRange): { start:
   }
 }
 
+const MensagensDepois = ({ item }: { item: any }) => {
+  const { data: mensagensDepois, isLoading } = useQuery({
+    queryKey: ["mensagens_depois", item.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("fila_envios")
+        .select("id, data_programada, mensagem, origem")
+        .eq("clinica_id", item.clinica_id)
+        .eq("telefone", item.telefone)
+        .eq("status", "enviado")
+        .gt("data_programada", item.data_programada)
+        .order("data_programada", { ascending: true });
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!item.id,
+  });
+
+  if (isLoading) {
+    return <p className="text-[10px] text-muted-foreground animate-pulse mt-2 pt-2 border-t border-violet-500/20">Carregando mensagens posteriores...</p>;
+  }
+
+  if (!mensagensDepois || mensagensDepois.length === 0) {
+    return (
+      <p className="text-[10px] text-muted-foreground mt-2 pt-2 border-t border-dashed border-muted">
+        Nenhuma mensagem enviada depois.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-2 pt-2 border-t border-violet-500/20 space-y-2">
+      <p className="font-semibold text-[11px] text-violet-700 dark:text-violet-400">
+        Mensagens enviadas depois ({mensagensDepois.length}):
+      </p>
+      <div className="max-h-[150px] overflow-y-auto space-y-1.5 pr-1">
+        {mensagensDepois.map((msg: any) => {
+          const d = new Date(msg.data_programada);
+          const dataStr = `${d.toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString("pt-BR", { hour: '2-digit', minute: '2-digit' })}`;
+          
+          let origemLabel = "Outro";
+          if (msg.origem === 'procedimento') origemLabel = "📢 Proc.";
+          else if (msg.origem === 'massa') origemLabel = "✉️ Geral";
+          else if (msg.origem === 'aniversario_dia' || msg.origem === 'aniversario_mes') origemLabel = "🎂 Aniv.";
+
+          return (
+            <div key={msg.id} className="text-[10px] bg-violet-500/5 p-1.5 rounded border border-violet-500/10">
+              <div className="flex justify-between font-semibold text-violet-600 dark:text-violet-400 mb-0.5">
+                <span>{origemLabel}</span>
+                <span>{dataStr}</span>
+              </div>
+              <p className="text-muted-foreground line-clamp-2" title={msg.mensagem}>
+                {msg.mensagem}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const FilaEnvios = () => {
   const { clinica, loading, isSuperAdmin, isImpersonating } = useClinica();
   const isMobile = useIsMobile();
@@ -684,13 +747,14 @@ const FilaEnvios = () => {
                                               🔄 Retornou
                                             </Badge>
                                           </TooltipTrigger>
-                                          <TooltipContent className="max-w-[250px] text-xs">
+                                          <TooltipContent className="max-w-[300px] text-xs">
                                             <p className="font-semibold mb-1">Paciente retornou!</p>
                                             {item.data_retorno && (
                                               <p className="text-muted-foreground">
                                                 Retorno em: {new Date(item.data_retorno).toLocaleDateString("pt-BR")}
                                               </p>
                                             )}
+                                            <MensagensDepois item={item} />
                                           </TooltipContent>
                                         </UITooltip>
                                       </TooltipProvider>
