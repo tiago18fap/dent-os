@@ -748,9 +748,12 @@ const FilaEnvios = () => {
                                             </Badge>
                                           </TooltipTrigger>
                                           <TooltipContent className="max-w-[300px] text-xs">
-                                            <p className="font-semibold mb-1">Paciente retornou!</p>
+                                            <p className="font-semibold mb-1 text-violet-700 dark:text-violet-400">🔄 Retornou à Clínica</p>
+                                            <p className="text-muted-foreground mb-1 text-[11px]">
+                                              Paciente retornou presencialmente e realizou um novo procedimento.
+                                            </p>
                                             {item.data_retorno && (
-                                              <p className="text-muted-foreground">
+                                              <p className="text-muted-foreground text-[11px]">
                                                 Retorno em: {new Date(item.data_retorno).toLocaleDateString("pt-BR")}
                                               </p>
                                             )}
