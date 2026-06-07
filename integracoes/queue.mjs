@@ -131,8 +131,8 @@ export const queueManager = {
   },
 
   // Salvar credenciais
-  saveCredentials(type, username, password, webhookUrl) {
-    credentials[type] = { username, password, webhookUrl, updatedAt: new Date().toISOString() };
+  saveCredentials(type, username, password, webhookUrl, webhookSecret = '') {
+    credentials[type] = { username, password, webhookUrl, webhookSecret, updatedAt: new Date().toISOString() };
     saveJSON(CREDENTIALS_FILE, credentials);
     return credentials[type];
   },
