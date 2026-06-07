@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('integration-type').addEventListener('change', handleIntegrationTypeChange);
   document.getElementById('btn-trigger').addEventListener('click', handleTriggerJob);
   document.getElementById('btn-clear-console').addEventListener('click', clearConsole);
+  document.getElementById('btn-close-modal').addEventListener('click', closeVideoModal);
 });
 
 // 1. Carregar Credenciais
@@ -192,10 +193,20 @@ function updateQueueUI() {
       ? new Date(task.startedAt).toLocaleTimeString('pt-BR') 
       : new Date(task.queuedAt).toLocaleTimeString('pt-BR');
 
+    let videoButtonHtml = '';
+    if (task.videoUrl) {
+      videoButtonHtml = `
+        <button class="btn-watch-video" onclick="event.stopPropagation(); watchVideo('${task.videoUrl}')">
+          🎥 Assistir Gravação
+        </button>
+      `;
+    }
+
     item.innerHTML = `
       <div class="queue-item-left">
         <strong>${formatName(task.type)}</strong>
         <span>ID: ${task.id} • ${time}</span>
+        ${videoButtonHtml}
       </div>
       <span class="badge badge-${task.status}">${task.status}</span>
     `;
@@ -342,4 +353,21 @@ function appendLogLine(line) {
 function clearConsole() {
   document.getElementById('terminal-logs').innerHTML = '<span class="term-line system-line">[CONSOLE LIMPO] Logs em tempo real continuarão aparecendo abaixo...</span>';
   document.getElementById('captcha-alert').style.display = 'none';
+}
+
+// Modal de Vídeo
+function watchVideo(videoUrl) {
+  const modal = document.getElementById('video-modal');
+  const player = document.getElementById('modal-video-player');
+  player.src = videoUrl;
+  modal.style.display = 'flex';
+  player.play().catch(() => {});
+}
+
+function closeVideoModal() {
+  const modal = document.getElementById('video-modal');
+  const player = document.getElementById('modal-video-player');
+  player.pause();
+  player.src = '';
+  modal.style.display = 'none';
 }

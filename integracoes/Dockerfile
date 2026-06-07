@@ -2,6 +2,7 @@ FROM node:20-slim
 
 # Instalar dependências do Chromium
 RUN apt-get update && apt-get install -y \
+    xvfb \
     wget \
     gnupg \
     ca-certificates \
@@ -39,4 +40,4 @@ COPY . .
 # Expor porta da aplicação
 EXPOSE 3500
 
-CMD ["node", "server.mjs"]
+CMD ["xvfb-run", "-a", "node", "server.mjs"]

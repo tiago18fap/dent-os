@@ -94,8 +94,8 @@ async function processQueue() {
 
     logTask(id, 'Executando script do Playwright...');
     
-    // Executar o script passando credenciais, webhook e logger customizado
-    const result = await run(creds, (msg, lvl) => logTask(id, msg, lvl));
+    // Executar o script passando credenciais, webhook, logger customizado e ID da tarefa
+    const result = await run(creds, (msg, lvl) => logTask(id, msg, lvl), id);
     
     // Conclusão com sucesso
     currentTask.status = 'sucesso';
@@ -110,6 +110,12 @@ async function processQueue() {
     currentTask.error = err.message;
     logTask(id, `Erro durante a execução: ${err.message}`, 'ERROR');
   } finally {
+    // Processar e salvar gravação de vídeo se disponível
+    const videoUrl = saveTaskVideo(currentTask.id);
+    if (videoUrl) {
+      currentTask.videoUrl = videoUrl;
+    }
+
     saveJSON(HISTORY_FILE, history);
     queueEvents.emit('status', currentTask);
     currentTask = null;
@@ -175,3 +181,38 @@ export const queueManager = {
     };
   }
 };
+
+// Helper para salvar e processar o vídeo gravado da tarefa
+function saveTaskVideo(taskId) {
+  const tempDir = path.resolve(`public/videos/temp/${taskId}`);
+  const destDir = path.resolve('public/videos');
+  
+  if (fs.existsSync(tempDir)) {
+    try {
+      const files = fs.readdirSync(tempDir);
+      const videoFile = files.find(f => f.endsWith('.webm'));
+      
+      if (videoFile) {
+        if (!fs.existsSync(destDir)) {
+          fs.mkdirSync(destDir, { recursive: true });
+        }
+        
+        const srcPath = path.join(tempDir, videoFile);
+        const destPath = path.join(destDir, `${taskId}.webm`);
+        
+        fs.renameSync(srcPath, destPath);
+        return `videos/${taskId}.webm`;
+      }
+    } catch (err) {
+      console.error(`[ERR] Falha ao processar vídeo da tarefa ${taskId}:`, err.message);
+    } finally {
+      // Limpar diretório temporário
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch (rmErr) {
+        console.error(`[ERR] Falha ao limpar diretório temporário do vídeo ${taskId}:`, rmErr.message);
+      }
+    }
+  }
+  return null;
+}
