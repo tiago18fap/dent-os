@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DentOS — Painel de Integrações</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  
+  <div class="background-decor">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+  </div>
+
+  <header class="app-header">
+    <div class="logo">
+      <span class="logo-icon">💠</span>
+      <h1>DentOS <span>Integrações</span></h1>
+    </div>
+    <div class="server-status">
+      <span class="status-indicator online"></span>
+      <span class="status-text">Servidor Local Ativo</span>
+    </div>
+  </header>
+
+  <main class="dashboard-grid">
+    
+    <!-- Coluna 1: Configurações -->
+    <section class="card glass-card col-config">
+      <div class="card-header">
+        <h2>⚙️ Configurar Integração</h2>
+        <p>Cadastre as credenciais e URL do webhook de destino.</p>
+      </div>
+      <form id="credentials-form">
+        <div class="form-group">
+          <label for="integration-type">Tipo de Integração</label>
+          <select id="integration-type" required>
+            <option value="" disabled selected>Selecione uma opção...</option>
+            <option value="exemplo-integracao">Exemplo de Automação (Fila & Webhook)</option>
+            <option value="clinica-sync">Sincronização Direta de Dados</option>
+            <option value="portal-parceiro">Portal de Parceiros Financeiros</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="username">Usuário / E-mail</label>
+          <input type="text" id="username" placeholder="nome@exemplo.com ou usuario" required>
+        </div>
+        <div class="form-group">
+          <label for="password">Senha de Acesso</label>
+          <input type="password" id="password" placeholder="••••••••" required>
+        </div>
+        <div class="form-group">
+          <label for="webhook-url">URL do Webhook (POST)</label>
+          <input type="url" id="webhook-url" placeholder="https://webhook.site/..." required>
+        </div>
+        <button type="submit" class="btn btn-primary">Salvar Configuração</button>
+      </form>
+
+      <div class="active-configs-list">
+        <h3>Integrações Configuradas</h3>
+        <ul id="configured-integrations-list">
+          <li class="empty-state">Nenhuma integração configurada ainda.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Coluna 2: Fila e Controle -->
+    <section class="card glass-card col-queue">
+      <div class="card-header">
+        <h2>⚡ Fila de Execução</h2>
+        <p>Dispare integrações cadastradas e acompanhe a fila local.</p>
+      </div>
+
+      <div class="trigger-box">
+        <label for="trigger-type">Escolha a Integração para Rodar</label>
+        <div class="trigger-row">
+          <select id="trigger-type">
+            <option value="" disabled selected>Selecione...</option>
+          </select>
+          <button id="btn-trigger" class="btn btn-success">Adicionar à Fila</button>
+        </div>
+      </div>
+
+      <div class="queue-status-banner" id="queue-banner">
+        <span class="pulse-icon"></span>
+        <span id="queue-banner-text">Fila Ociosa</span>
+      </div>
+
+      <div class="queue-list-container">
+        <h3>Histórico e Fila de Tarefas</h3>
+        <div class="queue-list" id="queue-list">
+          <!-- Inserido dinamicamente via JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Coluna 3: Console em Tempo Real -->
+    <section class="card glass-card col-console">
+      <div class="card-header console-header">
+        <div>
+          <h2>💻 Terminal de Execução</h2>
+          <p id="current-task-name">Selecione uma tarefa para ver os logs</p>
+        </div>
+        <button id="btn-clear-console" class="btn btn-secondary">Limpar</button>
+      </div>
+      
+      <div class="terminal-container">
+        <div class="terminal-body" id="terminal-logs">
+          <span class="term-line system-line">[SISTEMA] Aguardando inicialização de logs...</span>
+        </div>
+      </div>
+      
+      <div class="captcha-alert" id="captcha-alert" style="display: none;">
+        <span class="warning-icon">⚠️</span>
+        <div>
+          <strong>Atenção! Interação Requerida!</strong>
+          <p>O navegador foi aberto na sua tela. Digite o Captcha ou confirme o código na janela do Chrome para prosseguir.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
