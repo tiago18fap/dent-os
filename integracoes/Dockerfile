@@ -42,4 +42,6 @@ COPY . .
 # Expor porta da aplicação
 EXPOSE 3500
 
-CMD ["xvfb-run", "-a", "node", "server.mjs"]
+RUN chmod +x start.sh
+
+CMD ["./start.sh"]
