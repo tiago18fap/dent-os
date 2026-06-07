@@ -134,10 +134,10 @@ export async function run(credentials, log, taskId = 'unknown') {
           await mfaInput.fill(mfaCode);
 
           // Tentar marcar caixa de "Lembrar dispositivo por 30 dias"
-          const rememberCheckbox = page.locator('input[type="checkbox"][name*="remember" i], input[type="checkbox"][name*="trust" i], input[type="checkbox"]').first();
+          const rememberCheckbox = page.locator('input[type="checkbox"], label:has-text("Confiar"), label:has-text("30 dias"), span:has-text("Confiar")').first();
           if (await rememberCheckbox.isVisible().catch(() => false)) {
             log('Marcando opção de lembrar dispositivo / confiar por 30 dias...');
-            await rememberCheckbox.check().catch(() => {});
+            await rememberCheckbox.click().catch(() => {});
           }
 
           // Confirmar
