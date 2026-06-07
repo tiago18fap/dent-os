@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { queueManager, queueEvents } from './queue.mjs';
 
 const app = express();
@@ -75,6 +76,29 @@ app.post('/api/queue', (req, res) => {
 
   const task = queueManager.enqueue(cleanType);
   res.json({ success: true, message: `Integração "${cleanType}" adicionada à fila com ID ${task.id}.`, task });
+});
+
+// POST /api/queue/mfa - Enviar código 2FA/MFA para uma tarefa ativa
+app.post('/api/queue/mfa', (req, res) => {
+  const { taskId, code } = req.body;
+  if (!taskId || !code) {
+    return res.status(400).json({ error: 'Forneça taskId e o código code.' });
+  }
+  
+  const cleanTaskId = taskId.replace(/[^a-zA-Z0-9_-]/g, '');
+  const cleanCode = code.replace(/[^0-9]/g, '');
+  
+  if (cleanCode.length !== 6) {
+    return res.status(400).json({ error: 'O código de autenticação deve ter 6 dígitos.' });
+  }
+
+  const mfaFile = path.resolve('data', `mfa_${cleanTaskId}.txt`);
+  try {
+    fs.writeFileSync(mfaFile, cleanCode, 'utf-8');
+    res.json({ success: true, message: 'Código MFA recebido com sucesso no servidor.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Falha ao processar código no servidor: ' + err.message });
+  }
 });
 
 // ══════════════════════════════════════════════════════════════

@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-trigger').addEventListener('click', handleTriggerJob);
   document.getElementById('btn-clear-console').addEventListener('click', clearConsole);
   document.getElementById('btn-close-modal').addEventListener('click', closeVideoModal);
+  document.getElementById('btn-submit-mfa').addEventListener('click', handleSubmitMfa);
 });
 
 // 1. Carregar Credenciais
@@ -237,10 +238,17 @@ function selectTask(taskId) {
     }
 
     // Verificar se exibe alerta de captcha/interação para tarefa ativa rodando
-    if (task.status === 'rodando' && task.logs && task.logs.some(l => l.includes('CAPTCHA') || l.includes('MFA') || l.includes('interação'))) {
+    if (task.status === 'rodando' && task.logs && task.logs.some(l => l.includes('CAPTCHA') || l.includes('interação'))) {
       document.getElementById('captcha-alert').style.display = 'flex';
     } else {
       document.getElementById('captcha-alert').style.display = 'none';
+    }
+
+    // Verificar se exibe alerta de MFA requerida para a tarefa ativa rodando
+    if (task.status === 'rodando' && task.logs && task.logs.some(l => l.includes('MFA_REQUIRED') || l.includes('dois fatores'))) {
+      document.getElementById('mfa-alert').style.display = 'flex';
+    } else {
+      document.getElementById('mfa-alert').style.display = 'none';
     }
   }
 
@@ -289,10 +297,18 @@ function setupEventSource() {
         
         // Tratar alertas de captcha e interação humana
         const captchaAlert = document.getElementById('captcha-alert');
-        if (msg.logLine.includes('CAPTCHA') || msg.logLine.includes('MFA') || msg.logLine.includes('interação')) {
+        if (msg.logLine.includes('CAPTCHA') || msg.logLine.includes('interação')) {
           captchaAlert.style.display = 'flex';
         } else if (msg.logLine.includes('sucesso') || msg.logLine.includes('Erro')) {
           captchaAlert.style.display = 'none';
+        }
+
+        // Tratar alertas de dois fatores (MFA/2FA)
+        const mfaAlert = document.getElementById('mfa-alert');
+        if (msg.logLine.includes('MFA_REQUIRED') || msg.logLine.includes('dois fatores')) {
+          mfaAlert.style.display = 'flex';
+        } else if (msg.logLine.includes('sucesso') || msg.logLine.includes('Erro') || msg.logLine.includes('recebido') || msg.logLine.includes('Preenchendo')) {
+          mfaAlert.style.display = 'none';
         }
       }
       
@@ -370,4 +386,39 @@ function closeVideoModal() {
   player.pause();
   player.src = '';
   modal.style.display = 'none';
+}
+
+// Enviar código 2FA/MFA para o backend
+async function handleSubmitMfa() {
+  const codeInput = document.getElementById('mfa-code');
+  const code = codeInput.value.trim();
+  
+  if (code.length !== 6 || isNaN(code)) {
+    alert('Por favor, digite um código de 6 dígitos numéricos.');
+    return;
+  }
+  
+  if (!activeTaskId) {
+    alert('Nenhuma tarefa ativa selecionada.');
+    return;
+  }
+
+  try {
+    const res = await fetch('api/queue/mfa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId: activeTaskId, code })
+    });
+    
+    const data = await res.json();
+    if (data.success) {
+      alert('Código enviado com sucesso! Aguarde a conclusão da tarefa pelo navegador.');
+      codeInput.value = '';
+      document.getElementById('mfa-alert').style.display = 'none';
+    } else {
+      alert(`Erro: ${data.error}`);
+    }
+  } catch (err) {
+    alert('Erro de conexão ao enviar o código MFA.');
+  }
 }

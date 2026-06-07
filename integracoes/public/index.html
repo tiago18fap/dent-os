@@ -126,6 +126,18 @@
           <p>O navegador foi aberto na sua tela. Digite o Captcha ou confirme o código na janela do Chrome para prosseguir.</p>
         </div>
       </div>
+
+      <div class="mfa-box" id="mfa-alert" style="display: none;">
+        <span class="warning-icon">🔑</span>
+        <div>
+          <strong>Autenticação de Dois Fatores (2FA) Requerida</strong>
+          <p>Insira o código de 6 dígitos gerado pelo Google Authenticator:</p>
+          <div class="mfa-input-row">
+            <input type="text" id="mfa-code" placeholder="000000" maxlength="6" inputmode="numeric" pattern="[0-9]*">
+            <button id="btn-submit-mfa" class="btn btn-primary">Confirmar</button>
+          </div>
+        </div>
+      </div>
     </section>
 
   </main>
