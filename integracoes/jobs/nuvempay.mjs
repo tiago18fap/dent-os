@@ -204,6 +204,13 @@ export async function run(credentials, log, taskId = 'unknown') {
 
   } catch (err) {
     log(`Erro na automação do NuvemPay: ${err.message}`, 'ERROR');
+    try {
+      const screenshotPath = path.resolve('public', `error_${taskId}.png`);
+      await page.screenshot({ path: screenshotPath });
+      log(`Print do erro salvo para visualização em: error_${taskId}.png`);
+    } catch (e) {
+      log(`Não foi possível tirar print do erro: ${e.message}`, 'WARN');
+    }
     throw err;
   } finally {
     log('Fechando navegador em 3 segundos...');
