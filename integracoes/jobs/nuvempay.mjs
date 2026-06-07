@@ -161,15 +161,26 @@ export async function run(credentials, log, taskId = 'unknown') {
     }
 
     if (success) {
-      log('Navegando para o painel de pagamentos da loja...');
-      await page.goto('https://admin.nuvemshop.com.br/admin/payments', { waitUntil: 'domcontentloaded', timeout: 20000 }).catch((e) => {
-        log('Aviso ao navegar para tela de pagamentos: ' + e.message, 'WARN');
+      const nuvempagoUrl = storeUrl.split('/admin')[0] + '/admin/nuvempago#/dashboard/';
+      log(`Navegando para o painel do NuvemPago (${nuvempagoUrl})...`);
+      await page.goto(nuvempagoUrl, { waitUntil: 'networkidle', timeout: 40000 }).catch((e) => {
+        log('Aviso ao navegar para o painel do NuvemPago: ' + e.message, 'WARN');
       });
-      await sleep(3000);
-      
+      await sleep(10000); // Dar tempo para os componentes React/Angular carregarem na tela
+
+      // Salvar screenshot do painel para podermos inspecionar a estrutura real dos elementos
+      const dashScreenshot = path.resolve('public', `dashboard_${taskId}.png`);
+      await page.screenshot({ path: dashScreenshot }).catch(() => {});
+      log(`Print do painel NuvemPago salvo para análise em: dashboard_${taskId}.png`);
+
+      // Extrair textos da página para analisar o saldo e extrato reais
+      const pageText = await page.evaluate(() => document.body.textContent || '');
+      fs.writeFileSync(path.resolve('public', `dashboard_text_${taskId}.txt`), pageText, 'utf-8');
+      log(`Texto do painel salvo para análise em: dashboard_text_${taskId}.txt`);
+
       log('Extraindo saldo e histórico de transações do NuvemPay...');
       
-      // Formato JSON exato solicitado pelo usuário para o NuvemPay
+      // Formato JSON exato solicitado pelo usuário para o NuvemPay (provisório)
       const balance = 12345.67; 
       const entries = [
         {
