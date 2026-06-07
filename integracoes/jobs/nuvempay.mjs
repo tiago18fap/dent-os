@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+import path from 'path';
 
 /**
  * Script de Automação do NuvemPay (Job Playwright)
@@ -6,7 +7,7 @@ import { chromium } from 'playwright';
  * @param {Object} credentials - Credenciais de login (username, password, webhookUrl, webhookSecret)
  * @param {Function} log - Função para logar mensagens no console web da fila
  */
-export async function run(credentials, log) {
+export async function run(credentials, log, taskId = 'unknown') {
   const { username, password, webhookUrl, webhookSecret } = credentials;
   
   log('Iniciando navegador Chromium visível (headed mode) para NuvemPay...');
@@ -17,7 +18,11 @@ export async function run(credentials, log) {
   });
 
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 }
+    viewport: { width: 1280, height: 800 },
+    recordVideo: {
+      dir: path.resolve(`public/videos/temp/${taskId}`),
+      size: { width: 1280, height: 800 }
+    }
   });
   
   const page = await context.newPage();
