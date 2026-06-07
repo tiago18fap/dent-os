@@ -55,6 +55,14 @@ export async function run(credentials, log, taskId = 'unknown') {
       log('Sessão persistente ativa detectada! Login efetuado automaticamente.');
       success = true;
     } else {
+      // Se a tela inicial de SSO (Google/Apple/Email) estiver ativa, clicar em "Entrar com e-mail"
+      const emailLoginBtn = page.locator('#email-login-btn, button:has-text("Entrar com e-mail"), a:has-text("Entrar com e-mail")').first();
+      if (await emailLoginBtn.isVisible().catch(() => false)) {
+        log('Tela de login com SSO ativa. Clicando em "Entrar com e-mail"...');
+        await emailLoginBtn.click().catch(() => {});
+        await sleep(1500);
+      }
+
       log(`Preenchendo e-mail de login: ${username}`);
       const emailInput = page.locator('input[type="email"], input[name="email"], #email, #username').first();
       await emailInput.fill(username).catch(() => {
