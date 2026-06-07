@@ -180,6 +180,57 @@ async function handleRequest(req, res) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// Agendamento Diário Interno (3:00 AM - Fuso de Brasília/São Paulo)
+// ══════════════════════════════════════════════════════════════
+
+let lastDailySyncDate = '';
+
+function startDailyScheduler() {
+  log('Agendador diário automático iniciado (executa às 03:00 AM BRT).');
+  
+  setInterval(async () => {
+    try {
+      const now = new Date();
+      // Obter hora e data no fuso de São Paulo
+      const spDateStr = now.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }); // 'DD/MM/YYYY'
+      const spTimeStr = now.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour12: false }); // 'HH:MM:SS'
+      const [hour, minute] = spTimeStr.split(':').map(Number);
+
+      // Se for 3 da manhã e ainda não rodou hoje
+      if (hour === 3 && minute === 0 && lastDailySyncDate !== spDateStr) {
+        if (syncing) {
+          log('Ignorando agendamento automático diário: outra sincronização já está ativa.', 'WARN');
+          return;
+        }
+        log(`[SCHEDULER] Iniciando sincronização diária automática (${spDateStr} ${spTimeStr})...`);
+        lastDailySyncDate = spDateStr;
+        syncing = true;
+        try {
+          const result = await syncTodasClinicas({ supabaseUrl: SUPABASE_URL, supabaseKey: SUPABASE_KEY });
+          lastSync = { 
+            finishedAt: new Date().toISOString(), 
+            success: true, 
+            ...result 
+          };
+          log(`[SCHEDULER] Sincronização automática concluída com sucesso: ${JSON.stringify(result)}`);
+        } catch (err) {
+          lastSync = { 
+            finishedAt: new Date().toISOString(), 
+            success: false, 
+            error: err.message 
+          };
+          log(`[SCHEDULER] Erro na sincronização automática: ${err.message}`, 'ERROR');
+        } finally {
+          syncing = false;
+        }
+      }
+    } catch (err) {
+      log(`Erro no loop do agendador automático: ${err.message}`, 'ERROR');
+    }
+  }, 60000); // Roda a verificação a cada 60 segundos (1 minuto)
+}
+
+// ══════════════════════════════════════════════════════════════
 // Start
 // ══════════════════════════════════════════════════════════════
 
@@ -190,4 +241,8 @@ server.listen(PORT, () => {
   log(`  Porta: ${PORT}`);
   log(`  Token: ${AUTH_TOKEN.slice(0, 10)}...`);
   log('═══════════════════════════════════════════');
+  
+  // Iniciar o agendador
+  startDailyScheduler();
 });
+
