@@ -9,7 +9,7 @@ import fs from 'fs';
  * @param {Function} log - Função para logar mensagens no console web da fila
  */
 export async function run(credentials, log, taskId = 'unknown') {
-  const { username, password, webhookUrl, webhookSecret } = credentials;
+  const { username, password, webhookUrl, webhookSecret, storeDomain } = credentials;
   
   const sessionPath = path.resolve('data/sessions/nuvempay');
   log(`Iniciando navegador Chromium com perfil persistente em: ${sessionPath}...`);
@@ -28,9 +28,22 @@ export async function run(credentials, log, taskId = 'unknown') {
   let success = false;
   let dataScraped = {};
 
+  let storeUrl = 'https://admin.nuvemshop.com.br/login';
+  if (storeDomain) {
+    let domain = storeDomain.trim();
+    if (!domain.includes('.')) {
+      domain = `${domain}.lojavirtualnuvem.com.br`;
+    }
+    if (!domain.startsWith('http')) {
+      domain = `https://${domain}`;
+    }
+    // Se a URL já contém "/admin", usamos ela diretamente, senão apontamos para /admin/login
+    storeUrl = domain.includes('/admin') ? domain : `${domain}/admin/login`;
+  }
+
   try {
-    log('Acessando painel administrativo da Nuvemshop (Login)...');
-    await page.goto('https://admin.nuvemshop.com.br/login', { waitUntil: 'domcontentloaded', timeout: 45000 });
+    log(`Acessando painel administrativo da Nuvemshop (${storeUrl})...`);
+    await page.goto(storeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await sleep(2000);
 
     // Verificar se já entrou direto por causa da sessão persistente

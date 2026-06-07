@@ -86,21 +86,23 @@ async function handleSaveCredentials(e) {
   const password = document.getElementById('password').value;
   const webhookUrl = document.getElementById('webhook-url').value;
   const webhookSecret = document.getElementById('webhook-secret').value;
+  const storeDomain = document.getElementById('store-domain').value;
 
   try {
     const res = await fetch('api/credentials', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, username, password, webhookUrl, webhookSecret })
+      body: JSON.stringify({ type, username, password, webhookUrl, webhookSecret, storeDomain })
     });
     
     const data = await res.json();
     if (data.success) {
       alert(data.message);
       document.getElementById('credentials-form').reset();
-      // Resetar placeholders
+      // Resetar placeholders e visibilidade
       document.getElementById('password').placeholder = '••••••••';
       document.getElementById('webhook-secret').placeholder = 'Token de segurança ou chave';
+      document.getElementById('group-store-domain').style.display = 'none';
       loadCredentials();
     } else {
       alert(`Erro: ${data.error}`);
@@ -117,10 +119,20 @@ function handleIntegrationTypeChange() {
   const passwordInput = document.getElementById('password');
   const webhookUrlInput = document.getElementById('webhook-url');
   const webhookSecretInput = document.getElementById('webhook-secret');
+  const storeDomainGroup = document.getElementById('group-store-domain');
+  const storeDomainInput = document.getElementById('store-domain');
+
+  // Mostrar campo de subdomínio apenas para NuvemPay
+  if (type === 'nuvempay') {
+    storeDomainGroup.style.display = 'block';
+  } else {
+    storeDomainGroup.style.display = 'none';
+  }
 
   if (cachedCredentials[type]) {
     usernameInput.value = cachedCredentials[type].username || '';
     webhookUrlInput.value = cachedCredentials[type].webhookUrl || '';
+    storeDomainInput.value = cachedCredentials[type].storeDomain || '';
     
     // Opcionais/Segurança
     passwordInput.value = '';
@@ -136,6 +148,7 @@ function handleIntegrationTypeChange() {
   } else {
     usernameInput.value = '';
     webhookUrlInput.value = '';
+    storeDomainInput.value = '';
     passwordInput.value = '';
     passwordInput.placeholder = '••••••••';
     webhookSecretInput.value = '';
