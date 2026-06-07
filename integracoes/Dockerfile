@@ -4,6 +4,7 @@ FROM node:20-slim
 RUN apt-get update && apt-get install -y \
     xvfb \
     xauth \
+    which \
     wget \
     gnupg \
     ca-certificates \
