@@ -5,6 +5,7 @@
 let activeTaskId = null; // ID da tarefa selecionada para ver logs
 let historyData = []; // Armazena histórico local de tarefas
 let queueState = {}; // Armazena estado da fila
+let cachedCredentials = {}; // Cache de credenciais configuradas
 
 // Inicialização
 document.addEventListener('DOMContentLoaded', () => {
@@ -14,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Bind de eventos
   document.getElementById('credentials-form').addEventListener('submit', handleSaveCredentials);
+  document.getElementById('integration-type').addEventListener('change', handleIntegrationTypeChange);
   document.getElementById('btn-trigger').addEventListener('click', handleTriggerJob);
   document.getElementById('btn-clear-console').addEventListener('click', clearConsole);
 });
@@ -23,6 +25,7 @@ async function loadCredentials() {
   try {
     const res = await fetch('api/credentials');
     const creds = await res.json();
+    cachedCredentials = creds;
     
     const configuredList = document.getElementById('configured-integrations-list');
     const triggerSelect = document.getElementById('trigger-type');
@@ -80,24 +83,61 @@ async function handleSaveCredentials(e) {
   const username = document.getElementById('username').value;
   const password = document.getElementById('password').value;
   const webhookUrl = document.getElementById('webhook-url').value;
+  const webhookSecret = document.getElementById('webhook-secret').value;
 
   try {
     const res = await fetch('api/credentials', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, username, password, webhookUrl })
+      body: JSON.stringify({ type, username, password, webhookUrl, webhookSecret })
     });
     
     const data = await res.json();
     if (data.success) {
       alert(data.message);
       document.getElementById('credentials-form').reset();
+      // Resetar placeholders
+      document.getElementById('password').placeholder = '••••••••';
+      document.getElementById('webhook-secret').placeholder = 'Token de segurança ou chave';
       loadCredentials();
     } else {
       alert(`Erro: ${data.error}`);
     }
   } catch (err) {
     alert('Erro de conexão ao salvar credenciais.');
+  }
+}
+
+// Pre-fill form fields when selecting an integration type
+function handleIntegrationTypeChange() {
+  const type = document.getElementById('integration-type').value;
+  const usernameInput = document.getElementById('username');
+  const passwordInput = document.getElementById('password');
+  const webhookUrlInput = document.getElementById('webhook-url');
+  const webhookSecretInput = document.getElementById('webhook-secret');
+
+  if (cachedCredentials[type]) {
+    usernameInput.value = cachedCredentials[type].username || '';
+    webhookUrlInput.value = cachedCredentials[type].webhookUrl || '';
+    
+    // Opcionais/Segurança
+    passwordInput.value = '';
+    passwordInput.placeholder = '•••••••• (Re-digite para salvar)';
+    
+    if (cachedCredentials[type].hasSecret) {
+      webhookSecretInput.value = '';
+      webhookSecretInput.placeholder = '•••••••• (Re-digite para atualizar)';
+    } else {
+      webhookSecretInput.value = '';
+      webhookSecretInput.placeholder = 'Token de segurança ou chave';
+    }
+  } else {
+    usernameInput.value = '';
+    webhookUrlInput.value = '';
+    passwordInput.value = '';
+    passwordInput.placeholder = '••••••••';
+    webhookSecretInput.value = '';
+    webhookSecretInput.placeholder = 'Token de segurança ou chave';
   }
 }
 

@@ -7,7 +7,7 @@ import { chromium } from 'playwright';
  * @param {Function} log - Função para logar mensagens no console web da fila
  */
 export async function run(credentials, log) {
-  const { username, password, webhookUrl } = credentials;
+  const { username, password, webhookUrl, webhookSecret } = credentials;
   
   log('Iniciando navegador Chromium visível (headed mode)...');
   
@@ -81,10 +81,16 @@ export async function run(credentials, log) {
     log('Dados coletados com sucesso! Enviando para o webhook...');
     log(`Enviando POST para: ${webhookUrl}`);
 
-    // Fazer o envio para o Webhook de destino
+    // Fazer o envio para o Webhook de destino com cabeçalho de segurança
+    const headers = { 'Content-Type': 'application/json' };
+    if (webhookSecret) {
+      headers['Authorization'] = `Bearer ${webhookSecret}`;
+      headers['X-Webhook-Secret'] = webhookSecret;
+    }
+
     const response = await fetch(webhookUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(dataScraped)
     }).catch(err => {
       throw new Error(`Falha ao conectar com o Webhook: ${err.message}`);

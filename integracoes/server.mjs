@@ -17,11 +17,12 @@ app.get('/api/credentials', (req, res) => {
   const creds = queueManager.getCredentials();
   const safeCreds = {};
   
-  // Omitir senhas nos retornos por segurança
+  // Omitir senhas e segredos nos retornos por segurança
   Object.keys(creds).forEach(key => {
     safeCreds[key] = {
       username: creds[key].username,
       webhookUrl: creds[key].webhookUrl,
+      hasSecret: !!creds[key].webhookSecret,
       updatedAt: creds[key].updatedAt
     };
   });
@@ -31,19 +32,20 @@ app.get('/api/credentials', (req, res) => {
 
 // POST /api/credentials - Configurar/Atualizar credenciais e webhook
 app.post('/api/credentials', (req, res) => {
-  const { type, username, password, webhookUrl } = req.body;
+  const { type, username, password, webhookUrl, webhookSecret } = req.body;
   
   if (!type || !username || !password || !webhookUrl) {
     return res.status(400).json({ error: 'Parâmetros ausentes. Forneça type, username, password e webhookUrl.' });
   }
 
   const cleanType = type.toLowerCase().replace(/[^a-z0-9_-]/g, '');
-  const updated = queueManager.saveCredentials(cleanType, username, password, webhookUrl);
+  const updated = queueManager.saveCredentials(cleanType, username, password, webhookUrl, webhookSecret || '');
   
   res.json({ success: true, message: `Credenciais configuradas para a integração "${cleanType}".`, data: {
     type: cleanType,
     username: updated.username,
-    webhookUrl: updated.webhookUrl
+    webhookUrl: updated.webhookUrl,
+    hasSecret: !!updated.webhookSecret
   }});
 });
 
