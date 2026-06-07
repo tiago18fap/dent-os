@@ -3,6 +3,7 @@ FROM node:20-slim
 # Instalar dependências do Chromium
 RUN apt-get update && apt-get install -y \
     xvfb \
+    xauth \
     wget \
     gnupg \
     ca-certificates \
