@@ -207,11 +207,25 @@ function updateQueueUI() {
       ? new Date(task.startedAt).toLocaleTimeString('pt-BR') 
       : new Date(task.queuedAt).toLocaleTimeString('pt-BR');
 
-    let videoButtonHtml = '';
+    let mediaButtonsHtml = '';
     if (task.videoUrl) {
-      videoButtonHtml = `
+      mediaButtonsHtml += `
         <button class="btn-watch-video" onclick="event.stopPropagation(); watchVideo('${task.videoUrl}')">
           🎥 Assistir Gravação
+        </button>
+      `;
+    }
+    if (task.errorScreenshotUrl) {
+      mediaButtonsHtml += `
+        <button class="btn-view-screenshot error-screenshot" onclick="event.stopPropagation(); viewScreenshot('${task.errorScreenshotUrl}', 'Print do Erro')">
+          📸 Ver Print do Erro
+        </button>
+      `;
+    }
+    if (task.dashboardScreenshotUrl) {
+      mediaButtonsHtml += `
+        <button class="btn-view-screenshot dashboard-screenshot" onclick="event.stopPropagation(); viewScreenshot('${task.dashboardScreenshotUrl}', 'Print do Painel')">
+          📊 Ver Print do Painel
         </button>
       `;
     }
@@ -220,7 +234,7 @@ function updateQueueUI() {
       <div class="queue-item-left">
         <strong>${formatName(task.type)}</strong>
         <span>ID: ${task.id} • ${time}</span>
-        ${videoButtonHtml}
+        <div class="media-buttons-row">${mediaButtonsHtml}</div>
       </div>
       <span class="badge badge-${task.status}">${task.status}</span>
     `;
@@ -384,20 +398,51 @@ function clearConsole() {
   document.getElementById('captcha-alert').style.display = 'none';
 }
 
-// Modal de Vídeo
+// Modal de Mídia (Vídeo ou Imagem)
 function watchVideo(videoUrl) {
   const modal = document.getElementById('video-modal');
   const player = document.getElementById('modal-video-player');
+  const imgPreview = document.getElementById('modal-image-preview');
+  const modalTitle = document.getElementById('modal-title');
+
+  modalTitle.textContent = '🎥 Gravação de Execução';
+  imgPreview.style.display = 'none';
+  imgPreview.src = '';
+
   player.src = videoUrl;
+  player.style.display = 'block';
   modal.style.display = 'flex';
   player.play().catch(() => {});
+}
+
+function viewScreenshot(imageUrl, title) {
+  const modal = document.getElementById('video-modal');
+  const player = document.getElementById('modal-video-player');
+  const imgPreview = document.getElementById('modal-image-preview');
+  const modalTitle = document.getElementById('modal-title');
+
+  player.pause();
+  player.src = '';
+  player.style.display = 'none';
+
+  modalTitle.textContent = `📸 ${title}`;
+  imgPreview.src = imageUrl;
+  imgPreview.style.display = 'block';
+  modal.style.display = 'flex';
 }
 
 function closeVideoModal() {
   const modal = document.getElementById('video-modal');
   const player = document.getElementById('modal-video-player');
+  const imgPreview = document.getElementById('modal-image-preview');
+
   player.pause();
   player.src = '';
+  player.style.display = 'none';
+  
+  imgPreview.src = '';
+  imgPreview.style.display = 'none';
+  
   modal.style.display = 'none';
 }
 
