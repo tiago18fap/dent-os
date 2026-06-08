@@ -77,8 +77,9 @@ export async function run(credentials, log, taskId = 'unknown') {
       
       log('Clicando no botão de entrar...');
       const loginButton = page.locator('#login-submit-btn, button[type="submit"], button:has-text("Acessar loja"), button:has-text("Entrar")').first();
-      await loginButton.click().catch(() => {
-        log('Aviso: Botão de entrar não localizado ou não clicável, clique manualmente se necessário.', 'WARN');
+      await loginButton.click({ timeout: 5000 }).catch(async () => {
+        log('Aviso: Botão de entrar não foi clicado automaticamente. Tentando enviar formulário pressionando Enter...', 'WARN');
+        await passwordInput.press('Enter').catch(() => {});
       });
 
       log('Aguardando tela de dois fatores (2FA) ou sucesso no login...');
