@@ -31,6 +31,27 @@ async function checkIsLogged(page) {
   }
 }
 
+/**
+ * Helper para aguardar a presença de seletores em qualquer frame da página
+ */
+async function waitForSelectorInAnyFrame(page, selectors, timeoutMs = 30000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    for (const frame of page.frames()) {
+      for (const selector of selectors) {
+        try {
+          const el = frame.locator(selector).first();
+          if (await el.isVisible()) {
+            return frame;
+          }
+        } catch (e) {}
+      }
+    }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  return null;
+}
+
 export async function run(credentials, log, taskId = 'unknown', controller = {}) {
   const { username, password, webhookUrl, webhookSecret, storeDomain } = credentials;
   
@@ -320,126 +341,233 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
     }
 
     if (success) {
-      const nuvempagoUrl = storeUrl.split('/admin')[0] + '/admin/nuvempago#/dashboard/';
-      log(`Navegando para o painel do NuvemPago (${nuvempagoUrl})...`);
-      await page.goto(nuvempagoUrl, { waitUntil: 'networkidle', timeout: 40000 }).catch((e) => {
-        log('Aviso ao navegar para o painel do NuvemPago: ' + e.message, 'WARN');
-      });
-      await sleep(10000); // Dar tempo para os componentes React/Angular carregarem na tela
+      // Determinar a URL administrativa limpa e segura
+      let baseAdminUrl = storeUrl.split('/admin')[0];
+      const currentUrlStr = page.url();
+      log(`URL atual da página pós-login: ${currentUrlStr}`);
+      
+      if (baseAdminUrl.includes('nuvemshop.com.br/login') || baseAdminUrl.includes('nuvemshop.com.br/auth')) {
+        try {
+          const currentUrlObj = new URL(currentUrlStr);
+          if (currentUrlObj.hostname.includes('lojavirtualnuvem.com.br') || 
+              (currentUrlObj.hostname.includes('nuvemshop.com.br') && !currentUrlObj.hostname.includes('www.nuvemshop.com.br'))) {
+            baseAdminUrl = currentUrlObj.origin;
+            log(`Origem da loja extraída da URL atual: ${baseAdminUrl}`);
+          }
+        } catch (e) {
+          log(`Erro ao extrair origem da URL atual: ${e.message}`, 'WARN');
+        }
+      }
+      
+      if (baseAdminUrl.includes('nuvemshop.com.br/login') || baseAdminUrl.includes('nuvemshop.com.br/auth')) {
+        try {
+          const urlObj = new URL(storeUrl);
+          const loginTo = urlObj.searchParams.get('login_to');
+          if (loginTo) {
+            const loginToObj = new URL(loginTo);
+            baseAdminUrl = loginToObj.origin;
+            log(`Origem da loja extraída do parâmetro login_to: ${baseAdminUrl}`);
+          }
+        } catch (e) {
+          log(`Erro ao extrair origem do login_to: ${e.message}`, 'WARN');
+        }
+      }
 
-      // Salvar screenshot do painel para podermos inspecionar a estrutura real dos elementos
+      const nuvempagoUrl = baseAdminUrl + '/admin/nuvempago/#/dashboard/';
+      log(`Navegando para o painel do Nuvem Pago...`);
+
+      let loaded = false;
+
+      // 1. Tentar navegação interna via clique no menu lateral "Nuvem Pago"
+      try {
+        const nuvempagoMenuBtn = page.locator('a:has-text("Nuvem Pago"), [role="menuitem"]:has-text("Nuvem Pago"), li:has-text("Nuvem Pago"), span:has-text("Nuvem Pago")').first();
+        if (await nuvempagoMenuBtn.isVisible({ timeout: 5000 })) {
+          log('Menu lateral "Nuvem Pago" localizado. Clicando...');
+          await nuvempagoMenuBtn.click();
+          
+          log('Aguardando carregamento dos elementos do painel após clique...');
+          const loadedFrame = await waitForSelectorInAnyFrame(page, [
+            'text="Saldo disponível"',
+            'text="Pagamentos"',
+            'th:has-text("Cliente")',
+            'text="Forma de pagamento"'
+          ], 15000);
+
+          if (loadedFrame) {
+            log('Painel Nuvem Pago carregado com sucesso via menu lateral!');
+            loaded = true;
+          } else {
+            log('Aviso: Painel não carregou via clique. Prosseguindo para navegação direta.', 'WARN');
+          }
+        }
+      } catch (err) {
+        log('Aviso ao tentar clicar no menu lateral: ' + err.message, 'WARN');
+      }
+
+      // 2. Fallback para navegação direta por URL
+      if (!loaded) {
+        log(`Navegando via URL direta para: ${nuvempagoUrl}`);
+        await page.goto(nuvempagoUrl, { waitUntil: 'networkidle', timeout: 45000 }).catch((e) => {
+          log('Aviso ao navegar para a URL direta: ' + e.message, 'WARN');
+        });
+      }
+
+      // Aguardar carregar elementos em qualquer frame (iframe)
+      log('Aguardando elementos principais do painel em qualquer frame...');
+      const targetFrame = await waitForSelectorInAnyFrame(page, [
+        'text="Saldo disponível"',
+        'text="Pagamentos"',
+        'th:has-text("Cliente")',
+        'text="Forma de pagamento"'
+      ], 30000);
+
+      if (targetFrame) {
+        log(`Painel identificado no frame: ${targetFrame.url() || 'Main Frame'}`);
+      } else {
+        log('Aviso: Elementos do painel não foram identificados após o carregamento.', 'WARN');
+      }
+
+      await sleep(5000); // 5 segundos de segurança para renderização final dos dados
+
+      // Salvar screenshot do painel
       const dashScreenshot = path.resolve('data/media', `dashboard_${taskId}.png`);
       await page.screenshot({ path: dashScreenshot }).catch(() => {});
-      log(`Print do painel NuvemPago salvo para análise em: dashboard_${taskId}.png`);
+      log(`Print do painel NuvemPago salvo para visualização em: dashboard_${taskId}.png`);
 
-      // Extrair textos da página para analisar o saldo e extrato reais
-      const pageText = await page.evaluate(() => document.body.textContent || '');
-      fs.writeFileSync(path.resolve('data/media', `dashboard_text_${taskId}.txt`), pageText, 'utf-8');
-      log(`Texto do painel salvo para análise em: dashboard_text_${taskId}.txt`);
+      // Extrair textos de todos os frames para análise
+      let combinedText = '';
+      for (const frame of page.frames()) {
+        try {
+          const txt = await frame.evaluate(() => document.body.textContent || '');
+          combinedText += `\n--- Frame [${frame.url()}] ---\n${txt}\n`;
+        } catch (e) {}
+      }
+      fs.writeFileSync(path.resolve('data/media', `dashboard_text_${taskId}.txt`), combinedText, 'utf-8');
+      log(`Textos de todos os frames salvos para análise em: dashboard_text_${taskId}.txt`);
 
       log('Extraindo saldo e histórico de transações do NuvemPay...');
       
       let balance = 0.00;
       let entries = [];
-      
-      try {
-        // Aguarda carregar elementos do dashboard
-        await page.waitForSelector('text=Saldo disponível, text=Lançamentos futuros, th:has-text("Cliente")', { timeout: 30000 }).catch(() => {
-          log('Aviso: Elementos do dashboard demoraram para carregar.', 'WARN');
-        });
+      let balanceText = null;
+      let rawRows = [];
 
-        // 1. Extração do Saldo Disponível (mais robusta com busca na árvore DOM)
-        const balanceText = await page.evaluate(() => {
-          const elements = Array.from(document.querySelectorAll('*'));
-          for (const el of elements) {
-            if (el.children.length > 3) continue; 
-            const text = el.textContent || el.innerText || '';
-            if (/saldo\s+dispon[íi]vel/i.test(text)) {
-              let current = el;
-              for (let depth = 0; depth < 4; depth++) {
-                if (!current) break;
-                const currentText = current.textContent || current.innerText || '';
-                const match = currentText.match(/R\$\s*(-?[\d.,]+)/i);
-                if (match) {
-                  return match[0];
+      // Varre todos os frames para extrair os dados
+      for (const frame of page.frames()) {
+        const frameUrl = frame.url();
+        try {
+          // Extrair Saldo Disponível neste frame
+          const foundBalance = await frame.evaluate(() => {
+            const elements = Array.from(document.querySelectorAll('*'));
+            for (const el of elements) {
+              if (el.children.length > 3) continue; 
+              const text = el.textContent || el.innerText || '';
+              if (/saldo\s+dispon[íi]vel/i.test(text)) {
+                let current = el;
+                for (let depth = 0; depth < 4; depth++) {
+                  if (!current) break;
+                  const currentText = current.textContent || current.innerText || '';
+                  const match = currentText.match(/R\$\s*(-?[\d.,]+)/i);
+                  if (match) {
+                    return match[0];
+                  }
+                  current = current.parentElement;
                 }
-                current = current.parentElement;
               }
+            }
+
+            // Fallback por linha do texto total do corpo
+            const bodyText = document.body.innerText || document.body.textContent || '';
+            const lines = bodyText.split('\n').map(l => l.trim()).filter(Boolean);
+            for (let i = 0; i < lines.length; i++) {
+              if (/saldo\s+dispon[íi]vel/i.test(lines[i])) {
+                for (let j = i; j < Math.min(lines.length, i + 6); j++) {
+                  const match = lines[j].match(/R\$\s*(-?[\d.,]+)/i);
+                  if (match) return match[0];
+                }
+              }
+            }
+            return null;
+          });
+
+          if (foundBalance) {
+            log(`Saldo de R$ localizado no frame [${frameUrl || 'Main'}]: ${foundBalance}`);
+            if (!balanceText) {
+              balanceText = foundBalance;
             }
           }
 
-          // Fallback por linha do texto total do corpo
-          const bodyText = document.body.innerText || document.body.textContent || '';
-          const lines = bodyText.split('\n').map(l => l.trim()).filter(Boolean);
-          for (let i = 0; i < lines.length; i++) {
-            if (/saldo\s+dispon[íi]vel/i.test(lines[i])) {
-              for (let j = i; j < Math.min(lines.length, i + 6); j++) {
-                const match = lines[j].match(/R\$\s*(-?[\d.,]+)/i);
-                if (match) return match[0];
+          // Extrair transações neste frame
+          const foundRows = await frame.evaluate(() => {
+            const parsed = [];
+            
+            const tables = Array.from(document.querySelectorAll('table'));
+            for (const table of tables) {
+              const ths = Array.from(table.querySelectorAll('th, td[class*="header" i]')).map(el => el.textContent.trim().toLowerCase());
+              const hasRequired = ths.some(h => h.includes('cliente') || h.includes('valor') || h.includes('estado') || h.includes('status'));
+              if (!hasRequired) continue;
+
+              const trs = Array.from(table.querySelectorAll('tbody tr, tr:not(:first-child)'));
+              for (const tr of trs) {
+                const tds = Array.from(tr.querySelectorAll('td'));
+                if (tds.length >= 4) {
+                  parsed.push({
+                    source: 'table',
+                    headers: ths,
+                    cells: tds.map(td => td.textContent.trim())
+                  });
+                }
+              }
+              if (parsed.length > 0) return parsed;
+            }
+
+            // Fallback para divs estruturadas
+            const allElements = Array.from(document.querySelectorAll('div, tr, li'));
+            for (const el of allElements) {
+              if (el.children.length < 3 || el.children.length > 10) continue;
+              if (el.querySelectorAll('div').length > 6) continue;
+              
+              const text = el.textContent || '';
+              const hasStatus = /aprov/i.test(text) || /recus/i.test(text) || /pend/i.test(text) || /cancel/i.test(text);
+              const hasValue = text.match(/R\$\s*[\d.,]+/);
+              
+              if (hasStatus && hasValue) {
+                const cells = Array.from(el.children).map(c => c.textContent.trim()).filter(Boolean);
+                if (cells.length >= 4) {
+                  parsed.push({
+                    source: 'div-row',
+                    cells
+                  });
+                }
               }
             }
-          }
-          return null;
-        });
+            return parsed;
+          });
 
+          if (foundRows && foundRows.length > 0) {
+            log(`Localizadas ${foundRows.length} linhas brutas no frame [${frameUrl || 'Main'}]`);
+            if (foundRows.length > rawRows.length) {
+              rawRows = foundRows;
+            }
+          }
+        } catch (e) {
+          log(`Aviso ao inspecionar frame [${frameUrl}]: ${e.message}`, 'WARN');
+        }
+      }
+
+      try {
         if (balanceText) {
-          log(`Texto de saldo localizado: ${balanceText}`);
+          log(`Texto de saldo localizado final: ${balanceText}`);
           const isNegative = balanceText.includes('-');
           const clean = balanceText.replace(/[-\sR$]/g, '').trim();
           const normalized = clean.replace(/\./g, '').replace(',', '.');
           balance = parseFloat(normalized) || 0.00;
           if (isNegative) balance = -balance;
         } else {
-          log('Aviso: Não foi possível localizar o texto do Saldo disponível na página. Usando 0.00.', 'WARN');
+          log('Aviso: Não foi possível localizar o texto do Saldo disponível em nenhum frame. Usando 0.00.', 'WARN');
         }
 
-        // 2. Extração das transações (filtrando por Aprovado)
-        const rawRows = await page.evaluate(() => {
-          const parsed = [];
-          
-          const tables = Array.from(document.querySelectorAll('table'));
-          for (const table of tables) {
-            const ths = Array.from(table.querySelectorAll('th, td[class*="header" i]')).map(el => el.textContent.trim().toLowerCase());
-            const hasRequired = ths.some(h => h.includes('cliente') || h.includes('valor') || h.includes('estado'));
-            if (!hasRequired) continue;
-
-            const trs = Array.from(table.querySelectorAll('tbody tr, tr:not(:first-child)'));
-            for (const tr of trs) {
-              const tds = Array.from(tr.querySelectorAll('td'));
-              if (tds.length >= 4) {
-                parsed.push({
-                  source: 'table',
-                  headers: ths,
-                  cells: tds.map(td => td.textContent.trim())
-                });
-              }
-            }
-            if (parsed.length > 0) return parsed;
-          }
-
-          const allElements = Array.from(document.querySelectorAll('div, tr, li'));
-          for (const el of allElements) {
-            if (el.children.length < 3 || el.children.length > 10) continue;
-            if (el.querySelectorAll('div').length > 6) continue;
-            
-            const text = el.textContent || '';
-            const hasStatus = /aprov/i.test(text) || /recus/i.test(text) || /pend/i.test(text) || /cancel/i.test(text);
-            const hasValue = text.match(/R\$\s*[\d.,]+/);
-            
-            if (hasStatus && hasValue) {
-              const cells = Array.from(el.children).map(c => c.textContent.trim()).filter(Boolean);
-              if (cells.length >= 4) {
-                parsed.push({
-                  source: 'div-row',
-                  cells
-                });
-              }
-            }
-          }
-          return parsed;
-        });
-
-        log(`Total de linhas brutas localizadas na tabela: ${rawRows.length}`);
+        log(`Total de linhas brutas localizadas para extração final: ${rawRows.length}`);
 
         const parseBRLAmount = (valStr) => {
           if (!valStr) return 0;
@@ -524,8 +652,10 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
             estado = r.cells[5] || '';
           }
 
-          // Filtrar estritamente por estado "Aprovado" ou "Aprovada"
-          if (estado && estado.toLowerCase().includes('aprov')) {
+          const approved = estado && estado.toLowerCase().includes('aprov');
+          log(`Linha analisada: Tipo="${tipo}", Data="${data}", Cliente="${cliente}", Forma="${forma}", Valor="${valor}", Estado="${estado}" -> ${approved ? 'APROVADA (processando)' : 'Ignorada'}`);
+
+          if (approved) {
             const amount = parseBRLAmount(valor);
             const posted_at = parsePTBRDate(data);
             
