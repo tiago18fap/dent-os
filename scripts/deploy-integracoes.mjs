@@ -46,26 +46,28 @@ async function main() {
   let context;
   try {
     context = await chromium.launchPersistentContext(SESSION_PATH, {
-      headless: false,
+      headless: true,
       channel: 'chrome',
       viewport: { width: 1280, height: 800 },
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-process-singleton',
-        '--disable-dev-shm-usage'
+        '--disable-dev-shm-usage',
+        '--disable-gpu'
       ],
     });
   } catch (err) {
     console.log('[WARN] Falha ao iniciar Chrome local com perfil. Tentando sem canal do Chrome...', err.message);
     context = await chromium.launchPersistentContext(SESSION_PATH, {
-      headless: false,
+      headless: true,
       viewport: { width: 1280, height: 800 },
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-process-singleton',
-        '--disable-dev-shm-usage'
+        '--disable-dev-shm-usage',
+        '--disable-gpu'
       ],
     });
   }
