@@ -116,6 +116,17 @@ async function processQueue() {
       currentTask.videoUrl = videoUrl;
     }
 
+    // Verificar e registrar referências para prints (screenshots) se existirem
+    const errorScreenshotFile = path.resolve('public', `error_${currentTask.id}.png`);
+    if (fs.existsSync(errorScreenshotFile)) {
+      currentTask.errorScreenshotUrl = `error_${currentTask.id}.png`;
+    }
+
+    const dashboardScreenshotFile = path.resolve('public', `dashboard_${currentTask.id}.png`);
+    if (fs.existsSync(dashboardScreenshotFile)) {
+      currentTask.dashboardScreenshotUrl = `dashboard_${currentTask.id}.png`;
+    }
+
     saveJSON(HISTORY_FILE, history);
     queueEvents.emit('status', currentTask);
     currentTask = null;

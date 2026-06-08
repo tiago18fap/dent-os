@@ -593,26 +593,59 @@ input:focus, select:focus {
   max-height: 500px;
 }
 
-/* Botão de gravação */
-.btn-watch-video {
+/* Botões de Mídia */
+.media-buttons-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.btn-watch-video, .btn-view-screenshot {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(6, 182, 212, 0.1);
-  color: var(--primary-color);
-  border: 1px solid rgba(6, 182, 212, 0.2);
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  margin-top: 8px;
   width: fit-content;
+}
+
+.btn-watch-video {
+  background: rgba(6, 182, 212, 0.1);
+  color: var(--primary-color);
+  border: 1px solid rgba(6, 182, 212, 0.2);
 }
 
 .btn-watch-video:hover {
   background: rgba(6, 182, 212, 0.25);
   border-color: var(--primary-color);
   box-shadow: 0 0 8px rgba(6, 182, 212, 0.3);
+}
+
+.btn-view-screenshot.error-screenshot {
+  background: rgba(244, 63, 94, 0.1);
+  color: var(--error-color);
+  border: 1px solid rgba(244, 63, 94, 0.2);
+}
+
+.btn-view-screenshot.error-screenshot:hover {
+  background: rgba(244, 63, 94, 0.25);
+  border-color: var(--error-color);
+  box-shadow: 0 0 8px rgba(244, 63, 94, 0.3);
+}
+
+.btn-view-screenshot.dashboard-screenshot {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--success-color);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.btn-view-screenshot.dashboard-screenshot:hover {
+  background: rgba(16, 185, 129, 0.25);
+  border-color: var(--success-color);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
 }
