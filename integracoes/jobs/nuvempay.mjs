@@ -18,9 +18,9 @@ async function checkIsLogged(page) {
     const urlObj = new URL(urlStr);
     const pathLower = urlObj.pathname.toLowerCase();
     
-    const hasLoggedPath = (pathLower.includes('/admin') || pathLower.includes('/home') || pathLower.includes('/dashboard')) && 
-                          !pathLower.includes('/login') && 
-                          !pathLower.includes('/auth');
+    const hasLoggedPath = (pathLower.includes('/admin') || pathLower.includes('/home') || pathLower.includes('/dashboard') || pathLower.includes('/nuvempago')) && 
+                          (!pathLower.includes('/login') || pathLower.includes('/nuvempago')) && 
+                          (!pathLower.includes('/auth') || pathLower.includes('/nuvempago'));
     
     const hasSidebar = await page.locator('[data-testid="sidebar"], .nav-sidebar, #admin-menu, #nuvempago-admin, .nuvempago-dashboard').first().isVisible().catch(() => false);
     const hasNuvemPagoElements = await page.locator('text=Saldo disponível, text=Lançamentos futuros, th:has-text("Cliente")').first().isVisible().catch(() => false);
