@@ -44,11 +44,31 @@ async function main() {
   }
 
   let context;
-  context = await chromium.launchPersistentContext(SESSION_PATH, {
-    headless: true,
-    viewport: { width: 1280, height: 800 },
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-  });
+  try {
+    context = await chromium.launchPersistentContext(SESSION_PATH, {
+      headless: false,
+      channel: 'chrome',
+      viewport: { width: 1280, height: 800 },
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-process-singleton',
+        '--disable-dev-shm-usage'
+      ],
+    });
+  } catch (err) {
+    console.log('[WARN] Falha ao iniciar Chrome local com perfil. Tentando sem canal do Chrome...', err.message);
+    context = await chromium.launchPersistentContext(SESSION_PATH, {
+      headless: false,
+      viewport: { width: 1280, height: 800 },
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-process-singleton',
+        '--disable-dev-shm-usage'
+      ],
+    });
+  }
 
   const page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
   
