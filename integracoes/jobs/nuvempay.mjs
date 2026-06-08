@@ -154,6 +154,8 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
         success = true;
       }
 
+      let formVisible = true;
+
       if (!success) {
         log(`Preenchendo e-mail de login: ${username}`);
         const emailInput = page.locator('#user-mail, input[name="user-mail"], input[type="email"], #email').first();
@@ -163,11 +165,12 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
             success = true;
           } else {
             log('Aviso: Campo de e-mail não localizado automaticamente.', 'WARN');
+            formVisible = false;
           }
         });
       }
       
-      if (!success) {
+      if (!success && formVisible) {
         log('Preenchendo senha...');
         const passwordInput = page.locator('#pass, input[name="pass"], input[type="password"], #password').first();
         await passwordInput.fill(password, { timeout: 5000 }).catch(async () => {
@@ -176,11 +179,12 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
             success = true;
           } else {
             log('Aviso: Campo de senha não localizado automaticamente.', 'WARN');
+            formVisible = false;
           }
         });
       }
       
-      if (!success) {
+      if (!success && formVisible) {
         await sleep(1000);
         log('Clicando no botão de entrar...');
         let clicked = false;
@@ -213,9 +217,10 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
         if (!clicked) {
           log('Aviso: Botão de entrar não foi clicado. Tentando enviar formulário pressionando Enter...', 'WARN');
           const passwordInput = page.locator('#pass, input[name="pass"], input[type="password"], #password').first();
-          await passwordInput.press('Enter').catch(() => {});
+          await passwordInput.press('Enter', { timeout: 2000 }).catch(() => {});
         }
       }
+    }
 
       log('Aguardando tela de dois fatores (2FA) ou sucesso no login...');
       let isMfaRequired = false;
