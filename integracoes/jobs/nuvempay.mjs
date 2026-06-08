@@ -177,8 +177,11 @@ export async function run(credentials, log, taskId = 'unknown') {
           }
 
           // Confirmar
-          const submitMfaBtn = page.locator('button[type="submit"], button:has-text("Enviar"), button:has-text("Confirmar"), button:has-text("Validar")').first();
-          await submitMfaBtn.click().catch(() => {});
+          const submitMfaBtn = page.locator('button[type="submit"], button:has-text("Enviar"), button:has-text("Confirmar"), button:has-text("Validar"), button:has-text("Acessar loja"), button[class*="submit" i]').first();
+          await submitMfaBtn.click({ force: true, timeout: 5000 }).catch(async () => {
+            log('Aviso: Botão de confirmar MFA não foi clicado automaticamente. Tentando Enter no campo...', 'WARN');
+            await mfaInput.press('Enter').catch(() => {});
+          });
           
           log('Aguardando conclusão do login pós-2FA...');
           for (let i = 0; i < 20; i++) {
