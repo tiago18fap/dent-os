@@ -7,10 +7,14 @@ const DATA_DIR = path.resolve('data');
 const CREDENTIALS_FILE = path.join(DATA_DIR, 'credentials.json');
 const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
 const JOBS_DIR = path.resolve('jobs');
+const MEDIA_DIR = path.join(DATA_DIR, 'media');
+const VIDEOS_DIR = path.join(MEDIA_DIR, 'videos');
 
 // Garantir que diretórios existem
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(JOBS_DIR)) fs.mkdirSync(JOBS_DIR, { recursive: true });
+if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
+if (!fs.existsSync(VIDEOS_DIR)) fs.mkdirSync(VIDEOS_DIR, { recursive: true });
 
 // Carregar dados iniciais de persistência
 function loadJSON(filePath, defaultVal = {}) {
@@ -36,6 +40,22 @@ function saveJSON(filePath, data) {
 // Estados iniciais
 let credentials = loadJSON(CREDENTIALS_FILE, {});
 let history = loadJSON(HISTORY_FILE, []);
+
+// Limpar/resetar tarefas que ficaram presas em estado 'rodando' ou 'pendente' de execuções anteriores
+let historyChanged = false;
+history.forEach(task => {
+  if (task.status === 'rodando' || task.status === 'pendente') {
+    task.status = 'erro';
+    task.finishedAt = new Date().toISOString();
+    task.error = 'Execução interrompida devido à reinicialização do servidor.';
+    if (!task.logs) task.logs = [];
+    task.logs.push(`[${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}] [ERROR] Execução interrompida devido à reinicialização do servidor.`);
+    historyChanged = true;
+  }
+});
+if (historyChanged) {
+  saveJSON(HISTORY_FILE, history);
+}
 
 // Gerenciador de eventos para logs
 class QueueEmitter extends EventEmitter {}
@@ -124,14 +144,14 @@ async function processQueue() {
     }
 
     // Verificar e registrar referências para prints (screenshots) se existirem
-    const errorScreenshotFile = path.resolve('public', `error_${currentTask.id}.png`);
+    const errorScreenshotFile = path.resolve('data/media', `error_${currentTask.id}.png`);
     if (fs.existsSync(errorScreenshotFile)) {
-      currentTask.errorScreenshotUrl = `error_${currentTask.id}.png`;
+      currentTask.errorScreenshotUrl = `media/error_${currentTask.id}.png`;
     }
 
-    const dashboardScreenshotFile = path.resolve('public', `dashboard_${currentTask.id}.png`);
+    const dashboardScreenshotFile = path.resolve('data/media', `dashboard_${currentTask.id}.png`);
     if (fs.existsSync(dashboardScreenshotFile)) {
-      currentTask.dashboardScreenshotUrl = `dashboard_${currentTask.id}.png`;
+      currentTask.dashboardScreenshotUrl = `media/dashboard_${currentTask.id}.png`;
     }
 
     saveJSON(HISTORY_FILE, history);
@@ -251,9 +271,9 @@ export const queueManager = {
       saveJSON(HISTORY_FILE, history);
 
       // Limpar arquivos físicos de mídia se existirem
-      const errorScreenshot = path.resolve('public', `error_${taskId}.png`);
-      const dashboardScreenshot = path.resolve('public', `dashboard_${taskId}.png`);
-      const videoFile = path.resolve('public/videos', `${taskId}.webm`);
+      const errorScreenshot = path.resolve('data/media', `error_${taskId}.png`);
+      const dashboardScreenshot = path.resolve('data/media', `dashboard_${taskId}.png`);
+      const videoFile = path.resolve('data/media/videos', `${taskId}.webm`);
 
       try { if (fs.existsSync(errorScreenshot)) fs.unlinkSync(errorScreenshot); } catch (e) {}
       try { if (fs.existsSync(dashboardScreenshot)) fs.unlinkSync(dashboardScreenshot); } catch (e) {}
@@ -268,8 +288,8 @@ export const queueManager = {
 
 // Helper para salvar e processar o vídeo gravado da tarefa
 function saveTaskVideo(taskId) {
-  const tempDir = path.resolve(`public/videos/temp/${taskId}`);
-  const destDir = path.resolve('public/videos');
+  const tempDir = path.resolve(`data/media/temp/${taskId}`);
+  const destDir = path.resolve('data/media/videos');
   
   if (fs.existsSync(tempDir)) {
     try {
@@ -285,7 +305,7 @@ function saveTaskVideo(taskId) {
         const destPath = path.join(destDir, `${taskId}.webm`);
         
         fs.renameSync(srcPath, destPath);
-        return `videos/${taskId}.webm`;
+        return `media/videos/${taskId}.webm`;
       }
     } catch (err) {
       console.error(`[ERR] Falha ao processar vídeo da tarefa ${taskId}:`, err.message);

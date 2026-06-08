@@ -8,6 +8,7 @@ const PORT = 3500;
 
 app.use(express.json());
 app.use(express.static(path.resolve('public')));
+app.use('/media', express.static(path.resolve('data/media')));
 
 // ══════════════════════════════════════════════════════════════
 // API Endpoints

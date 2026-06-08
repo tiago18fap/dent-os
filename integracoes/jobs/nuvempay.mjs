@@ -77,7 +77,7 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
       '--no-default-browser-check'
     ],
     recordVideo: {
-      dir: path.resolve(`public/videos/temp/${taskId}`),
+      dir: path.resolve(`data/media/temp/${taskId}`),
       size: { width: 1280, height: 800 }
     }
   });
@@ -297,13 +297,13 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
       await sleep(10000); // Dar tempo para os componentes React/Angular carregarem na tela
 
       // Salvar screenshot do painel para podermos inspecionar a estrutura real dos elementos
-      const dashScreenshot = path.resolve('public', `dashboard_${taskId}.png`);
+      const dashScreenshot = path.resolve('data/media', `dashboard_${taskId}.png`);
       await page.screenshot({ path: dashScreenshot }).catch(() => {});
       log(`Print do painel NuvemPago salvo para análise em: dashboard_${taskId}.png`);
 
       // Extrair textos da página para analisar o saldo e extrato reais
       const pageText = await page.evaluate(() => document.body.textContent || '');
-      fs.writeFileSync(path.resolve('public', `dashboard_text_${taskId}.txt`), pageText, 'utf-8');
+      fs.writeFileSync(path.resolve('data/media', `dashboard_text_${taskId}.txt`), pageText, 'utf-8');
       log(`Texto do painel salvo para análise em: dashboard_text_${taskId}.txt`);
 
       log('Extraindo saldo e histórico de transações do NuvemPay...');
@@ -571,7 +571,7 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
   } catch (err) {
     log(`Erro na automação do NuvemPay: ${err.message}`, 'ERROR');
     try {
-      const screenshotPath = path.resolve('public', `error_${taskId}.png`);
+      const screenshotPath = path.resolve('data/media', `error_${taskId}.png`);
       await page.screenshot({ path: screenshotPath });
       log(`Print do erro salvo para visualização em: error_${taskId}.png`);
     } catch (e) {
