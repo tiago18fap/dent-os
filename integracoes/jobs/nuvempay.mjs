@@ -75,12 +75,39 @@ export async function run(credentials, log, taskId = 'unknown') {
         log('Aviso: Campo de senha não localizado automaticamente, por favor digite-o no navegador.', 'WARN');
       });
       
+      await sleep(1000);
       log('Clicando no botão de entrar...');
-      const loginButton = page.locator('#login-submit-btn, button[type="submit"], button:has-text("Acessar loja"), button:has-text("Entrar")').first();
-      await loginButton.click({ timeout: 5000 }).catch(async () => {
-        log('Aviso: Botão de entrar não foi clicado automaticamente. Tentando enviar formulário pressionando Enter...', 'WARN');
+      let clicked = false;
+      try {
+        const loginButton = page.locator('#login-submit-btn').first();
+        await loginButton.click({ force: true, timeout: 5000 });
+        clicked = true;
+        log('Botão de entrar clicado com sucesso (Playwright force).');
+      } catch (err) {
+        log('Aviso ao clicar via Playwright: ' + err.message + '. Tentando via JavaScript...', 'WARN');
+        try {
+          clicked = await page.evaluate(() => {
+            const btn = document.getElementById('login-submit-btn') || 
+                        document.querySelector('button[type="submit"]') || 
+                        document.querySelector('.v2-submit-btn');
+            if (btn) {
+              btn.click();
+              return true;
+            }
+            return false;
+          });
+          if (clicked) {
+            log('Clique no botão de entrar executado via JavaScript.');
+          }
+        } catch (jsErr) {
+          log('Erro ao clicar via JS: ' + jsErr.message, 'ERROR');
+        }
+      }
+
+      if (!clicked) {
+        log('Aviso: Botão de entrar não foi clicado. Tentando enviar formulário pressionando Enter...', 'WARN');
         await passwordInput.press('Enter').catch(() => {});
-      });
+      }
 
       log('Aguardando tela de dois fatores (2FA) ou sucesso no login...');
       let isMfaRequired = false;
