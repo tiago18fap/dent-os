@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
+import { execSync } from 'child_process';
 
 /**
  * Script de Automação do NuvemPay (Job Playwright)
@@ -34,12 +35,46 @@ export async function run(credentials, log, taskId = 'unknown') {
   const { username, password, webhookUrl, webhookSecret, storeDomain } = credentials;
   
   const sessionPath = path.resolve('data/sessions/nuvempay');
+  
+  // Limpar processos órfãos do Chromium/Chrome no container para evitar conflitos de trava
+  if (process.platform !== 'win32') {
+    try {
+      log('Limpando processos órfãos do Chromium/Chrome no container...');
+      execSync('pkill -9 -f chromium || true');
+      execSync('pkill -9 -f chrome || true');
+      await sleep(1000);
+    } catch (err) {
+      log('Aviso ao limpar processos órfãos: ' + err.message, 'WARN');
+    }
+  }
+
+  // Limpar travas/locks de sessões anteriores que possam impedir a inicialização
+  const locks = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+  for (const lock of locks) {
+    try {
+      const lockPath = path.join(sessionPath, lock);
+      if (fs.existsSync(lockPath)) {
+        log(`Limpando trava ${lock} de execução anterior...`);
+        fs.unlinkSync(lockPath);
+      }
+    } catch (e) {
+      log(`Aviso ao remover ${lock}: ` + e.message, 'WARN');
+    }
+  }
+
   log(`Iniciando navegador Chromium com perfil persistente em: ${sessionPath}...`);
   
   const context = await chromium.launchPersistentContext(sessionPath, {
     headless: false, // Abre a janela física para permitir resolver Captcha/MFA
     viewport: { width: 1280, height: 800 },
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-default-browser-check'
+    ],
     recordVideo: {
       dir: path.resolve(`public/videos/temp/${taskId}`),
       size: { width: 1280, height: 800 }
@@ -171,9 +206,22 @@ export async function run(credentials, log, taskId = 'unknown') {
         for (const sel of mfaSelectors) {
           const input = page.locator(sel).first();
           if (await input.isVisible().catch(() => false)) {
-            isMfaRequired = true;
-            mfaInput = input;
-            break;
+            // Verificar se a URL ou o texto da página confirma fluxo de 2FA/MFA/Verificação
+            const u = page.url().toLowerCase();
+            const pageText = await page.evaluate(() => document.body.innerText.toLowerCase()).catch(() => '');
+            const isMfaUrl = u.includes('/login') || u.includes('/auth') || u.includes('/mfa') || u.includes('/verification');
+            const hasMfaText = pageText.includes('autenticador') || pageText.includes('google authenticator') || 
+                               pageText.includes('verificacao') || pageText.includes('verificação') || 
+                               pageText.includes('2fa') || pageText.includes('duas etapas') || 
+                               pageText.includes('codigo de seguranca') || pageText.includes('código de segurança') ||
+                               pageText.includes('authenticator') || pageText.includes('dois fatores') || 
+                               pageText.includes('two-factor');
+            
+            if (isMfaUrl || hasMfaText) {
+              isMfaRequired = true;
+              mfaInput = input;
+              break;
+            }
           }
         }
 
