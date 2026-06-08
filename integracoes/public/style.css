@@ -649,3 +649,43 @@ input:focus, select:focus {
   border-color: var(--success-color);
   box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
 }
+
+/* Botões de Ação de Tarefas (Cancelar e Excluir) */
+.btn-task-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: fit-content;
+  border: none;
+}
+
+.btn-action-cancel {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.btn-action-cancel:hover {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: #f87171;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+}
+
+.btn-action-delete {
+  background: rgba(156, 163, 175, 0.1);
+  color: var(--text-secondary);
+  border: 1px solid rgba(156, 163, 175, 0.2);
+}
+
+.btn-action-delete:hover {
+  background: rgba(156, 163, 175, 0.25);
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+  box-shadow: 0 0 8px rgba(156, 163, 175, 0.2);
+}

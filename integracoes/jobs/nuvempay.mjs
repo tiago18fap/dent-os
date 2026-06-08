@@ -31,7 +31,7 @@ async function checkIsLogged(page) {
   }
 }
 
-export async function run(credentials, log, taskId = 'unknown') {
+export async function run(credentials, log, taskId = 'unknown', controller = {}) {
   const { username, password, webhookUrl, webhookSecret, storeDomain } = credentials;
   
   const sessionPath = path.resolve('data/sessions/nuvempay');
@@ -81,6 +81,12 @@ export async function run(credentials, log, taskId = 'unknown') {
       size: { width: 1280, height: 800 }
     }
   });
+
+  // Registrar callback para cancelamento manual pelo usuário
+  controller.cancel = async () => {
+    log('Cancelamento solicitado pelo usuário. Encerrando execução do navegador...', 'WARN');
+    await context.close().catch(() => {});
+  };
 
   const page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
   let success = false;

@@ -103,6 +103,40 @@ app.post('/api/queue/mfa', (req, res) => {
   }
 });
 
+// POST /api/queue/cancel - Cancelar uma tarefa ativa (em execução ou pendente)
+app.post('/api/queue/cancel', (req, res) => {
+  const { taskId } = req.body;
+  if (!taskId) {
+    return res.status(400).json({ error: 'Forneça o taskId da tarefa a ser cancelada.' });
+  }
+  
+  const cleanTaskId = taskId.replace(/[^a-zA-Z0-9_-]/g, '');
+  const result = queueManager.cancel(cleanTaskId);
+  
+  if (result.success) {
+    res.json(result);
+  } else {
+    res.status(400).json(result);
+  }
+});
+
+// DELETE /api/queue/task/:id - Excluir uma tarefa do histórico
+app.delete('/api/queue/task/:id', (req, res) => {
+  const { id } = req.params;
+  if (!id) {
+    return res.status(400).json({ error: 'Forneça o ID da tarefa.' });
+  }
+  
+  const cleanTaskId = id.replace(/[^a-zA-Z0-9_-]/g, '');
+  const result = queueManager.delete(cleanTaskId);
+  
+  if (result.success) {
+    res.json(result);
+  } else {
+    res.status(400).json(result);
+  }
+});
+
 // ══════════════════════════════════════════════════════════════
 // Server-Sent Events (SSE) - Transmitir logs em tempo real para o Frontend
 // ══════════════════════════════════════════════════════════════

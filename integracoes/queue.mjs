@@ -45,6 +45,7 @@ export const queueEvents = new QueueEmitter();
 const taskQueue = [];
 let isProcessing = false;
 let currentTask = null;
+const activeJobs = new Map();
 
 // Função para enviar logs para a console da web
 export function logTask(taskId, message, level = 'INFO') {
@@ -94,8 +95,12 @@ async function processQueue() {
 
     logTask(id, 'Executando script do Playwright...');
     
-    // Executar o script passando credenciais, webhook, logger customizado e ID da tarefa
-    const result = await run(creds, (msg, lvl) => logTask(id, msg, lvl), id);
+    // Registrar controller para cancelamento da tarefa em execução
+    const controller = { cancel: null };
+    activeJobs.set(id, controller);
+
+    // Executar o script passando credenciais, webhook, logger customizado, ID da tarefa e o controller
+    const result = await run(creds, (msg, lvl) => logTask(id, msg, lvl), id, controller);
     
     // Conclusão com sucesso
     currentTask.status = 'sucesso';
@@ -105,11 +110,13 @@ async function processQueue() {
     
   } catch (err) {
     // Falha ou erro
-    currentTask.status = 'erro';
+    currentTask.status = err.message.includes('Cancelamento') ? 'cancelado' : 'erro';
     currentTask.finishedAt = new Date().toISOString();
     currentTask.error = err.message;
-    logTask(id, `Erro durante a execução: ${err.message}`, 'ERROR');
+    logTask(id, `Erro durante a execução: ${err.message}`, err.message.includes('Cancelamento') ? 'WARN' : 'ERROR');
   } finally {
+    // Remover o job do registro de tarefas ativas
+    activeJobs.delete(id);
     // Processar e salvar gravação de vídeo se disponível
     const videoUrl = saveTaskVideo(currentTask.id);
     if (videoUrl) {
@@ -190,6 +197,72 @@ export const queueManager = {
       queueLength: taskQueue.length,
       currentTask
     };
+  },
+
+  // Cancelar uma tarefa pendente ou em execução
+  cancel(taskId) {
+    // 1. Verificar na fila de tarefas pendentes
+    const pendingIdx = taskQueue.findIndex(t => t.id === taskId);
+    if (pendingIdx !== -1) {
+      const task = taskQueue.splice(pendingIdx, 1)[0];
+      task.status = 'cancelado';
+      task.finishedAt = new Date().toISOString();
+      logTask(taskId, 'Tarefa cancelada na fila de pendentes pelo usuário.', 'WARN');
+      
+      const histTask = history.find(t => t.id === taskId);
+      if (histTask) {
+        histTask.status = 'cancelado';
+        histTask.finishedAt = task.finishedAt;
+      }
+      saveJSON(HISTORY_FILE, history);
+      queueEvents.emit('status', task);
+      return { success: true, message: 'Tarefa pendente cancelada.' };
+    }
+
+    // 2. Se for a tarefa atual em execução
+    if (currentTask && currentTask.id === taskId) {
+      const controller = activeJobs.get(taskId);
+      if (controller && typeof controller.cancel === 'function') {
+        logTask(taskId, 'Cancelamento da tarefa em execução solicitado pelo usuário.', 'WARN');
+        controller.cancel(); // fecha o navegador Playwright
+        return { success: true, message: 'Cancelamento enviado para a tarefa em execução.' };
+      }
+    }
+
+    return { success: false, error: 'Tarefa não pôde ser cancelada ou não foi localizada.' };
+  },
+
+  // Excluir uma tarefa do histórico
+  delete(taskId) {
+    if (currentTask && currentTask.id === taskId) {
+      return { success: false, error: 'Não é possível excluir uma tarefa que está em execução. Cancele-a primeiro.' };
+    }
+
+    // Remover da fila de pendentes se estiver lá por segurança
+    const pendingIdx = taskQueue.findIndex(t => t.id === taskId);
+    if (pendingIdx !== -1) {
+      taskQueue.splice(pendingIdx, 1);
+    }
+
+    // Remover do histórico
+    const histIdx = history.findIndex(t => t.id === taskId);
+    if (histIdx !== -1) {
+      history.splice(histIdx, 1);
+      saveJSON(HISTORY_FILE, history);
+
+      // Limpar arquivos físicos de mídia se existirem
+      const errorScreenshot = path.resolve('public', `error_${taskId}.png`);
+      const dashboardScreenshot = path.resolve('public', `dashboard_${taskId}.png`);
+      const videoFile = path.resolve('public/videos', `${taskId}.webm`);
+
+      try { if (fs.existsSync(errorScreenshot)) fs.unlinkSync(errorScreenshot); } catch (e) {}
+      try { if (fs.existsSync(dashboardScreenshot)) fs.unlinkSync(dashboardScreenshot); } catch (e) {}
+      try { if (fs.existsSync(videoFile)) fs.unlinkSync(videoFile); } catch (e) {}
+
+      return { success: true, message: 'Tarefa excluída do histórico com sucesso.' };
+    }
+
+    return { success: false, error: 'Tarefa não encontrada no histórico.' };
   }
 };
 

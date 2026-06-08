@@ -230,11 +230,29 @@ function updateQueueUI() {
       `;
     }
 
+    let actionButtonHtml = '';
+    if (task.status === 'rodando' || task.status === 'pendente') {
+      actionButtonHtml = `
+        <button class="btn-task-action btn-action-cancel" onclick="event.stopPropagation(); handleCancelTask('${task.id}')">
+          🛑 Cancelar
+        </button>
+      `;
+    } else {
+      actionButtonHtml = `
+        <button class="btn-task-action btn-action-delete" onclick="event.stopPropagation(); handleDeleteTask('${task.id}')">
+          🗑️ Excluir
+        </button>
+      `;
+    }
+
     item.innerHTML = `
       <div class="queue-item-left">
         <strong>${formatName(task.type)}</strong>
         <span>ID: ${task.id} • ${time}</span>
-        <div class="media-buttons-row">${mediaButtonsHtml}</div>
+        <div class="media-buttons-row">
+          ${mediaButtonsHtml}
+          ${actionButtonHtml}
+        </div>
       </div>
       <span class="badge badge-${task.status}">${task.status}</span>
     `;
@@ -478,5 +496,53 @@ async function handleSubmitMfa() {
     }
   } catch (err) {
     alert('Erro de conexão ao enviar o código MFA.');
+  }
+}
+
+// Cancelar tarefa ativa (em execução ou pendente)
+async function handleCancelTask(taskId) {
+  if (!confirm('Deseja realmente cancelar esta tarefa?')) return;
+  
+  try {
+    const res = await fetch('api/queue/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      alert('Tarefa cancelada com sucesso.');
+      loadQueue();
+    } else {
+      alert(`Erro: ${data.error}`);
+    }
+  } catch (err) {
+    alert('Erro de conexão ao cancelar tarefa.');
+  }
+}
+
+// Excluir tarefa do histórico
+async function handleDeleteTask(taskId) {
+  if (!confirm('Deseja excluir esta tarefa do histórico?')) return;
+  
+  try {
+    const res = await fetch(`api/queue/task/${taskId}`, {
+      method: 'DELETE'
+    });
+    const data = await res.json();
+    if (data.success) {
+      if (activeTaskId === taskId) {
+        activeTaskId = null;
+        document.getElementById('current-task-name').textContent = 'Selecione uma tarefa para ver os logs';
+        document.getElementById('terminal-logs').innerHTML = '<span class="term-line system-line">[SISTEMA] Aguardando inicialização de logs...</span>';
+        document.getElementById('mfa-alert').style.display = 'none';
+        document.getElementById('captcha-alert').style.display = 'none';
+      }
+      loadQueue();
+    } else {
+      alert(`Erro: ${data.error}`);
+    }
+  } catch (err) {
+    alert('Erro de conexão ao excluir tarefa.');
   }
 }
