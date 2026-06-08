@@ -181,14 +181,16 @@ export async function run(credentials, log, taskId = 'unknown') {
           await submitMfaBtn.click().catch(() => {});
           
           log('Aguardando conclusão do login pós-2FA...');
-          await sleep(6000);
-          
-          const u = page.url().toLowerCase();
-          const logged = ((u.includes('/admin') || u.includes('/home') || u.includes('/dashboard')) && !u.includes('/login') && !u.includes('/auth')) || 
-                         await page.locator('[data-testid="sidebar"], .nav-sidebar, #admin-menu').first().isVisible().catch(() => false);
-          if (logged) {
-            log('Login efetuado com sucesso após 2FA!');
-            success = true;
+          for (let i = 0; i < 20; i++) {
+            const u = page.url().toLowerCase();
+            const logged = ((u.includes('/admin') || u.includes('/home') || u.includes('/dashboard')) && !u.includes('/login') && !u.includes('/auth')) || 
+                           await page.locator('[data-testid="sidebar"], .nav-sidebar, #admin-menu').first().isVisible().catch(() => false);
+            if (logged) {
+              log('Login efetuado com sucesso após 2FA!');
+              success = true;
+              break;
+            }
+            await sleep(1000);
           }
         } else {
           throw new Error('Tempo limite excedido aguardando o código 2FA.');
