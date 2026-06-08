@@ -44,33 +44,16 @@ async function main() {
   }
 
   let context;
-  try {
-    context = await chromium.launchPersistentContext(SESSION_PATH, {
-      headless: true,
-      channel: 'chrome',
-      viewport: { width: 1280, height: 800 },
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-process-singleton',
-        '--disable-dev-shm-usage',
-        '--disable-gpu'
-      ],
-    });
-  } catch (err) {
-    console.log('[WARN] Falha ao iniciar Chrome local com perfil. Tentando sem canal do Chrome...', err.message);
-    context = await chromium.launchPersistentContext(SESSION_PATH, {
-      headless: true,
-      viewport: { width: 1280, height: 800 },
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-process-singleton',
-        '--disable-dev-shm-usage',
-        '--disable-gpu'
-      ],
-    });
-  }
+  context = await chromium.launchPersistentContext(SESSION_PATH, {
+    headless: false,
+    viewport: { width: 1280, height: 800 },
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu'
+    ],
+  });
 
   const page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
   
@@ -79,6 +62,28 @@ async function main() {
     await page.goto('https://qfjowr.easypanel.host/projects/dentos', { waitUntil: 'domcontentloaded' });
     await sleep(4000);
     await handleNotFoundRecovery(page);
+
+    // Verificar se fomos jogados para a página de login
+    if (page.url().includes('/login')) {
+      console.log('[INFO] Sessão do EasyPanel expirada ou ausente no perfil local.');
+      console.log('[INFO] POR FAVOR, REALIZE O LOGIN na janela aberta do Chromium para que o deploy prossiga...');
+      
+      let loggedIn = false;
+      for (let i = 0; i < 120; i++) {
+        await sleep(1000);
+        const currentUrl = page.url();
+        if (currentUrl.includes('/projects/dentos')) {
+          loggedIn = true;
+          console.log('[INFO] Login detectado com sucesso! Prosseguindo...');
+          await sleep(2000);
+          break;
+        }
+      }
+      
+      if (!loggedIn) {
+        throw new Error('Tempo limite de login de 120 segundos excedido.');
+      }
+    }
     await takeScreenshot(page, 'deploy_int_01_dentos_list');
 
     // 2. Verificar se o serviço "integracoes" já existe
