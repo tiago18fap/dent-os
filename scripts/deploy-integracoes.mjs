@@ -268,6 +268,11 @@ async function main() {
     } catch (e) {
       console.log('[WARN] Não foi possível salvar o print de erro:', e.message);
     }
+  } finally {
+    if (context) {
+      console.log('[INFO] Fechando navegador...');
+      await context.close().catch(() => {});
+    }
   }
 }
 
