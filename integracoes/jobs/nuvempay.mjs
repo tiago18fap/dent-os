@@ -8,6 +8,28 @@ import fs from 'fs';
  * @param {Object} credentials - Credenciais de login (username, password, webhookUrl, webhookSecret)
  * @param {Function} log - Função para logar mensagens no console web da fila
  */
+/**
+ * Helper para verificar se a página já está logada
+ */
+async function checkIsLogged(page) {
+  try {
+    const urlStr = page.url();
+    const urlObj = new URL(urlStr);
+    const pathLower = urlObj.pathname.toLowerCase();
+    
+    const hasLoggedPath = (pathLower.includes('/admin') || pathLower.includes('/home') || pathLower.includes('/dashboard')) && 
+                          !pathLower.includes('/login') && 
+                          !pathLower.includes('/auth');
+    
+    const hasSidebar = await page.locator('[data-testid="sidebar"], .nav-sidebar, #admin-menu, #nuvempago-admin, .nuvempago-dashboard').first().isVisible().catch(() => false);
+    const hasNuvemPagoElements = await page.locator('text=Saldo disponível, text=Lançamentos futuros, th:has-text("Cliente")').first().isVisible().catch(() => false);
+    
+    return hasLoggedPath || hasSidebar || hasNuvemPagoElements;
+  } catch (e) {
+    return false;
+  }
+}
+
 export async function run(credentials, log, taskId = 'unknown') {
   const { username, password, webhookUrl, webhookSecret, storeDomain } = credentials;
   
@@ -46,10 +68,27 @@ export async function run(credentials, log, taskId = 'unknown') {
     await page.goto(storeUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await sleep(2000);
 
-    // Verificar se já entrou direto por causa da sessão persistente
-    const currentUrl = page.url().toLowerCase();
-    const isAlreadyLogged = ((currentUrl.includes('/admin') || currentUrl.includes('/home') || currentUrl.includes('/dashboard')) && !currentUrl.includes('/login') && !currentUrl.includes('/auth')) ||
-                            await page.locator('[data-testid="sidebar"], .nav-sidebar, #admin-menu').first().isVisible().catch(() => false);
+    // Verificar se já entrou direto por causa da sessão persistente com polling loop (redirecionamento)
+    let isAlreadyLogged = false;
+    log('Verificando se a sessão já está autenticada (aguardando possíveis redirecionamentos)...');
+    
+    for (let i = 0; i < 8; i++) {
+      if (await checkIsLogged(page)) {
+        isAlreadyLogged = true;
+        break;
+      }
+      
+      // Se form de login estiver visível, paramos de esperar mais cedo (após 3 segs)
+      if (i >= 3) {
+        const emailInputVisible = await page.locator('#user-mail, input[name="user-mail"], input[type="email"], #email').first().isVisible().catch(() => false);
+        const emailBtnVisible = await page.locator('#email-login-btn, button:has-text("Entrar com e-mail"), a:has-text("Entrar com e-mail")').first().isVisible().catch(() => false);
+        if (emailInputVisible || emailBtnVisible) {
+          log('Tela de login/SSO detectada. Prosseguindo para autenticação.');
+          break;
+        }
+      }
+      await sleep(1000);
+    }
     
     if (isAlreadyLogged) {
       log('Sessão persistente ativa detectada! Login efetuado automaticamente.');
@@ -123,11 +162,7 @@ export async function run(credentials, log, taskId = 'unknown') {
       ];
 
       for (let i = 0; i < 15; i++) {
-        const u = page.url().toLowerCase();
-        const logged = ((u.includes('/admin') || u.includes('/home') || u.includes('/dashboard')) && !u.includes('/login') && !u.includes('/auth')) || 
-                       await page.locator('[data-testid="sidebar"], .nav-sidebar, #admin-menu').first().isVisible().catch(() => false);
-        
-        if (logged) {
+        if (await checkIsLogged(page)) {
           log('Login efetuado com sucesso!');
           success = true;
           break;
@@ -185,10 +220,7 @@ export async function run(credentials, log, taskId = 'unknown') {
           
           log('Aguardando conclusão do login pós-2FA...');
           for (let i = 0; i < 20; i++) {
-            const u = page.url().toLowerCase();
-            const logged = ((u.includes('/admin') || u.includes('/home') || u.includes('/dashboard')) && !u.includes('/login') && !u.includes('/auth')) || 
-                           await page.locator('[data-testid="sidebar"], .nav-sidebar, #admin-menu').first().isVisible().catch(() => false);
-            if (logged) {
+            if (await checkIsLogged(page)) {
               log('Login efetuado com sucesso após 2FA!');
               success = true;
               break;
@@ -230,27 +262,33 @@ export async function run(credentials, log, taskId = 'unknown') {
           log('Aviso: Elementos do dashboard demoraram para carregar.', 'WARN');
         });
 
-        // 1. Extração do Saldo Disponível
+        // 1. Extração do Saldo Disponível (mais robusta com busca na árvore DOM)
         const balanceText = await page.evaluate(() => {
-          const xpathResult = document.evaluate("//*[contains(text(), 'Saldo disponível')]", document, null, XPathResult.ANY_TYPE, null);
-          let node = xpathResult.iterateNext();
-          while (node) {
-            const parent = node.closest('div');
-            if (parent) {
-              const text = parent.innerText || parent.textContent || '';
-              const match = text.match(/R\$\s*([\d.,]+)/);
-              if (match) return match[0];
+          const elements = Array.from(document.querySelectorAll('*'));
+          for (const el of elements) {
+            if (el.children.length > 3) continue; 
+            const text = el.textContent || el.innerText || '';
+            if (/saldo\s+dispon[íi]vel/i.test(text)) {
+              let current = el;
+              for (let depth = 0; depth < 4; depth++) {
+                if (!current) break;
+                const currentText = current.textContent || current.innerText || '';
+                const match = currentText.match(/R\$\s*(-?[\d.,]+)/i);
+                if (match) {
+                  return match[0];
+                }
+                current = current.parentElement;
+              }
             }
-            node = xpathResult.iterateNext();
           }
 
-          // Fallback
-          const bodyText = document.body.innerText || '';
-          const lines = bodyText.split('\n');
+          // Fallback por linha do texto total do corpo
+          const bodyText = document.body.innerText || document.body.textContent || '';
+          const lines = bodyText.split('\n').map(l => l.trim()).filter(Boolean);
           for (let i = 0; i < lines.length; i++) {
-            if (lines[i].includes('Saldo disponível')) {
-              for (let j = i; j < Math.min(lines.length, i + 5); j++) {
-                const match = lines[j].match(/R\$\s*([\d.,]+)/);
+            if (/saldo\s+dispon[íi]vel/i.test(lines[i])) {
+              for (let j = i; j < Math.min(lines.length, i + 6); j++) {
+                const match = lines[j].match(/R\$\s*(-?[\d.,]+)/i);
                 if (match) return match[0];
               }
             }
@@ -260,9 +298,11 @@ export async function run(credentials, log, taskId = 'unknown') {
 
         if (balanceText) {
           log(`Texto de saldo localizado: ${balanceText}`);
-          const clean = balanceText.replace(/R\$\s*/i, '').trim();
+          const isNegative = balanceText.includes('-');
+          const clean = balanceText.replace(/[-\sR$]/g, '').trim();
           const normalized = clean.replace(/\./g, '').replace(',', '.');
           balance = parseFloat(normalized) || 0.00;
+          if (isNegative) balance = -balance;
         } else {
           log('Aviso: Não foi possível localizar o texto do Saldo disponível na página. Usando 0.00.', 'WARN');
         }
@@ -271,7 +311,6 @@ export async function run(credentials, log, taskId = 'unknown') {
         const rawRows = await page.evaluate(() => {
           const parsed = [];
           
-          // Tentar encontrar tabela padrão
           const tables = Array.from(document.querySelectorAll('table'));
           for (const table of tables) {
             const ths = Array.from(table.querySelectorAll('th, td[class*="header" i]')).map(el => el.textContent.trim().toLowerCase());
@@ -292,14 +331,13 @@ export async function run(credentials, log, taskId = 'unknown') {
             if (parsed.length > 0) return parsed;
           }
 
-          // Fallback para grid baseada em divs
           const allElements = Array.from(document.querySelectorAll('div, tr, li'));
           for (const el of allElements) {
             if (el.children.length < 3 || el.children.length > 10) continue;
             if (el.querySelectorAll('div').length > 6) continue;
             
             const text = el.textContent || '';
-            const hasStatus = text.includes('Aprovado') || text.includes('Recusado') || text.includes('Pendente') || text.includes('Cancelado');
+            const hasStatus = /aprov/i.test(text) || /recus/i.test(text) || /pend/i.test(text) || /cancel/i.test(text);
             const hasValue = text.match(/R\$\s*[\d.,]+/);
             
             if (hasStatus && hasValue) {
@@ -319,17 +357,35 @@ export async function run(credentials, log, taskId = 'unknown') {
 
         const parseBRLAmount = (valStr) => {
           if (!valStr) return 0;
-          const clean = valStr.replace(/R\$\s*/i, '').trim();
-          return parseFloat(clean.replace(/\./g, '').replace(',', '.')) || 0;
+          const isNegative = valStr.includes('-');
+          const clean = valStr.replace(/[-\sR$]/g, '').trim();
+          const num = parseFloat(clean.replace(/\./g, '').replace(',', '.')) || 0;
+          return isNegative ? -num : num;
         };
 
         const parsePTBRDate = (dateStr) => {
           if (!dateStr) return new Date().toISOString();
           const months = {
             jan: 0, fev: 1, mar: 2, abr: 3, mai: 4, jun: 5,
-            jul: 6, ago: 7, set: 8, out: 9, nov: 10, dez: 11
+            jul: 6, ago: 7, set: 8, out: 9, nov: 10, dez: 11,
+            janeiro: 0, fevereiro: 1, marco: 2, abril: 3, maio: 4, junho: 5,
+            julho: 6, agosto: 7, setembro: 8, outubro: 9, novembro: 10, dezembro: 11
           };
-          const clean = dateStr.trim().toLowerCase();
+          const clean = dateStr.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          
+          const slashMatch = clean.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+          if (slashMatch) {
+            const day = parseInt(slashMatch[1], 10);
+            const month = parseInt(slashMatch[2], 10) - 1;
+            let year = slashMatch[3] ? parseInt(slashMatch[3], 10) : new Date().getFullYear();
+            if (slashMatch[3] && slashMatch[3].length === 2) {
+              year += 2000;
+            }
+            if (!isNaN(day) && !isNaN(month)) {
+              return new Date(year, month, day, 12, 0, 0).toISOString();
+            }
+          }
+
           const parts = clean.split(/\s+/);
           if (parts.length >= 2) {
             const day = parseInt(parts[0], 10);
@@ -338,9 +394,12 @@ export async function run(credentials, log, taskId = 'unknown') {
             if (!isNaN(day) && month !== undefined) {
               const now = new Date();
               let year = now.getFullYear();
+              if (parts[2] && /^\d{4}$/.test(parts[2])) {
+                year = parseInt(parts[2], 10);
+              }
               const parsedDate = new Date(year, month, day);
-              if (parsedDate > now) {
-                year -= 1; // Ano anterior
+              if (!parts[2] && parsedDate > now) {
+                year -= 1;
               }
               return new Date(year, month, day, 12, 0, 0).toISOString();
             }
@@ -379,8 +438,8 @@ export async function run(credentials, log, taskId = 'unknown') {
             estado = r.cells[5] || '';
           }
 
-          // Filtrar estritamente por estado "Aprovado"
-          if (estado && estado.toLowerCase().includes('aprovado')) {
+          // Filtrar estritamente por estado "Aprovado" ou "Aprovada"
+          if (estado && estado.toLowerCase().includes('aprov')) {
             const amount = parseBRLAmount(valor);
             const posted_at = parsePTBRDate(data);
             
