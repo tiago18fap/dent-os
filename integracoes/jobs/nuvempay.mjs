@@ -64,19 +64,19 @@ export async function run(credentials, log, taskId = 'unknown') {
       }
 
       log(`Preenchendo e-mail de login: ${username}`);
-      const emailInput = page.locator('input[type="email"], input[name="email"], #email, #username').first();
+      const emailInput = page.locator('#user-mail, input[name="user-mail"], input[type="email"], #email').first();
       await emailInput.fill(username).catch(() => {
         log('Aviso: Campo de e-mail não localizado automaticamente, por favor digite-o no navegador.', 'WARN');
       });
       
       log('Preenchendo senha...');
-      const passwordInput = page.locator('input[type="password"], input[name="password"], #password').first();
+      const passwordInput = page.locator('#pass, input[name="pass"], input[type="password"], #password').first();
       await passwordInput.fill(password).catch(() => {
         log('Aviso: Campo de senha não localizado automaticamente, por favor digite-o no navegador.', 'WARN');
       });
       
       log('Clicando no botão de entrar...');
-      const loginButton = page.locator('button[type="submit"], input[type="submit"], button:has-text("Entrar")').first();
+      const loginButton = page.locator('#login-submit-btn, button[type="submit"], button:has-text("Acessar loja"), button:has-text("Entrar")').first();
       await loginButton.click().catch(() => {
         log('Aviso: Botão de entrar não localizado ou não clicável, clique manualmente se necessário.', 'WARN');
       });
