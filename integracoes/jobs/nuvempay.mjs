@@ -220,7 +220,6 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
           await passwordInput.press('Enter', { timeout: 2000 }).catch(() => {});
         }
       }
-    }
 
       log('Aguardando tela de dois fatores (2FA) ou sucesso no login...');
       let isMfaRequired = false;
