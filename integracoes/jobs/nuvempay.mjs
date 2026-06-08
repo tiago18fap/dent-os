@@ -48,17 +48,18 @@ export async function run(credentials, log, taskId = 'unknown') {
     }
   }
 
-  // Limpar travas/locks de sessões anteriores que possam impedir a inicialização
+  // Limpar travas/locks de sessões anteriores que possam impedir a inicialização (tratando links quebrados)
   const locks = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
   for (const lock of locks) {
     try {
       const lockPath = path.join(sessionPath, lock);
-      if (fs.existsSync(lockPath)) {
-        log(`Limpando trava ${lock} de execução anterior...`);
-        fs.unlinkSync(lockPath);
-      }
+      // Usamos unlinkSync diretamente pois fs.existsSync retorna false para links simbólicos quebrados
+      fs.unlinkSync(lockPath);
+      log(`Limpando trava ${lock} de execução anterior...`);
     } catch (e) {
-      log(`Aviso ao remover ${lock}: ` + e.message, 'WARN');
+      if (e.code !== 'ENOENT') {
+        log(`Aviso ao remover ${lock}: ` + e.message, 'WARN');
+      }
     }
   }
 
