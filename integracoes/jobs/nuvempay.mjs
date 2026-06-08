@@ -114,14 +114,14 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
     let isAlreadyLogged = false;
     log('Verificando se a sessão já está autenticada (aguardando possíveis redirecionamentos)...');
     
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 15; i++) {
       if (await checkIsLogged(page)) {
         isAlreadyLogged = true;
         break;
       }
       
-      // Se form de login estiver visível, paramos de esperar mais cedo (após 3 segs)
-      if (i >= 3) {
+      // Se form de login estiver visível, paramos de esperar mais cedo (após 5 segs)
+      if (i >= 5) {
         const emailInputVisible = await page.locator('#user-mail, input[name="user-mail"], input[type="email"], #email').first().isVisible().catch(() => false);
         const emailBtnVisible = await page.locator('#email-login-btn, button:has-text("Entrar com e-mail"), a:has-text("Entrar com e-mail")').first().isVisible().catch(() => false);
         if (emailInputVisible || emailBtnVisible) {
@@ -136,58 +136,85 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
       log('Sessão persistente ativa detectada! Login efetuado automaticamente.');
       success = true;
     } else {
-      // Se a tela inicial de SSO (Google/Apple/Email) estiver ativa, clicar em "Entrar com e-mail"
-      const emailLoginBtn = page.locator('#email-login-btn, button:has-text("Entrar com e-mail"), a:has-text("Entrar com e-mail")').first();
-      if (await emailLoginBtn.isVisible().catch(() => false)) {
-        log('Tela de login com SSO ativa. Clicando em "Entrar com e-mail"...');
-        await emailLoginBtn.click().catch(() => {});
-        await sleep(1500);
-      }
-
-      log(`Preenchendo e-mail de login: ${username}`);
-      const emailInput = page.locator('#user-mail, input[name="user-mail"], input[type="email"], #email').first();
-      await emailInput.fill(username).catch(() => {
-        log('Aviso: Campo de e-mail não localizado automaticamente, por favor digite-o no navegador.', 'WARN');
-      });
-      
-      log('Preenchendo senha...');
-      const passwordInput = page.locator('#pass, input[name="pass"], input[type="password"], #password').first();
-      await passwordInput.fill(password).catch(() => {
-        log('Aviso: Campo de senha não localizado automaticamente, por favor digite-o no navegador.', 'WARN');
-      });
-      
-      await sleep(1000);
-      log('Clicando no botão de entrar...');
-      let clicked = false;
-      try {
-        const loginButton = page.locator('#login-submit-btn').first();
-        await loginButton.click({ force: true, timeout: 5000 });
-        clicked = true;
-        log('Botão de entrar clicado com sucesso (Playwright force).');
-      } catch (err) {
-        log('Aviso ao clicar via Playwright: ' + err.message + '. Tentando via JavaScript...', 'WARN');
-        try {
-          clicked = await page.evaluate(() => {
-            const btn = document.getElementById('login-submit-btn') || 
-                        document.querySelector('button[type="submit"]') || 
-                        document.querySelector('.v2-submit-btn');
-            if (btn) {
-              btn.click();
-              return true;
-            }
-            return false;
-          });
-          if (clicked) {
-            log('Clique no botão de entrar executado via JavaScript.');
-          }
-        } catch (jsErr) {
-          log('Erro ao clicar via JS: ' + jsErr.message, 'ERROR');
+      if (await checkIsLogged(page)) {
+        log('Acesso autenticado detectado. Pulando fluxo de login.');
+        success = true;
+      } else {
+        // Se a tela inicial de SSO (Google/Apple/Email) estiver ativa, clicar em "Entrar com e-mail"
+        const emailLoginBtn = page.locator('#email-login-btn, button:has-text("Entrar com e-mail"), a:has-text("Entrar com e-mail")').first();
+        if (await emailLoginBtn.isVisible().catch(() => false)) {
+          log('Tela de login com SSO ativa. Clicando em "Entrar com e-mail"...');
+          await emailLoginBtn.click().catch(() => {});
+          await sleep(1500);
         }
       }
 
-      if (!clicked) {
-        log('Aviso: Botão de entrar não foi clicado. Tentando enviar formulário pressionando Enter...', 'WARN');
-        await passwordInput.press('Enter').catch(() => {});
+      if (!success && await checkIsLogged(page)) {
+        log('Acesso autenticado detectado. Pulando fluxo de login.');
+        success = true;
+      }
+
+      if (!success) {
+        log(`Preenchendo e-mail de login: ${username}`);
+        const emailInput = page.locator('#user-mail, input[name="user-mail"], input[type="email"], #email').first();
+        await emailInput.fill(username, { timeout: 5000 }).catch(async () => {
+          if (await checkIsLogged(page)) {
+            log('Acesso autenticado detectado durante preenchimento de e-mail.');
+            success = true;
+          } else {
+            log('Aviso: Campo de e-mail não localizado automaticamente.', 'WARN');
+          }
+        });
+      }
+      
+      if (!success) {
+        log('Preenchendo senha...');
+        const passwordInput = page.locator('#pass, input[name="pass"], input[type="password"], #password').first();
+        await passwordInput.fill(password, { timeout: 5000 }).catch(async () => {
+          if (await checkIsLogged(page)) {
+            log('Acesso autenticado detectado durante preenchimento de senha.');
+            success = true;
+          } else {
+            log('Aviso: Campo de senha não localizado automaticamente.', 'WARN');
+          }
+        });
+      }
+      
+      if (!success) {
+        await sleep(1000);
+        log('Clicando no botão de entrar...');
+        let clicked = false;
+        try {
+          const loginButton = page.locator('#login-submit-btn').first();
+          await loginButton.click({ force: true, timeout: 5000 });
+          clicked = true;
+          log('Botão de entrar clicado com sucesso (Playwright force).');
+        } catch (err) {
+          log('Aviso ao clicar via Playwright: ' + err.message + '. Tentando via JavaScript...', 'WARN');
+          try {
+            clicked = await page.evaluate(() => {
+              const btn = document.getElementById('login-submit-btn') || 
+                          document.querySelector('button[type="submit"]') || 
+                          document.querySelector('.v2-submit-btn');
+              if (btn) {
+                btn.click();
+                return true;
+              }
+              return false;
+            });
+            if (clicked) {
+              log('Clique no botão de entrar executado via JavaScript.');
+            }
+          } catch (jsErr) {
+            log('Erro ao clicar via JS: ' + jsErr.message, 'ERROR');
+          }
+        }
+
+        if (!clicked) {
+          log('Aviso: Botão de entrar não foi clicado. Tentando enviar formulário pressionando Enter...', 'WARN');
+          const passwordInput = page.locator('#pass, input[name="pass"], input[type="password"], #password').first();
+          await passwordInput.press('Enter').catch(() => {});
+        }
       }
 
       log('Aguardando tela de dois fatores (2FA) ou sucesso no login...');
@@ -581,7 +608,14 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
   } finally {
     log('Fechando navegador em 3 segundos...');
     await sleep(3000);
-    await context.close().catch(() => {});
+    try {
+      await Promise.race([
+        context.close(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ao fechar navegador')), 5000))
+      ]);
+    } catch (e) {
+      log('Aviso ao fechar navegador: ' + e.message, 'WARN');
+    }
   }
 
   return dataScraped;
