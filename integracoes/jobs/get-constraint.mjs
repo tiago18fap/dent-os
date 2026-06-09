@@ -13,7 +13,7 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
     
     log('Conectando ao banco de dados...');
     const client = new Client({
-      host: '2600:1f13:838:6e16:a389:50ce:4846:847b',
+      host: '2600:1f1c:b5d:e601:194f:a066:b21b:df13',
       port: 5432,
       user: 'postgres',
       password: '@Tito1803@!',
