@@ -11,10 +11,16 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
     const { default: pkg } = await import('pg');
     const { Client } = pkg;
     
-    const connectionString = 'postgresql://postgres:%40Tito1803%40%21@[2600:1f13:838:6e16:a389:50ce:4846:847b]:5432/postgres';
-    
     log('Conectando ao banco de dados...');
-    const client = new Client({ connectionString, connectionTimeoutMillis: 10000 });
+    const client = new Client({
+      host: '2600:1f13:838:6e16:a389:50ce:4846:847b',
+      port: 5432,
+      user: 'postgres',
+      password: '@Tito1803@!',
+      database: 'postgres',
+      connectionTimeoutMillis: 10000
+    });
+    
     await client.connect();
     log('Conectado com sucesso!');
     
