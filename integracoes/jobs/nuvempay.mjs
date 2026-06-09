@@ -755,6 +755,20 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
       log(`Resposta de erro do Webhook: ${respText}`, 'WARN');
     }
 
+    return {
+      success: true,
+      dataScraped,
+      webhook: {
+        url: webhookUrl,
+        sentPayload: dataScraped,
+        status: response ? response.status : null,
+        statusText: response ? response.statusText : null,
+        responseBody: respText || null,
+        error: null
+      },
+      error: null
+    };
+
   } catch (err) {
     log(`Erro na automação do NuvemPay: ${err.message}`, 'ERROR');
     try {
@@ -764,7 +778,20 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
     } catch (e) {
       log(`Não foi possível tirar print do erro: ${e.message}`, 'WARN');
     }
-    throw err;
+
+    return {
+      success: false,
+      dataScraped: (dataScraped && Object.keys(dataScraped).length > 0) ? dataScraped : null,
+      webhook: {
+        url: webhookUrl,
+        sentPayload: (dataScraped && Object.keys(dataScraped).length > 0) ? dataScraped : null,
+        status: null,
+        statusText: null,
+        responseBody: null,
+        error: err.message
+      },
+      error: err.message
+    };
   } finally {
     log('Fechando navegador em 3 segundos...');
     await sleep(3000);
@@ -777,8 +804,6 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
       log('Aviso ao fechar navegador: ' + e.message, 'WARN');
     }
   }
-
-  return dataScraped;
 }
 
 function sleep(ms) {

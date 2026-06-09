@@ -122,10 +122,15 @@ async function processQueue() {
     // Executar o script passando credenciais, webhook, logger customizado, ID da tarefa e o controller
     const result = await run(creds, (msg, lvl) => logTask(id, msg, lvl), id, controller);
     
+    currentTask.result = result;
+
+    if (result && typeof result === 'object' && result.error) {
+      throw new Error(result.error);
+    }
+    
     // Conclusão com sucesso
     currentTask.status = 'sucesso';
     currentTask.finishedAt = new Date().toISOString();
-    currentTask.result = result;
     logTask(id, 'Integração concluída com sucesso!');
     
   } catch (err) {

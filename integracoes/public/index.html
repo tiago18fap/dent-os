@@ -123,6 +123,36 @@
         </div>
       </div>
       
+      <!-- Detalhes do Webhook -->
+      <div class="webhook-details-box" id="webhook-details-box" style="display: none;">
+        <div class="webhook-details-header">
+          <h3>🔗 Dados de Exportação (Webhook)</h3>
+          <span class="badge" id="webhook-status-badge">Sem status</span>
+        </div>
+        <div class="webhook-info-grid">
+          <div class="webhook-info-item">
+            <span class="info-label">URL do Webhook</span>
+            <div class="info-value-container">
+              <span id="webhook-url-display" class="code-text">-</span>
+            </div>
+          </div>
+          <div class="webhook-json-row">
+            <div class="webhook-json-column">
+              <span class="json-title">Payload Enviado (JSON)</span>
+              <div class="json-code-wrapper">
+                <pre><code id="webhook-payload-display">{}</code></pre>
+              </div>
+            </div>
+            <div class="webhook-json-column">
+              <span class="json-title">Resposta do Webhook</span>
+              <div class="json-code-wrapper">
+                <pre><code id="webhook-response-display">Sem resposta</code></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
       <div class="captcha-alert" id="captcha-alert" style="display: none;">
         <span class="warning-icon">⚠️</span>
         <div>
