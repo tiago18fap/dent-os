@@ -373,7 +373,7 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
         }
       }
 
-      const nuvempagoUrl = baseAdminUrl + '/admin/nuvempago/#/dashboard/';
+      const nuvempagoUrl = baseAdminUrl + '/admin/nuvempago/#/statement/available';
       log(`Navegando para o painel do Nuvem Pago...`);
 
       let loaded = false;
@@ -416,9 +416,7 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
       log('Aguardando elementos principais do painel em qualquer frame...');
       const targetFrame = await waitForSelectorInAnyFrame(page, [
         'text="Saldo disponível"',
-        'text="Pagamentos"',
-        'th:has-text("Cliente")',
-        'text="Forma de pagamento"'
+        'text="Lançamentos futuros"'
       ], 30000);
 
       if (targetFrame) {
@@ -499,56 +497,145 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
 
           // Extrair transações neste frame
           const foundRows = await frame.evaluate(() => {
-            const parsed = [];
+            const dateRegex = /^\d{1,2}\s+de\s+(janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)/i;
+            const valueRegex = /([\+\-])\s*R\$\s*([\d\.,]+)/;
             
-            const tables = Array.from(document.querySelectorAll('table'));
-            for (const table of tables) {
-              const ths = Array.from(table.querySelectorAll('th, td[class*="header" i]')).map(el => el.textContent.trim().toLowerCase());
-              const hasRequired = ths.some(h => h.includes('cliente') || h.includes('valor') || h.includes('estado') || h.includes('status'));
-              if (!hasRequired) continue;
-
-              const trs = Array.from(table.querySelectorAll('tbody tr, tr:not(:first-child)'));
-              for (const tr of trs) {
-                const tds = Array.from(tr.querySelectorAll('td'));
-                if (tds.length >= 4) {
-                  parsed.push({
-                    source: 'table',
-                    headers: ths,
-                    cells: tds.map(td => td.textContent.trim())
-                  });
-                }
-              }
-              if (parsed.length > 0) return parsed;
-            }
-
-            // Fallback para divs estruturadas
-            const allElements = Array.from(document.querySelectorAll('div, tr, li'));
+            // 1. Encontrar todos os elementos de data
+            const dateElements = [];
+            const allElements = document.querySelectorAll('*');
             for (const el of allElements) {
-              if (el.children.length < 3 || el.children.length > 10) continue;
-              if (el.querySelectorAll('div').length > 6) continue;
-              
-              const text = el.textContent || '';
-              const hasStatus = /aprov/i.test(text) || /recus/i.test(text) || /pend/i.test(text) || /cancel/i.test(text);
-              const hasValue = text.match(/R\$\s*[\d.,]+/);
-              
-              if (hasStatus && hasValue) {
-                const cells = Array.from(el.children).map(c => c.textContent.trim()).filter(Boolean);
-                if (cells.length >= 4) {
-                  parsed.push({
-                    source: 'div-row',
-                    cells
-                  });
+              const text = (el.textContent || '').trim();
+              if (dateRegex.test(text)) {
+                // Garante que é o menor elemento com essa data (sem filhos com a mesma data)
+                let hasChildDate = false;
+                for (const child of el.children) {
+                  if (dateRegex.test((child.textContent || '').trim())) {
+                    hasChildDate = true;
+                    break;
+                  }
+                }
+                if (!hasChildDate) {
+                  dateElements.push(el);
                 }
               }
             }
-            return parsed;
+            
+            // 2. Encontrar todos os nós de valor
+            const valueNodes = [];
+            for (const el of allElements) {
+              if (el.children.length > 5) continue;
+              const text = (el.textContent || '').trim();
+              if (valueRegex.test(text)) {
+                let childMatches = false;
+                for (const child of el.children) {
+                  if (valueRegex.test((child.textContent || '').trim())) {
+                    childMatches = true;
+                    break;
+                  }
+                }
+                if (!childMatches) {
+                  valueNodes.push(el);
+                }
+              }
+            }
+            
+            // 3. Para cada nó de valor, subir até o container da linha
+            const rows = [];
+            for (const valNode of valueNodes) {
+              let rowNode = valNode;
+              for (let i = 0; i < 4; i++) {
+                if (rowNode.parentElement) {
+                  const parentText = (rowNode.parentElement.textContent || '').trim();
+                  const ownText = (rowNode.textContent || '').trim();
+                  if (parentText.length > ownText.length + 3) {
+                    rowNode = rowNode.parentElement;
+                    break;
+                  }
+                  rowNode = rowNode.parentElement;
+                }
+              }
+              
+              // Coleta textos internos
+              const childTexts = [];
+              function collectText(node) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                  const t = node.textContent.trim();
+                  if (t) childTexts.push(t);
+                } else {
+                  for (const child of node.childNodes) {
+                    collectText(child);
+                  }
+                }
+              }
+              collectText(rowNode);
+              
+              const cleanTexts = childTexts.filter(t => t && t !== '>' && t !== '<');
+              const valIdx = cleanTexts.findIndex(t => valueRegex.test(t));
+              let valText = '';
+              let description = '';
+              let subDescription = '';
+              
+              if (valIdx !== -1) {
+                valText = cleanTexts[valIdx];
+                const otherTexts = cleanTexts.filter((_, idx) => idx !== valIdx);
+                description = otherTexts[0] || 'Transação';
+                subDescription = otherTexts[1] || '';
+              } else {
+                valText = valNode.textContent;
+                description = cleanTexts[0] || 'Transação';
+                subDescription = cleanTexts[1] || '';
+              }
+              
+              // Posição vertical absoluta
+              const rect = rowNode.getBoundingClientRect();
+              const top = rect.top + window.scrollY;
+              
+              rows.push({
+                type: 'row',
+                top,
+                description,
+                subDescription,
+                valText
+              });
+            }
+            
+            // 4. Mapear elementos de data para itens ordenáveis
+            const dates = dateElements.map(el => {
+              const rect = el.getBoundingClientRect();
+              const top = rect.top + window.scrollY;
+              return {
+                type: 'date',
+                top,
+                dateText: el.textContent.trim()
+              };
+            });
+            
+            // 5. Unificar e ordenar por top (posição vertical)
+            const unified = [...dates, ...rows].sort((a, b) => a.top - b.top);
+            
+            // 6. Associar datas às linhas
+            let currentDate = '';
+            const parsedEntries = [];
+            
+            for (const item of unified) {
+              if (item.type === 'date') {
+                currentDate = item.dateText;
+              } else if (item.type === 'row') {
+                parsedEntries.push({
+                  date: currentDate,
+                  description: item.description,
+                  subDescription: item.subDescription,
+                  valText: item.valText
+                });
+              }
+            }
+            
+            return parsedEntries;
           });
 
           if (foundRows && foundRows.length > 0) {
             log(`Localizadas ${foundRows.length} linhas brutas no frame [${frameUrl || 'Main'}]`);
-            if (foundRows.length > rawRows.length) {
-              rawRows = foundRows;
-            }
+            rawRows = foundRows;
           }
         } catch (e) {
           log(`Aviso ao inspecionar frame [${frameUrl}]: ${e.message}`, 'WARN');
@@ -572,7 +659,7 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
         const parseBRLAmount = (valStr) => {
           if (!valStr) return 0;
           const isNegative = valStr.includes('-');
-          const clean = valStr.replace(/[-\sR$]/g, '').trim();
+          const clean = valStr.replace(/[-\+\sR$]/g, '').trim();
           const num = parseFloat(clean.replace(/\./g, '').replace(',', '.')) || 0;
           return isNegative ? -num : num;
         };
@@ -586,8 +673,9 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
             julho: 6, agosto: 7, setembro: 8, outubro: 9, novembro: 10, dezembro: 11
           };
           const clean = dateStr.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          const cleanNoDe = clean.replace(/\bde\b/g, '').replace(/\s+/g, ' ').trim();
           
-          const slashMatch = clean.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+          const slashMatch = cleanNoDe.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
           if (slashMatch) {
             const day = parseInt(slashMatch[1], 10);
             const month = parseInt(slashMatch[2], 10) - 1;
@@ -600,7 +688,7 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
             }
           }
 
-          const parts = clean.split(/\s+/);
+          const parts = cleanNoDe.split(/\s+/);
           if (parts.length >= 2) {
             const day = parseInt(parts[0], 10);
             const monthAbbr = parts[1].slice(0, 3);
@@ -622,67 +710,34 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
         };
 
         for (const r of rawRows) {
-          let tipo = '';
-          let data = '';
-          let cliente = '';
-          let forma = '';
-          let valor = '';
-          let estado = '';
-
-          if (r.source === 'table' && r.headers.length >= 4) {
-            const idxTipo = r.headers.findIndex(h => h.includes('tipo'));
-            const idxData = r.headers.findIndex(h => h.includes('data'));
-            const idxCliente = r.headers.findIndex(h => h.includes('cliente'));
-            const idxForma = r.headers.findIndex(h => h.includes('forma') || h.includes('pagamento'));
-            const idxValor = r.headers.findIndex(h => h.includes('valor'));
-            const idxEstado = r.headers.findIndex(h => h.includes('estado') || h.includes('status'));
-
-            tipo = idxTipo !== -1 ? r.cells[idxTipo] : r.cells[0];
-            data = idxData !== -1 ? r.cells[idxData] : r.cells[1];
-            cliente = idxCliente !== -1 ? r.cells[idxCliente] : r.cells[2];
-            forma = idxForma !== -1 ? r.cells[idxForma] : r.cells[3];
-            valor = idxValor !== -1 ? r.cells[idxValor] : r.cells[4];
-            estado = idxEstado !== -1 ? r.cells[idxEstado] : r.cells[5];
-          } else {
-            tipo = r.cells[0] || '';
-            data = r.cells[1] || '';
-            cliente = r.cells[2] || '';
-            forma = r.cells[3] || '';
-            valor = r.cells[4] || '';
-            estado = r.cells[5] || '';
-          }
-
-          const approved = estado && estado.toLowerCase().includes('aprov');
-          log(`Linha analisada: Tipo="${tipo}", Data="${data}", Cliente="${cliente}", Forma="${forma}", Valor="${valor}", Estado="${estado}" -> ${approved ? 'APROVADA (processando)' : 'Ignorada'}`);
-
-          if (approved) {
-            const amount = parseBRLAmount(valor);
-            const posted_at = parsePTBRDate(data);
-            
-            let source_ref = 'nuvem-ref-' + Math.floor(100000 + Math.random() * 900000);
-            if (tipo && tipo.includes('#')) {
-              const num = tipo.split('#')[1];
-              if (num) {
-                source_ref = `nuvem-venda-${num}`;
-              }
+          const amount = parseBRLAmount(r.valText);
+          const posted_at = parsePTBRDate(r.date);
+          
+          let source_ref = 'nuvem-ref-' + Math.floor(100000 + Math.random() * 900000);
+          if (r.description && r.description.includes('#')) {
+            const num = r.description.split('#')[1];
+            if (num) {
+              source_ref = `nuvem-venda-${num}`;
             }
-
-            const description = tipo !== '---' ? `${tipo} - ${forma}` : `Venda - ${forma}`;
-
-            entries.push({
-              posted_at,
-              description,
-              amount,
-              counterparty: cliente || 'Cliente NuvemPay',
-              source_ref,
-              balance_after: balance,
-              category: 'venda',
-              source: 'nuvempay' // Define a fonte para satisfazer a constraint de banco de dados
-            });
           }
+
+          const fullDescription = r.subDescription ? `${r.description} - ${r.subDescription}` : r.description;
+          const counterparty = r.description.includes('Venda') ? 'Cliente NuvemPay' : r.description;
+          const category = r.subDescription && r.subDescription.toLowerCase().includes('transfer') ? 'transferencia' : 'venda';
+
+          entries.push({
+            posted_at,
+            description: fullDescription,
+            amount,
+            counterparty,
+            source_ref,
+            balance_after: balance,
+            category,
+            source: 'nuvempay'
+          });
         }
 
-        log(`Total de vendas aprovadas extraídas: ${entries.length}`);
+        log(`Total de transações extraídas: ${entries.length}`);
 
       } catch (err) {
         log(`Erro ao realizar extração de dados: ${err.message}`, 'WARN');
