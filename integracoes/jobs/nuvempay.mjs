@@ -55,7 +55,6 @@ async function waitForSelectorInAnyFrame(page, selectors, timeoutMs = 30000) {
 export async function run(credentials, log, taskId = 'unknown', controller = {}) {
   const { username, password, webhookUrl, webhookSecret, storeDomain } = credentials;
   
-  log('DEBUG_SECRET: ' + webhookSecret);
   const sessionPath = path.resolve('data/sessions/nuvempay');
   
   // Limpar processos órfãos do Chromium/Chrome no container para evitar conflitos de trava
