@@ -378,39 +378,10 @@ export async function run(credentials, log, taskId = 'unknown', controller = {})
 
       let loaded = false;
 
-      // 1. Tentar navegação interna via clique no menu lateral "Nuvem Pago"
-      try {
-        const nuvempagoMenuBtn = page.locator('a:has-text("Nuvem Pago"), [role="menuitem"]:has-text("Nuvem Pago"), li:has-text("Nuvem Pago"), span:has-text("Nuvem Pago")').first();
-        if (await nuvempagoMenuBtn.isVisible({ timeout: 5000 })) {
-          log('Menu lateral "Nuvem Pago" localizado. Clicando...');
-          await nuvempagoMenuBtn.click();
-          
-          log('Aguardando carregamento dos elementos do painel após clique...');
-          const loadedFrame = await waitForSelectorInAnyFrame(page, [
-            'text="Saldo disponível"',
-            'text="Pagamentos"',
-            'th:has-text("Cliente")',
-            'text="Forma de pagamento"'
-          ], 15000);
-
-          if (loadedFrame) {
-            log('Painel Nuvem Pago carregado com sucesso via menu lateral!');
-            loaded = true;
-          } else {
-            log('Aviso: Painel não carregou via clique. Prosseguindo para navegação direta.', 'WARN');
-          }
-        }
-      } catch (err) {
-        log('Aviso ao tentar clicar no menu lateral: ' + err.message, 'WARN');
-      }
-
-      // 2. Fallback para navegação direta por URL
-      if (!loaded) {
-        log(`Navegando via URL direta para: ${nuvempagoUrl}`);
-        await page.goto(nuvempagoUrl, { waitUntil: 'networkidle', timeout: 45000 }).catch((e) => {
-          log('Aviso ao navegar para a URL direta: ' + e.message, 'WARN');
-        });
-      }
+      log(`Navegando via URL direta para: ${nuvempagoUrl}`);
+      await page.goto(nuvempagoUrl, { waitUntil: 'networkidle', timeout: 45000 }).catch((e) => {
+        log('Aviso ao navegar para a URL direta: ' + e.message, 'WARN');
+      });
 
       // Aguardar carregar elementos em qualquer frame (iframe)
       log('Aguardando elementos principais do painel em qualquer frame...');
