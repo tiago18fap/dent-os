@@ -33,11 +33,6 @@ app.get('/api/credentials', (req, res) => {
   res.json(safeCreds);
 });
 
-// GET /api/credentials/danger-reveal - Revelar senhas para depuração temporária
-app.get('/api/credentials/danger-reveal', (req, res) => {
-  res.json(queueManager.getCredentials());
-});
-
 
 // POST /api/credentials - Configurar/Atualizar credenciais e webhook
 app.post('/api/credentials', (req, res) => {

@@ -689,3 +689,111 @@ input:focus, select:focus {
   border-color: var(--text-secondary);
   box-shadow: 0 0 8px rgba(156, 163, 175, 0.2);
 }
+
+/* Webhook Details Styling */
+.webhook-details-box {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: fadeIn 0.3s ease;
+  margin-top: 10px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.webhook-details-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 8px;
+}
+
+.webhook-details-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.webhook-info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.webhook-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.code-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #38bdf8;
+  word-break: break-all;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+  width: 100%;
+}
+
+.webhook-json-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+@media (max-width: 600px) {
+  .webhook-json-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.webhook-json-column {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.json-title {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.json-code-wrapper {
+  background: #05070c;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.json-code-wrapper pre {
+  margin: 0;
+}
+
+.json-code-wrapper code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #e5e7eb;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

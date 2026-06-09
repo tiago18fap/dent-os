@@ -295,6 +295,9 @@ function selectTask(taskId) {
     } else {
       document.getElementById('mfa-alert').style.display = 'none';
     }
+
+    // Renderizar os detalhes do webhook associado
+    renderWebhookDetails(task);
   }
 
   updateQueueUI();
@@ -373,6 +376,11 @@ function setupEventSource() {
         historyData[idx].finishedAt = msg.finishedAt;
         if (msg.error) historyData[idx].error = msg.error;
         if (msg.result) historyData[idx].result = msg.result;
+        
+        // Se for a tarefa atualmente exibida no terminal, atualizar os detalhes do webhook
+        if (msg.id === activeTaskId) {
+          renderWebhookDetails(historyData[idx]);
+        }
       } else {
         // Nova tarefa adicionada à fila
         historyData.unshift(msg);
@@ -544,5 +552,56 @@ async function handleDeleteTask(taskId) {
     }
   } catch (err) {
     alert('Erro de conexão ao excluir tarefa.');
+  }
+}
+
+// Renderizar detalhes do webhook (URL, payload e resposta do servidor)
+function renderWebhookDetails(task) {
+  const webhookBox = document.getElementById('webhook-details-box');
+  if (!webhookBox) return;
+
+  if (task && task.result && task.result.webhook) {
+    webhookBox.style.display = 'flex';
+    const webhook = task.result.webhook;
+
+    // Atualizar URL
+    document.getElementById('webhook-url-display').textContent = webhook.url || '-';
+
+    // Atualizar Status Badge
+    const statusBadge = document.getElementById('webhook-status-badge');
+    if (webhook.status) {
+      statusBadge.textContent = `HTTP ${webhook.status} ${webhook.statusText || ''}`;
+      if (webhook.status >= 200 && webhook.status < 300) {
+        statusBadge.className = 'badge badge-sucesso';
+      } else {
+        statusBadge.className = 'badge badge-erro';
+      }
+    } else if (webhook.error) {
+      statusBadge.textContent = 'Erro de Envio';
+      statusBadge.className = 'badge badge-erro';
+    } else {
+      statusBadge.textContent = 'Pendente';
+      statusBadge.className = 'badge badge-pendente';
+    }
+
+    // Atualizar Payload
+    const payloadDisplay = document.getElementById('webhook-payload-display');
+    if (webhook.sentPayload) {
+      payloadDisplay.textContent = JSON.stringify(webhook.sentPayload, null, 2);
+    } else {
+      payloadDisplay.textContent = 'Nenhum dado enviado';
+    }
+
+    // Atualizar Resposta
+    const responseDisplay = document.getElementById('webhook-response-display');
+    if (webhook.responseBody) {
+      responseDisplay.textContent = webhook.responseBody;
+    } else if (webhook.error) {
+      responseDisplay.textContent = `Erro: ${webhook.error}`;
+    } else {
+      responseDisplay.textContent = 'Sem resposta do servidor';
+    }
+  } else {
+    webhookBox.style.display = 'none';
   }
 }
