@@ -48,12 +48,25 @@ async function loadCredentials() {
       // Inserir na lista de configuradas
       const li = document.createElement('li');
       li.className = 'config-item';
+      
+      const baseUrl = window.location.origin;
+      const triggerUrl = `${baseUrl}/api/trigger/${key}` + (creds[key].hasSecret ? '?secret=SUA_CHAVE_SECRET' : '');
+
       li.innerHTML = `
-        <div class="config-item-info">
-          <strong>${formatName(key)}</strong>
-          <span>Usuário: ${creds[key].username}</span>
+        <div class="config-item-info" style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <strong>${formatName(key)}</strong>
+            <span class="badge badge-sucesso">Configurado</span>
+          </div>
+          <span style="font-size: 11px; color: var(--text-secondary);">Usuário: ${creds[key].username}</span>
+          <div style="margin-top: 6px; font-size: 10px; display: flex; flex-direction: column; gap: 2px;">
+            <span style="color: var(--text-secondary); font-weight: 500;">Gatilho Remoto (GET/POST):</span>
+            <div style="display: flex; gap: 6px; align-items: center; background: rgba(0,0,0,0.2); padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color);">
+              <code class="code-text" style="padding: 0; background: none; border: none; font-size: 10px; overflow-x: auto; white-space: nowrap; flex: 1; color: #38bdf8;" title="${triggerUrl}">${triggerUrl}</code>
+              <button onclick="navigator.clipboard.writeText('${triggerUrl}'); alert('URL do gatilho copiada!');" style="background: none; border: none; cursor: pointer; font-size: 12px; padding: 0;" title="Copiar URL">📋</button>
+            </div>
+          </div>
         </div>
-        <span class="badge badge-sucesso">Configurado</span>
       `;
       configuredList.appendChild(li);
 

@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { queueManager, queueEvents } from './queue.mjs';
+import { queueManager, queueEvents, logTask } from './queue.mjs';
 
 const app = express();
 const PORT = 3500;
@@ -80,6 +80,40 @@ app.post('/api/queue', (req, res) => {
 
   const task = queueManager.enqueue(cleanType);
   res.json({ success: true, message: `Integração "${cleanType}" adicionada à fila com ID ${task.id}.`, task });
+});
+
+// GET ou POST /api/trigger/:type - Gatilho remoto para forçar a integração
+app.all('/api/trigger/:type', (req, res) => {
+  const { type } = req.params;
+  const secret = req.query.secret || req.headers['x-webhook-secret'] || (req.headers['authorization'] ? req.headers['authorization'].split(' ')[1] : null);
+
+  const cleanType = type.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+
+  // Buscar credenciais configuradas
+  const creds = queueManager.getCredentials();
+  const integrationCreds = creds[cleanType];
+
+  if (!integrationCreds) {
+    return res.status(404).json({ error: `Integração "${cleanType}" não configurada.` });
+  }
+
+  // Se a integração tiver um secret cadastrado, exigir que ele seja fornecido
+  if (integrationCreds.webhookSecret && integrationCreds.webhookSecret !== secret) {
+    return res.status(401).json({ error: 'Não autorizado. Chave secreta inválida.' });
+  }
+
+  // Enfileirar a tarefa
+  const task = queueManager.enqueue(cleanType);
+  
+  // Registrar log informando a origem da chamada
+  const source = req.method === 'GET' ? 'Chamada GET remota' : 'Gatilho reverso (Webhook)';
+  logTask(task.id, `${source} recebido com sucesso. Forçando execução da integração...`, 'SYSTEM');
+
+  res.json({
+    success: true,
+    message: `Integração "${cleanType}" forçada com sucesso pelo gatilho remoto.`,
+    taskId: task.id
+  });
 });
 
 // POST /api/queue/mfa - Enviar código 2FA/MFA para uma tarefa ativa
