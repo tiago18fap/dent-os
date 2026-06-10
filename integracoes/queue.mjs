@@ -325,3 +325,47 @@ function saveTaskVideo(taskId) {
   }
   return null;
 }
+
+// Agendador diário automático às 06:00 BRT (Horário de Brasília) para NuvemPay
+function startDailyScheduler() {
+  console.log('[SCHEDULER] Inicializando agendador diário automático (06:00 BRT)...');
+  
+  setInterval(() => {
+    const now = new Date();
+    // Obter data/hora formatada no fuso de São Paulo
+    const formatter = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    
+    const timeStr = formatter.format(now);
+    const [hour, minute] = timeStr.split(':');
+    
+    // Disparar exatamente às 06:00
+    if (hour === '06' && minute === '00') {
+      const todayStr = now.toDateString();
+      const alreadyRunToday = history.some(task => {
+        if (task.type !== 'nuvempay') return false;
+        const taskDate = new Date(task.queuedAt);
+        // Verificar se foi disparado hoje e se tem a marca do agendador nos logs
+        return taskDate.toDateString() === todayStr && task.logs.some(l => l.includes('[SCHEDULER]'));
+      });
+      
+      if (!alreadyRunToday) {
+        const creds = credentials['nuvempay'];
+        if (creds && creds.username) {
+          console.log('[SCHEDULER] Iniciando disparo automático diário às 06:00 BRT...');
+          const task = queueManager.enqueue('nuvempay');
+          logTask(task.id, 'Execução diária disparada automaticamente pelo agendador do servidor (06:00 BRT).', 'SCHEDULER');
+        } else {
+          console.log('[SCHEDULER] Agendamento diário ignorado: integração nuvempay não configurada.');
+        }
+      }
+    }
+  }, 60000); // Verificar a cada 1 minuto
+}
+
+// Iniciar o agendador diário
+startDailyScheduler();
