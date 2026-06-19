@@ -89,6 +89,21 @@ export async function gerarFilaDiaria(clinicaId: string): Promise<GeracaoResulta
   // Detectar se a coluna campanha_ref existe
   const temCampanhaRef = await hasCampanhaRef();
 
+  // Buscar config de dedup (dedup_dias)
+  let dedupDias = 30;
+  try {
+    const { data: config } = await (supabase as any)
+      .from("envio_config")
+      .select("dedup_dias")
+      .eq("clinica_id", clinicaId)
+      .maybeSingle();
+    if (config && config.dedup_dias !== undefined && config.dedup_dias !== null) {
+      dedupDias = config.dedup_dias;
+    }
+  } catch (err) {
+    console.error("Erro ao buscar dedup_dias config:", err);
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // ETAPA A: Campanhas por Procedimento
   //
@@ -198,6 +213,39 @@ export async function gerarFilaDiaria(clinicaId: string): Promise<GeracaoResulta
             const dadosEnvio = pacientesParaEnviar.get(nomePaciente);
             if (!dadosEnvio) continue;
 
+            // Verificar duplicata global de 30 dias por paciente_id ou telefone
+            const dedupCutoff = new Date();
+            dedupCutoff.setDate(dedupCutoff.getDate() - dedupDias);
+
+            let jaExisteFila = false;
+            const { count: dedupCount } = await (supabase as any)
+              .from("fila_envios")
+              .select("id", { count: "exact", head: true })
+              .eq("clinica_id", clinicaId)
+              .eq("paciente_id", cliente.id)
+              .in("status", ["pendente", "enviado"])
+              .gte("data_programada", dedupCutoff.toISOString());
+
+            if ((dedupCount ?? 0) > 0) {
+              jaExisteFila = true;
+            }
+
+            if (!jaExisteFila && telefone) {
+              const { count: dedupPhoneCount } = await (supabase as any)
+                .from("fila_envios")
+                .select("id", { count: "exact", head: true })
+                .eq("clinica_id", clinicaId)
+                .eq("telefone", telefone)
+                .in("status", ["pendente", "enviado"])
+                .gte("data_programada", dedupCutoff.toISOString());
+
+              if ((dedupPhoneCount ?? 0) > 0) {
+                jaExisteFila = true;
+              }
+            }
+
+            if (jaExisteFila) continue;
+
             // Verificar duplicata: já existe na fila hoje com mesma origem+paciente?
             let dupQuery = (supabase as any)
               .from("fila_envios")
@@ -292,6 +340,39 @@ export async function gerarFilaDiaria(clinicaId: string): Promise<GeracaoResulta
         });
 
         for (const cliente of aniversariantes) {
+          // Verificar duplicata global de 30 dias por paciente_id ou telefone
+          const dedupCutoff = new Date();
+          dedupCutoff.setDate(dedupCutoff.getDate() - dedupDias);
+
+          let jaExisteGlobal = false;
+          const { count: dedupGlobal } = await (supabase as any)
+            .from("fila_envios")
+            .select("id", { count: "exact", head: true })
+            .eq("clinica_id", clinicaId)
+            .eq("paciente_id", cliente.id)
+            .in("status", ["pendente", "enviado"])
+            .gte("data_programada", dedupCutoff.toISOString());
+
+          if ((dedupGlobal ?? 0) > 0) {
+            jaExisteGlobal = true;
+          }
+
+          if (!jaExisteGlobal && cliente.telefone) {
+            const { count: dedupGlobalPhone } = await (supabase as any)
+              .from("fila_envios")
+              .select("id", { count: "exact", head: true })
+              .eq("clinica_id", clinicaId)
+              .eq("telefone", cliente.telefone)
+              .in("status", ["pendente", "enviado"])
+              .gte("data_programada", dedupCutoff.toISOString());
+
+            if ((dedupGlobalPhone ?? 0) > 0) {
+              jaExisteGlobal = true;
+            }
+          }
+
+          if (jaExisteGlobal) continue;
+
           // Verificar duplicata hoje
           const { count: dup } = await (supabase as any)
             .from("fila_envios")
@@ -377,7 +458,8 @@ export async function gerarFilaDiaria(clinicaId: string): Promise<GeracaoResulta
         });
 
         for (const cliente of aniversariantesMes) {
-          // Verificar se já foi enviado neste mês
+          // Verificar se já foi enviado neste mês (por paciente_id ou telefone)
+          let jaExisteAnivMes = false;
           const { count: dup } = await (supabase as any)
             .from("fila_envios")
             .select("id", { count: "exact", head: true })
@@ -387,7 +469,59 @@ export async function gerarFilaDiaria(clinicaId: string): Promise<GeracaoResulta
             .gte("data_programada", inicioMes)
             .lte("data_programada", fimMes);
 
-          if ((dup ?? 0) > 0) continue;
+          if ((dup ?? 0) > 0) {
+            jaExisteAnivMes = true;
+          }
+
+          if (!jaExisteAnivMes && cliente.telefone) {
+            const { count: dupPhone } = await (supabase as any)
+              .from("fila_envios")
+              .select("id", { count: "exact", head: true })
+              .eq("clinica_id", clinicaId)
+              .eq("telefone", cliente.telefone)
+              .eq("origem", "aniversario_mes")
+              .gte("data_programada", inicioMes)
+              .lte("data_programada", fimMes);
+
+            if ((dupPhone ?? 0) > 0) {
+              jaExisteAnivMes = true;
+            }
+          }
+
+          if (jaExisteAnivMes) continue;
+
+          // Verificar duplicata global de 30 dias por paciente_id ou telefone
+          const dedupCutoff = new Date();
+          dedupCutoff.setDate(dedupCutoff.getDate() - dedupDias);
+
+          let jaExisteGlobal = false;
+          const { count: dedupGlobal } = await (supabase as any)
+            .from("fila_envios")
+            .select("id", { count: "exact", head: true })
+            .eq("clinica_id", clinicaId)
+            .eq("paciente_id", cliente.id)
+            .in("status", ["pendente", "enviado"])
+            .gte("data_programada", dedupCutoff.toISOString());
+
+          if ((dedupGlobal ?? 0) > 0) {
+            jaExisteGlobal = true;
+          }
+
+          if (!jaExisteGlobal && cliente.telefone) {
+            const { count: dedupGlobalPhone } = await (supabase as any)
+              .from("fila_envios")
+              .select("id", { count: "exact", head: true })
+              .eq("clinica_id", clinicaId)
+              .eq("telefone", cliente.telefone)
+              .in("status", ["pendente", "enviado"])
+              .gte("data_programada", dedupCutoff.toISOString());
+
+            if ((dedupGlobalPhone ?? 0) > 0) {
+              jaExisteGlobal = true;
+            }
+          }
+
+          if (jaExisteGlobal) continue;
 
           const primeiroNome = (cliente.paciente ?? "").split(" ")[0];
           const nomeFormatado =

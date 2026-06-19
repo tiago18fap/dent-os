@@ -288,10 +288,11 @@ serve(async (req) => {
                   if (!envios) continue;
 
                   for (const envio of envios) {
-                    // Dedup check: has this paciente been sent/queued in the last dedup_dias?
+                    // Dedup check: has this paciente OR this telefone been sent/queued in the last dedup_dias?
                     const dedupCutoff = new Date();
                     dedupCutoff.setDate(dedupCutoff.getDate() - dedupDias);
 
+                    let jaExisteFila = false;
                     const { count: dedupCount } = await supabase
                       .from("fila_envios")
                       .select("id", { count: "exact", head: true })
@@ -300,7 +301,25 @@ serve(async (req) => {
                       .in("status", ["pendente", "enviado"])
                       .gte("data_programada", dedupCutoff.toISOString());
 
-                    if ((dedupCount ?? 0) > 0) continue;
+                    if ((dedupCount ?? 0) > 0) {
+                      jaExisteFila = true;
+                    }
+
+                    if (!jaExisteFila && telefone) {
+                      const { count: dedupPhoneCount } = await supabase
+                        .from("fila_envios")
+                        .select("id", { count: "exact", head: true })
+                        .eq("clinica_id", clinicaId)
+                        .eq("telefone", telefone)
+                        .in("status", ["pendente", "enviado"])
+                        .gte("data_programada", dedupCutoff.toISOString());
+
+                      if ((dedupPhoneCount ?? 0) > 0) {
+                        jaExisteFila = true;
+                      }
+                    }
+
+                    if (jaExisteFila) continue;
 
                     // Duplicate entry check: exact same paciente + campanha + date
                     const dataProgramada = dateWithTime(envio.dataEnvio, horarioInicio);
@@ -445,10 +464,11 @@ serve(async (req) => {
                 const { count: dup } = await dupQuery;
                 if ((dup ?? 0) > 0) continue;
 
-                // Global dedup check
+                // Global dedup check by paciente_id or telefone
                 const dedupCutoff = new Date();
                 dedupCutoff.setDate(dedupCutoff.getDate() - dedupDias);
 
+                let jaExisteAnivDia = false;
                 const { count: dedupGlobal } = await supabase
                   .from("fila_envios")
                   .select("id", { count: "exact", head: true })
@@ -457,7 +477,25 @@ serve(async (req) => {
                   .in("status", ["pendente", "enviado"])
                   .gte("data_programada", dedupCutoff.toISOString());
 
-                if ((dedupGlobal ?? 0) > 0) continue;
+                if ((dedupGlobal ?? 0) > 0) {
+                  jaExisteAnivDia = true;
+                }
+
+                if (!jaExisteAnivDia && cliente.telefone) {
+                  const { count: dedupGlobalPhone } = await supabase
+                    .from("fila_envios")
+                    .select("id", { count: "exact", head: true })
+                    .eq("clinica_id", clinicaId)
+                    .eq("telefone", cliente.telefone)
+                    .in("status", ["pendente", "enviado"])
+                    .gte("data_programada", dedupCutoff.toISOString());
+
+                  if ((dedupGlobalPhone ?? 0) > 0) {
+                    jaExisteAnivDia = true;
+                  }
+                }
+
+                if (jaExisteAnivDia) continue;
 
                 const nomeFormatado = capitalizeName(cliente.paciente ?? "");
                 const mensagemFinal = substituirVariaveis(configDia.mensagem, {
@@ -582,6 +620,7 @@ serve(async (req) => {
 
               for (const cliente of aniversariantes) {
                 // Dedup: já inserido para este mês?
+                let jaExisteAnivMes = false;
                 const { count: dup } = await supabase
                   .from("fila_envios")
                   .select("id", { count: "exact", head: true })
@@ -591,7 +630,59 @@ serve(async (req) => {
                   .gte("data_programada", inicioMes.toISOString())
                   .lte("data_programada", fimMes.toISOString());
 
-                if ((dup ?? 0) > 0) continue;
+                if ((dup ?? 0) > 0) {
+                  jaExisteAnivMes = true;
+                }
+
+                if (!jaExisteAnivMes && cliente.telefone) {
+                  const { count: dupPhone } = await supabase
+                    .from("fila_envios")
+                    .select("id", { count: "exact", head: true })
+                    .eq("clinica_id", clinicaId)
+                    .eq("telefone", cliente.telefone)
+                    .eq("origem", "aniversario_mes")
+                    .gte("data_programada", inicioMes.toISOString())
+                    .lte("data_programada", fimMes.toISOString());
+
+                  if ((dupPhone ?? 0) > 0) {
+                    jaExisteAnivMes = true;
+                  }
+                }
+
+                if (jaExisteAnivMes) continue;
+
+                // Global dedup check (last 30 days)
+                const dedupCutoff = new Date();
+                dedupCutoff.setDate(dedupCutoff.getDate() - dedupDias);
+
+                let jaExisteGlobal = false;
+                const { count: dedupGlobal } = await supabase
+                  .from("fila_envios")
+                  .select("id", { count: "exact", head: true })
+                  .eq("clinica_id", clinicaId)
+                  .eq("paciente_id", cliente.id)
+                  .in("status", ["pendente", "enviado"])
+                  .gte("data_programada", dedupCutoff.toISOString());
+
+                if ((dedupGlobal ?? 0) > 0) {
+                  jaExisteGlobal = true;
+                }
+
+                if (!jaExisteGlobal && cliente.telefone) {
+                  const { count: dedupGlobalPhone } = await supabase
+                    .from("fila_envios")
+                    .select("id", { count: "exact", head: true })
+                    .eq("clinica_id", clinicaId)
+                    .eq("telefone", cliente.telefone)
+                    .in("status", ["pendente", "enviado"])
+                    .gte("data_programada", dedupCutoff.toISOString());
+
+                  if ((dedupGlobalPhone ?? 0) > 0) {
+                    jaExisteGlobal = true;
+                  }
+                }
+
+                if (jaExisteGlobal) continue;
 
                 const nomeFormatado = capitalizeName(cliente.paciente ?? "");
                 const mensagemFinal = substituirVariaveis(configMes.mensagem, {
