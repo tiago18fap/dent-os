@@ -842,7 +842,43 @@ export function Campanhas() {
       console.error("Erro inesperado ao remover resumo de campanha por procedimento", error);
     }
   };
- 
+
+  const limparMensagensPendentesFila = async (referencias: string | string[], clinicaId?: string) => {
+    const finalClinicaId = clinicaId || clinica?.id;
+    if (!finalClinicaId) return;
+
+    const refs = Array.isArray(referencias) ? referencias : [referencias];
+
+    try {
+      const { error } = await (supabase as any)
+        .from("fila_envios")
+        .delete()
+        .eq("clinica_id", finalClinicaId)
+        .eq("status", "pendente")
+        .in("campanha_ref", refs);
+
+      if (error) throw error;
+
+      toast({
+        title: "Fila atualizada",
+        description: "As mensagens pendentes desta campanha foram removidas da fila de envios.",
+      });
+
+      await gravarLogAuditoria(
+        finalClinicaId,
+        "limpar_fila_campanha",
+        `Removidas mensagens pendentes da fila para campanhas: ${refs.join(", ")}`
+      );
+    } catch (error) {
+      console.error("Erro ao limpar mensagens pendentes da fila", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao limpar fila",
+        description: "Não foi possível remover as mensagens pendentes da fila de envios.",
+      });
+    }
+  };
+
   const updateProcedimento = (id: ProcedimentoId, partial: Partial<ConfigProcedimento>) => {
     setConfigsProcedimentos((prev) => ({
       ...prev,
@@ -2141,6 +2177,15 @@ export function Campanhas() {
                                  });
 
                                  await sincronizarCampanhaGrupo(chaveGrupo, grupo.procedimentoIds, configAtualizada);
+
+                                 if (!checked) {
+                                   const confirmar = window.confirm(
+                                     "Deseja remover as mensagens pendentes na fila de envios para os procedimentos desta campanha?"
+                                   );
+                                   if (confirmar) {
+                                     void limparMensagensPendentesFila(chaveGrupo, grupo.config.clinicaId);
+                                   }
+                                 }
                                }}
                                aria-label="Ativar ou desativar lembretes para os procedimentos desta campanha"
                              />
@@ -2472,9 +2517,17 @@ export function Campanhas() {
                         </span>
                         <Switch
                           checked={aniversarioDiaAtivo}
-                          onCheckedChange={(checked) => {
+                          onCheckedChange={async (checked) => {
                             setAniversarioDiaAtivo(checked);
-                            void salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_DIA, mensagemAniversarioDia, checked);
+                            await salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_DIA, mensagemAniversarioDia, checked);
+                            if (!checked) {
+                              const confirmar = window.confirm(
+                                "Deseja remover as mensagens de aniversário no dia pendentes na fila de envios?"
+                              );
+                              if (confirmar) {
+                                void limparMensagensPendentesFila(CAMPANHA_CHAVE_ANIVERSARIO_DIA);
+                              }
+                            }
                           }}
                           aria-label="Ativar mensagem no dia do aniversário"
                         />
@@ -2508,9 +2561,17 @@ export function Campanhas() {
                         </span>
                         <Switch
                           checked={aniversarioMesAtivo}
-                          onCheckedChange={(checked) => {
+                          onCheckedChange={async (checked) => {
                             setAniversarioMesAtivo(checked);
-                            void salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_MES, mensagemAniversarioMes, checked);
+                            await salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_MES, mensagemAniversarioMes, checked);
+                            if (!checked) {
+                              const confirmar = window.confirm(
+                                "Deseja remover as mensagens de aniversário no mês pendentes na fila de envios?"
+                              );
+                              if (confirmar) {
+                                void limparMensagensPendentesFila(CAMPANHA_CHAVE_ANIVERSARIO_MES);
+                              }
+                            }
                           }}
                           aria-label="Ativar mensagem no mês de aniversário"
                         />
