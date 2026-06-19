@@ -463,25 +463,53 @@ serve(async (req) => {
           }
         }
 
-        // 2c. Dedup check: has this paciente_id been sent in the last dedup_dias?
+        // 2c. Dedup check: has this paciente_id OR this telefone been sent in the last dedup_dias?
         const dedupCutoff = new Date();
         dedupCutoff.setDate(dedupCutoff.getDate() - dedupDias);
 
-        const { count: dedupCount, error: dedupError } = await supabase
-          .from("fila_envios")
-          .select("id", { count: "exact", head: true })
-          .eq("clinica_id", clinicaId)
-          .eq("paciente_id", msg.paciente_id)
-          .eq("status", "enviado")
-          .gte("updated_at", dedupCutoff.toISOString())
-          .neq("id", msg.id);
+        let hasDuplicate = false;
+        let dedupReason = "";
 
-        if (dedupError) {
-          console.error(`[processar-fila] Erro na verificação de dedup:`, dedupError);
+        if (msg.paciente_id) {
+          const { count: dedupCount, error: dedupError } = await supabase
+            .from("fila_envios")
+            .select("id", { count: "exact", head: true })
+            .eq("clinica_id", clinicaId)
+            .eq("paciente_id", msg.paciente_id)
+            .eq("status", "enviado")
+            .gte("updated_at", dedupCutoff.toISOString())
+            .neq("id", msg.id);
+
+          if (dedupError) {
+            console.error(`[processar-fila] Erro na verificação de dedup por paciente_id:`, dedupError);
+          }
+          if ((dedupCount ?? 0) > 0) {
+            hasDuplicate = true;
+            dedupReason = `paciente ${msg.paciente_id} enviado nos últimos ${dedupDias} dias`;
+          }
         }
 
-        if ((dedupCount ?? 0) > 0) {
-          console.log(`[processar-fila] Mensagem ${msg.id} ignorada por dedup (paciente ${msg.paciente_id} enviado nos últimos ${dedupDias} dias)`);
+        if (!hasDuplicate && msg.telefone) {
+          const { count: dedupPhoneCount, error: dedupPhoneError } = await supabase
+            .from("fila_envios")
+            .select("id", { count: "exact", head: true })
+            .eq("clinica_id", clinicaId)
+            .eq("telefone", msg.telefone)
+            .eq("status", "enviado")
+            .gte("updated_at", dedupCutoff.toISOString())
+            .neq("id", msg.id);
+
+          if (dedupPhoneError) {
+            console.error(`[processar-fila] Erro na verificação de dedup por telefone:`, dedupPhoneError);
+          }
+          if ((dedupPhoneCount ?? 0) > 0) {
+            hasDuplicate = true;
+            dedupReason = `telefone ${msg.telefone} enviado nos últimos ${dedupDias} dias`;
+          }
+        }
+
+        if (hasDuplicate) {
+          console.log(`[processar-fila] Mensagem ${msg.id} ignorada por dedup: ${dedupReason}`);
           
           const { error: dedupUpdateError } = await supabase
             .from("fila_envios")
@@ -492,7 +520,7 @@ serve(async (req) => {
             console.error(`[processar-fila] Erro ao marcar dedup_ignorado:`, dedupUpdateError);
           }
 
-          summary.push({ clinica_id: clinicaId, status: "dedup_ignorado", detail: `msg ${msg.id}` });
+          summary.push({ clinica_id: clinicaId, status: "dedup_ignorado", detail: `msg ${msg.id} (duplicado: ${dedupReason})` });
           continue;
         }
 
