@@ -142,12 +142,6 @@ const FilaEnvios = () => {
   const [deletandoId, setDeletandoId] = useState<string | null>(null);
   const [deletandoMassa, setDeletandoMassa] = useState(false);
 
-  const pendingFilteredMessages = useMemo(() => {
-    return filteredData.filter((item: any) => item.status === "pendente");
-  }, [filteredData]);
-
-  const pendingFilteredCount = pendingFilteredMessages.length;
-
   const handleCancelarMensagem = async (id: string) => {
     if (!window.confirm("Deseja realmente cancelar esta mensagem programada?")) {
       return;
@@ -398,6 +392,12 @@ const FilaEnvios = () => {
       return nome.includes(term) || status.includes(term) || origem.includes(term) || mensagem.includes(term) || matchesProcedimento || clinicaNome.includes(term);
     });
   }, [filteredByOriginAndProc, searchTerm, campanhas]);
+
+  const pendingFilteredMessages = useMemo(() => {
+    return filteredData.filter((item: any) => item.status === "pendente");
+  }, [filteredData]);
+
+  const pendingFilteredCount = pendingFilteredMessages.length;
 
   // Contagens baseadas nos dados filtrados (mas sem considerar o termo de busca textual)
   const contagens = useMemo(() => {
