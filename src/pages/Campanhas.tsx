@@ -850,12 +850,21 @@ export function Campanhas() {
     const refs = Array.isArray(referencias) ? referencias : [referencias];
 
     try {
-      const { error } = await (supabase as any)
+      let query = (supabase as any)
         .from("fila_envios")
         .delete()
         .eq("clinica_id", finalClinicaId)
-        .eq("status", "pendente")
-        .in("campanha_ref", refs);
+        .eq("status", "pendente");
+
+      if (refs.includes("aniversario_dia")) {
+        query = query.or("campanha_ref.eq.aniversario_dia,origem.eq.aniversario_dia");
+      } else if (refs.includes("aniversario_mes")) {
+        query = query.or("campanha_ref.eq.aniversario_mes,origem.eq.aniversario_mes");
+      } else {
+        query = query.in("campanha_ref", refs);
+      }
+
+      const { error } = await query;
 
       if (error) throw error;
 
