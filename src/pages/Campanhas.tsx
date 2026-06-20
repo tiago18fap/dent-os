@@ -48,7 +48,7 @@ import { useClinica } from "@/contexts/ClinicaContext";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import { Cake, Zap, Loader2, Plus } from "lucide-react";
+import { Cake, Zap, Loader2, Plus, AlertTriangle, AlertCircle, HelpCircle, MapPin } from "lucide-react";
 import { gravarLogAuditoria } from "@/utils/auditoria";
 
 type ProcedimentoId = string;
@@ -160,6 +160,28 @@ export function Campanhas() {
     groupId: string;
     titulo: string;
   } | null>(null);
+
+  const [modalConfirmacao, setModalConfirmacao] = useState<{
+    aberto: boolean;
+    titulo: string;
+    descricao: string;
+    local?: string;
+    confirmarLabel: string;
+    cancelarLabel: string;
+    onConfirm: () => void | Promise<void>;
+    onCancel?: () => void | Promise<void>;
+  }>({
+    aberto: false,
+    titulo: "",
+    descricao: "",
+    confirmarLabel: "",
+    cancelarLabel: "",
+    onConfirm: () => {},
+  });
+
+  const [mensagemFocadaAnivDia, setMensagemFocadaAnivDia] = useState("");
+  const [mensagemFocadaAnivMes, setMensagemFocadaAnivMes] = useState("");
+  const [mensagemFocadaProc, setMensagemFocadaProc] = useState<Record<string, string>>({});
 
   // Aniversariantes reais do mês
   const [aniversariantesMes, setAniversariantesMes] = useState<
@@ -878,12 +900,57 @@ export function Campanhas() {
         "limpar_fila_campanha",
         `Removidas mensagens pendentes da fila para campanhas: ${refs.join(", ")}`
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao limpar mensagens pendentes da fila", error);
       toast({
         variant: "destructive",
         title: "Erro ao limpar fila",
         description: "Não foi possível remover as mensagens pendentes da fila de envios.",
+      });
+    }
+  };
+
+  const atualizarMensagensPendentesFila = async (referencias: string | string[], novoTexto: string, clinicaId?: string) => {
+    const finalClinicaId = clinicaId || clinica?.id;
+    if (!finalClinicaId) return;
+
+    const refs = Array.isArray(referencias) ? referencias : [referencias];
+
+    try {
+      let query = (supabase as any)
+        .from("fila_envios")
+        .update({ mensagem: novoTexto })
+        .eq("clinica_id", finalClinicaId)
+        .eq("status", "pendente");
+
+      if (refs.includes("aniversario_dia")) {
+        query = query.or("campanha_ref.eq.aniversario_dia,origem.eq.aniversario_dia");
+      } else if (refs.includes("aniversario_mes")) {
+        query = query.or("campanha_ref.eq.aniversario_mes,origem.eq.aniversario_mes");
+      } else {
+        query = query.in("campanha_ref", refs);
+      }
+
+      const { error } = await query;
+
+      if (error) throw error;
+
+      toast({
+        title: "Mensagens atualizadas",
+        description: "As mensagens pendentes na fila de envios foram atualizadas com o novo texto.",
+      });
+
+      await gravarLogAuditoria(
+        finalClinicaId,
+        "atualizar_fila_campanha",
+        `Atualizado texto das mensagens pendentes na fila para campanhas: ${refs.join(", ")}`
+      );
+    } catch (error: any) {
+      console.error("Erro ao atualizar mensagens pendentes da fila", error);
+      toast({
+        title: "Erro ao atualizar mensagens",
+        description: error.message || "Tente novamente.",
+        variant: "destructive",
       });
     }
   };
@@ -1255,6 +1322,59 @@ export function Campanhas() {
   return (
     <AppLayout>
       <section className="space-y-5 rounded-xl bg-gradient-to-b from-primary/5 via-background to-secondary/5 p-4 shadow-sm" aria-label="Campanhas de comunicação">
+        <AlertDialog
+          open={modalConfirmacao.aberto}
+          onOpenChange={(open) => {
+            if (!open) setModalConfirmacao((prev) => ({ ...prev, aberto: false }));
+          }}
+        >
+          <AlertDialogContent className="border border-border/80 shadow-lg sm:max-w-[420px]">
+            <div className="flex gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="flex-1 space-y-1.5">
+                <AlertDialogHeader className="space-y-1 text-left">
+                  {modalConfirmacao.local && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                      <MapPin className="h-3.5 w-3.5 mr-0.5" />
+                      {modalConfirmacao.local}
+                    </span>
+                  )}
+                  <AlertDialogTitle className="text-base font-semibold leading-tight text-foreground">
+                    {modalConfirmacao.titulo}
+                  </AlertDialogTitle>
+                </AlertDialogHeader>
+                <AlertDialogDescription className="text-xs text-muted-foreground leading-relaxed pt-1">
+                  {modalConfirmacao.descricao}
+                </AlertDialogDescription>
+              </div>
+            </div>
+            <AlertDialogFooter className="mt-4 gap-2 sm:gap-0">
+              <AlertDialogCancel
+                className="text-xs h-9"
+                onClick={async () => {
+                  if (modalConfirmacao.onCancel) {
+                    await modalConfirmacao.onCancel();
+                  }
+                  setModalConfirmacao((prev) => ({ ...prev, aberto: false }));
+                }}
+              >
+                {modalConfirmacao.cancelarLabel || "Cancelar"}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                className="text-xs h-9 bg-amber-500 hover:bg-amber-600 text-white border-0 shadow-sm transition-colors"
+                onClick={async () => {
+                  await modalConfirmacao.onConfirm();
+                  setModalConfirmacao((prev) => ({ ...prev, aberto: false }));
+                }}
+              >
+                {modalConfirmacao.confirmarLabel || "Confirmar"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         <AlertDialog
           open={!!grupoConfirmacaoExclusao}
           onOpenChange={(open) => {
@@ -2188,12 +2308,17 @@ export function Campanhas() {
                                  await sincronizarCampanhaGrupo(chaveGrupo, grupo.procedimentoIds, configAtualizada);
 
                                  if (!checked) {
-                                   const confirmar = window.confirm(
-                                     "Deseja remover as mensagens pendentes na fila de envios para os procedimentos desta campanha?"
-                                   );
-                                   if (confirmar) {
-                                     void limparMensagensPendentesFila(chaveGrupo, grupo.config.clinicaId);
-                                   }
+                                   setModalConfirmacao({
+                                     aberto: true,
+                                     titulo: "Desativar Campanha e Limpar Fila?",
+                                     descricao: "Deseja remover as mensagens pendentes na fila de envios para os procedimentos desta campanha?",
+                                     local: `Procedimento: ${nomesProcedimentos.slice(0, 2).join(", ")}${nomesProcedimentos.length > 2 ? '...' : ''}`,
+                                     confirmarLabel: "Sim, remover pendentes",
+                                     cancelarLabel: "Não, manter na fila",
+                                     onConfirm: () => {
+                                       void limparMensagensPendentesFila(chaveGrupo, grupo.config.clinicaId);
+                                     }
+                                   });
                                  }
                                }}
                                aria-label="Ativar ou desativar lembretes para os procedimentos desta campanha"
@@ -2472,16 +2597,58 @@ export function Campanhas() {
                                     });
                                   });
                                 }}
+                                onFocus={() => {
+                                  setMensagemFocadaProc((prev) => ({
+                                    ...prev,
+                                    [chaveGrupo]: grupo.config.mensagem,
+                                  }));
+                                }}
                                 onBlur={() => {
-                                  grupo.procedimentoIds.forEach((idProcedimento) => {
-                                    void salvarCampanhaConfig(
-                                      `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${idProcedimento}`,
-                                      grupo.config.mensagem,
-                                      grupo.config.ativo,
-                                      grupo.config.clinicaId,
-                                    );
-                                  });
-                                  void sincronizarCampanhaGrupo(chaveGrupo, grupo.procedimentoIds, grupo.config);
+                                  const original = mensagemFocadaProc[chaveGrupo];
+                                  const trimmed = grupo.config.mensagem.trim();
+                                  if (original && trimmed !== original.trim()) {
+                                    setModalConfirmacao({
+                                      aberto: true,
+                                      titulo: "Atualizar Mensagens na Fila?",
+                                      descricao: "Você alterou o texto da mensagem. Deseja atualizar o conteúdo de todas as mensagens de procedimentos desta campanha que já estão pendentes na fila de envios?",
+                                      local: `Procedimento: ${nomesProcedimentos.slice(0, 2).join(", ")}${nomesProcedimentos.length > 2 ? '...' : ''}`,
+                                      confirmarLabel: "Sim, atualizar fila",
+                                      cancelarLabel: "Não, apenas salvar",
+                                      onConfirm: async () => {
+                                        grupo.procedimentoIds.forEach((idProcedimento) => {
+                                          void salvarCampanhaConfig(
+                                            `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${idProcedimento}`,
+                                            grupo.config.mensagem,
+                                            grupo.config.ativo,
+                                            grupo.config.clinicaId,
+                                          );
+                                        });
+                                        void sincronizarCampanhaGrupo(chaveGrupo, grupo.procedimentoIds, grupo.config);
+                                        await atualizarMensagensPendentesFila(chaveGrupo, grupo.config.mensagem, grupo.config.clinicaId);
+                                      },
+                                      onCancel: async () => {
+                                        grupo.procedimentoIds.forEach((idProcedimento) => {
+                                          void salvarCampanhaConfig(
+                                            `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${idProcedimento}`,
+                                            grupo.config.mensagem,
+                                            grupo.config.ativo,
+                                            grupo.config.clinicaId,
+                                          );
+                                        });
+                                        void sincronizarCampanhaGrupo(chaveGrupo, grupo.procedimentoIds, grupo.config);
+                                      }
+                                    });
+                                  } else {
+                                    grupo.procedimentoIds.forEach((idProcedimento) => {
+                                      void salvarCampanhaConfig(
+                                        `${CAMPANHA_CHAVE_PROCEDIMENTO_PREFIX}${idProcedimento}`,
+                                        grupo.config.mensagem,
+                                        grupo.config.ativo,
+                                        grupo.config.clinicaId,
+                                      );
+                                    });
+                                    void sincronizarCampanhaGrupo(chaveGrupo, grupo.procedimentoIds, grupo.config);
+                                  }
                                 }}
                               />
                               <p className="text-[11px] text-muted-foreground">
@@ -2530,12 +2697,17 @@ export function Campanhas() {
                             setAniversarioDiaAtivo(checked);
                             await salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_DIA, mensagemAniversarioDia, checked);
                             if (!checked) {
-                              const confirmar = window.confirm(
-                                "Deseja remover as mensagens de aniversário no dia pendentes na fila de envios?"
-                              );
-                              if (confirmar) {
-                                void limparMensagensPendentesFila(CAMPANHA_CHAVE_ANIVERSARIO_DIA);
-                              }
+                              setModalConfirmacao({
+                                aberto: true,
+                                titulo: "Desativar Campanha e Limpar Fila?",
+                                descricao: "Deseja remover as mensagens de aniversário no dia pendentes na fila de envios?",
+                                local: "Campanha: Aniversário no Dia",
+                                confirmarLabel: "Sim, remover pendentes",
+                                cancelarLabel: "Não, manter na fila",
+                                onConfirm: () => {
+                                  void limparMensagensPendentesFila(CAMPANHA_CHAVE_ANIVERSARIO_DIA);
+                                }
+                              });
                             }
                           }}
                           aria-label="Ativar mensagem no dia do aniversário"
@@ -2549,7 +2721,29 @@ export function Campanhas() {
                         rows={3}
                         value={mensagemAniversarioDia}
                         onChange={(event) => setMensagemAniversarioDia(event.target.value)}
-                        onBlur={() => void salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_DIA, mensagemAniversarioDia, aniversarioDiaAtivo)}
+                        onFocus={() => setMensagemFocadaAnivDia(mensagemAniversarioDia)}
+                        onBlur={() => {
+                          const trimmed = mensagemAniversarioDia.trim();
+                          if (mensagemFocadaAnivDia && trimmed !== mensagemFocadaAnivDia.trim()) {
+                            setModalConfirmacao({
+                              aberto: true,
+                              titulo: "Atualizar Mensagens na Fila?",
+                              descricao: "Você alterou o texto da mensagem. Deseja atualizar o conteúdo de todas as mensagens de aniversário no dia que já estão pendentes na fila de envios?",
+                              local: "Campanha: Aniversário no Dia",
+                              confirmarLabel: "Sim, atualizar fila",
+                              cancelarLabel: "Não, apenas salvar",
+                              onConfirm: async () => {
+                                await salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_DIA, mensagemAniversarioDia, aniversarioDiaAtivo);
+                                await atualizarMensagensPendentesFila(CAMPANHA_CHAVE_ANIVERSARIO_DIA, mensagemAniversarioDia);
+                              },
+                              onCancel: async () => {
+                                await salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_DIA, mensagemAniversarioDia, aniversarioDiaAtivo);
+                              }
+                            });
+                          } else {
+                            void salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_DIA, mensagemAniversarioDia, aniversarioDiaAtivo);
+                          }
+                        }}
                       />
                       <p className="text-[11px] text-muted-foreground">{"Use {nome} na mensagem para inserir automaticamente o primeiro nome do paciente."}</p>
                     </div>
@@ -2574,12 +2768,17 @@ export function Campanhas() {
                             setAniversarioMesAtivo(checked);
                             await salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_MES, mensagemAniversarioMes, checked);
                             if (!checked) {
-                              const confirmar = window.confirm(
-                                "Deseja remover as mensagens de aniversário no mês pendentes na fila de envios?"
-                              );
-                              if (confirmar) {
-                                void limparMensagensPendentesFila(CAMPANHA_CHAVE_ANIVERSARIO_MES);
-                              }
+                              setModalConfirmacao({
+                                aberto: true,
+                                titulo: "Desativar Campanha e Limpar Fila?",
+                                descricao: "Deseja remover as mensagens de aniversário no mês pendentes na fila de envios?",
+                                local: "Campanha: Aniversário no Mês",
+                                confirmarLabel: "Sim, remover pendentes",
+                                cancelarLabel: "Não, manter na fila",
+                                onConfirm: () => {
+                                  void limparMensagensPendentesFila(CAMPANHA_CHAVE_ANIVERSARIO_MES);
+                                }
+                              });
                             }
                           }}
                           aria-label="Ativar mensagem no mês de aniversário"
@@ -2593,7 +2792,29 @@ export function Campanhas() {
                         rows={3}
                         value={mensagemAniversarioMes}
                         onChange={(event) => setMensagemAniversarioMes(event.target.value)}
-                        onBlur={() => void salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_MES, mensagemAniversarioMes, aniversarioMesAtivo)}
+                        onFocus={() => setMensagemFocadaAnivMes(mensagemAniversarioMes)}
+                        onBlur={() => {
+                          const trimmed = mensagemAniversarioMes.trim();
+                          if (mensagemFocadaAnivMes && trimmed !== mensagemFocadaAnivMes.trim()) {
+                            setModalConfirmacao({
+                              aberto: true,
+                              titulo: "Atualizar Mensagens na Fila?",
+                              descricao: "Você alterou o texto da mensagem. Deseja atualizar o conteúdo de todas as mensagens de aniversário no mês que já estão pendentes na fila de envios?",
+                              local: "Campanha: Aniversário no Mês",
+                              confirmarLabel: "Sim, atualizar fila",
+                              cancelarLabel: "Não, apenas salvar",
+                              onConfirm: async () => {
+                                await salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_MES, mensagemAniversarioMes, aniversarioMesAtivo);
+                                await atualizarMensagensPendentesFila(CAMPANHA_CHAVE_ANIVERSARIO_MES, mensagemAniversarioMes);
+                              },
+                              onCancel: async () => {
+                                await salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_MES, mensagemAniversarioMes, aniversarioMesAtivo);
+                              }
+                            });
+                          } else {
+                            void salvarCampanhaConfig(CAMPANHA_CHAVE_ANIVERSARIO_MES, mensagemAniversarioMes, aniversarioMesAtivo);
+                          }
+                        }}
                       />
                       <p className="text-[11px] text-muted-foreground">{"Use {nome} na mensagem para inserir automaticamente o primeiro nome do paciente."}</p>
                     </div>
