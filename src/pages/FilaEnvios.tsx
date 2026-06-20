@@ -19,7 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Wallet, Clock, CheckCircle2, XCircle, RefreshCcw, CalendarDays, Megaphone, Cake, Send, AlertTriangle, ShieldAlert, Ban } from "lucide-react";
+import { Wallet, Clock, CheckCircle2, XCircle, RefreshCcw, CalendarDays, Megaphone, Cake, Send, AlertTriangle, ShieldAlert, Ban, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useClinica } from "@/contexts/ClinicaContext";
 import { DateRange } from "react-day-picker";
@@ -139,6 +139,81 @@ const FilaEnvios = () => {
   const [filtroProcedimento, setFiltroProcedimento] = useState<string>("todos");
   const [filtroClinica, setFiltroClinica] = useState<string>("todas");
   const pageSize = 20;
+  const [deletandoId, setDeletandoId] = useState<string | null>(null);
+  const [deletandoMassa, setDeletandoMassa] = useState(false);
+
+  const pendingFilteredMessages = useMemo(() => {
+    return filteredData.filter((item: any) => item.status === "pendente");
+  }, [filteredData]);
+
+  const pendingFilteredCount = pendingFilteredMessages.length;
+
+  const handleCancelarMensagem = async (id: string) => {
+    if (!window.confirm("Deseja realmente cancelar esta mensagem programada?")) {
+      return;
+    }
+    
+    setDeletandoId(id);
+    try {
+      const { error } = await supabase
+        .from("fila_envios")
+        .delete()
+        .eq("id", id)
+        .eq("status", "pendente");
+
+      if (error) throw error;
+
+      toast({
+        title: "Mensagem cancelada",
+        description: "A mensagem foi removida da fila de envios com sucesso.",
+      });
+      refetch();
+    } catch (err: any) {
+      toast({
+        title: "Erro ao cancelar",
+        description: err.message || "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletandoId(null);
+    }
+  };
+
+  const handleCancelarEmMassa = async () => {
+    if (pendingFilteredCount === 0) return;
+
+    const confirmMsg = `Deseja realmente cancelar em massa todas as ${pendingFilteredCount} mensagens pendentes que correspondem aos filtros atuais? Esta ação é irreversível.`;
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+
+    setDeletandoMassa(true);
+    try {
+      const idsParaDeletar = pendingFilteredMessages.map((item: any) => item.id);
+      
+      const { error } = await supabase
+        .from("fila_envios")
+        .delete()
+        .in("id", idsParaDeletar)
+        .eq("status", "pendente");
+
+      if (error) throw error;
+
+      toast({
+        title: `${pendingFilteredCount} mensagens canceladas`,
+        description: "As mensagens selecionadas foram removidas da fila com sucesso.",
+      });
+      refetch();
+    } catch (err: any) {
+      toast({
+        title: "Erro ao cancelar mensagens",
+        description: err.message || "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletandoMassa(false);
+    }
+  };
 
   const { data: filterClinicas } = useQuery({
     queryKey: ["filter_clinicas_fila"],
@@ -429,6 +504,18 @@ const FilaEnvios = () => {
               Acompanhe as mensagens programadas para envio via WhatsApp. A fila é gerada automaticamente todos os dias às 7h.
             </p>
           </div>
+          {pendingFilteredCount > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleCancelarEmMassa}
+              disabled={deletandoMassa}
+              className="w-full sm:w-auto"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Cancelar Pendentes Filtrados ({pendingFilteredCount})
+            </Button>
+          )}
         </div>
 
         {/* Cards de resumo */}
@@ -652,7 +739,7 @@ const FilaEnvios = () => {
                         )}
                         <TableHead>Origem</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead className="hidden md:table-cell">Interação</TableHead>
+                        <TableHead className="text-right">Ações / Interação</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -691,8 +778,8 @@ const FilaEnvios = () => {
                             )}
                             <TableCell>{getOrigemBadge(item.origem, item.campanha_ref)}</TableCell>
                             <TableCell>{getStatusBadge(item.status)}</TableCell>
-                            <TableCell className="hidden md:table-cell">
-                              <div className="flex items-center gap-1.5 flex-wrap">
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1.5 flex-wrap">
                                 {item.status === "enviado" && (
                                   <>
                                     {item.lida ? (
@@ -764,7 +851,18 @@ const FilaEnvios = () => {
                                     )}
                                   </>
                                 )}
-                                {item.status !== "enviado" && (
+                                {item.status === "pendente" && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-[10px] px-2 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/30"
+                                    onClick={() => handleCancelarMensagem(item.id)}
+                                    disabled={deletandoId === item.id}
+                                  >
+                                    {deletandoId === item.id ? "Cancelando..." : "Cancelar"}
+                                  </Button>
+                                )}
+                                {item.status !== "enviado" && item.status !== "pendente" && (
                                   <span className="text-muted-foreground/45 text-[10px]">—</span>
                                 )}
                               </div>
