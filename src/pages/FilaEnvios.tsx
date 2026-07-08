@@ -710,9 +710,15 @@ const FilaEnvios = () => {
           <CardContent>
             {isLoading && <p className="text-sm text-muted-foreground">Carregando fila…</p>}
             {error && (
-              <p className="text-sm text-destructive">
-                Ocorreu um erro ao carregar a fila. Detalhes: {(error as Error).message}
-              </p>
+              <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-lg flex items-start gap-3 my-4">
+                <AlertTriangle className="h-5 w-5 mt-0.5 shrink-0" />
+                <div className="space-y-1">
+                  <h4 className="font-semibold text-sm">Ocorreu um erro ao carregar a fila</h4>
+                  <p className="text-xs opacity-90 leading-relaxed">
+                    Detalhes: {(error as Error).message}
+                  </p>
+                </div>
+              </div>
             )}
             {!isLoading && !error && (!fila || fila.length === 0 || filteredData.length === 0) && (
               <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
