@@ -1,0 +1,10 @@
+
+     You need to enable JavaScript to run this app. 
+    InícioEstatísticasNovoGestãoVendas225ProdutosNuvem PagoNuvem EnvioClientes17DescontosMarketingCanais de vendaLoja onlinePonto de VendaChatInstagram e FacebookGoogle ShoppingTikTokPinterestWhatsAppMarketplacesAplicativosLoja de AplicativosAplicativos sob medidaAceite LGPDConfiguraçõesAjudaCentral de AtendimentoFale conoscoWhatsAppNós ligamos para você!Lançamentos mais recentesGerencie Catálogos com Lumi no ChatOtimize a gestão de seu catálogo diretamente através de conversas com o Lumi.Changelog de Atualizações da NuvemshopGerencie Acessos com Aplicativos PersonalizadosCorreção Rápida de Dados Fiscais no PedidoPlanos e pagamentosDados do negócioInformações financeirastiago@vendii.com.brDados da contaMedidas de segurançaSessões e dispositivosSairConfiguraçõesPagamentos e enviosMeios de pagamentoMeios de envioCentros de distribuiçãoDocumentos fiscaisNotas fiscaisDeclaração de conteúdoComunicaçãoInformação de contatoBotão de WhatsAppMensagens automáticasCheckoutOpções de checkoutMensagem para clientesOutrosUsuários e notificaçõesDomíniosCódigos externosIdiomas e moedasRedirecionamentos 301Campos personalizadosPlanos e pagamentosPagamentosPlanosFaturasTarifas por vendasLumiLLoja Sherwin-WilliamsOcorreu um erro com o aplicativo Não foi possível carregar o aplicativo neste momento.Tentar novamente
+    
+    !function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();
+    
+    System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))
+  
+
+
