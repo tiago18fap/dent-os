@@ -587,7 +587,47 @@ export function Campanhas() {
       
       if (erroClientes) throw erroClientes;
 
-      const insertsFila = clientes.map((c: any) => {
+      // --- Início: Proteção de Duplicidade (Deduplicação Global 30 dias) ---
+      const { data: configWa } = await (supabase as any)
+        .from("whatsapp_config")
+        .select("dedup_dias")
+        .eq("clinica_id", clinica?.id)
+        .single();
+      const dedupDias = configWa?.dedup_dias ?? 30;
+
+      const dedupCutoff = new Date();
+      dedupCutoff.setDate(dedupCutoff.getDate() - dedupDias);
+
+      const idsCandidatos = clientes.map((c: any) => c.id);
+      const { data: enviosRecentes } = await (supabase as any)
+        .from("fila_envios")
+        .select("paciente_id")
+        .eq("clinica_id", clinica?.id)
+        .in("paciente_id", idsCandidatos)
+        .in("status", ["pendente", "enviado"])
+        .gte("data_programada", dedupCutoff.toISOString());
+
+      const pacientesParaIgnorar = new Set((enviosRecentes || []).map((e: any) => e.paciente_id));
+
+      const telefonesEnviados = new Set();
+      const clientesFiltrados = clientes.filter((c: any) => {
+        if (pacientesParaIgnorar.has(c.id)) return false;
+        if (telefonesEnviados.has(c.telefone)) return false;
+        telefonesEnviados.add(c.telefone);
+        return true;
+      });
+
+      if (clientesFiltrados.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "Nenhum paciente elegível",
+          description: `Todos os pacientes selecionados já receberam mensagens nos últimos ${dedupDias} dias (Regra de proteção ativada).`,
+        });
+        return false;
+      }
+      // --- Fim: Proteção de Duplicidade ---
+
+      const insertsFila = clientesFiltrados.map((c: any) => {
         const nomeCompleto = (c.paciente ?? "").trim();
         const primeiroNome = nomeCompleto.split(" ")[0] ?? "";
         const nomeFormatado = primeiroNome.charAt(0).toUpperCase() + primeiroNome.slice(1).toLowerCase();
@@ -608,9 +648,11 @@ export function Campanhas() {
       const { error: erroFila } = await (supabase as any).from("fila_envios").insert(insertsFila);
       if (erroFila) throw erroFila;
 
+      const quantidadeReal = insertsFila.length;
+
       const { error: erroUpdate } = await (supabase as any)
         .from("carteira_envios")
-        .update({ saldo: saldoAtual - quantidade })
+        .update({ saldo: saldoAtual - quantidadeReal })
         .eq("id", carteira.id)
         .eq("clinica_id", clinica?.id);
         
@@ -620,11 +662,23 @@ export function Campanhas() {
         .from("disparos_massa_historico")
         .insert({
           status: "agendado",
-          quantidade_destinatarios: quantidade,
+          quantidade_destinatarios: quantidadeReal,
           mensagem: mensagem,
           data_agendada: dataAgendada.toISOString(),
           clinica_id: clinica?.id,
         });
+
+      if (quantidadeReal < quantidade) {
+        toast({
+          title: "Disparo agendado com deduplicação",
+          description: `${quantidadeReal} mensagens adicionadas à fila. ${quantidade - quantidadeReal} contatos foram ignorados por já terem recebido mensagens recentemente.`,
+        });
+      } else {
+        toast({
+          title: "Disparo agendado",
+          description: `${quantidadeReal} mensagens foram adicionadas à fila com sucesso.`,
+        });
+      }
 
       return true;
     } catch (error) {
@@ -1328,31 +1382,33 @@ export function Campanhas() {
             if (!open) setModalConfirmacao((prev) => ({ ...prev, aberto: false }));
           }}
         >
-          <AlertDialogContent className="border border-border/80 shadow-lg sm:max-w-[420px]">
-            <div className="flex gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
-                <AlertTriangle className="h-5 w-5" />
-              </div>
-              <div className="flex-1 space-y-1.5">
-                <AlertDialogHeader className="space-y-1 text-left">
-                  {modalConfirmacao.local && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                      <MapPin className="h-3.5 w-3.5 mr-0.5" />
-                      {modalConfirmacao.local}
-                    </span>
-                  )}
-                  <AlertDialogTitle className="text-base font-semibold leading-tight text-foreground">
+          <AlertDialogContent className="border border-border/60 shadow-2xl sm:max-w-[440px] rounded-2xl overflow-hidden p-0">
+            <div className="bg-muted/30 px-6 py-5 border-b border-border/40">
+              <AlertDialogHeader className="space-y-1.5 text-left">
+                {modalConfirmacao.local && (
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground tracking-widest uppercase mb-1">
+                    <MapPin className="h-3 w-3 text-primary/70" />
+                    {modalConfirmacao.local}
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <AlertTriangle className="h-4 w-4" />
+                  </div>
+                  <AlertDialogTitle className="text-lg font-semibold tracking-tight text-foreground">
                     {modalConfirmacao.titulo}
                   </AlertDialogTitle>
-                </AlertDialogHeader>
-                <AlertDialogDescription className="text-xs text-muted-foreground leading-relaxed pt-1">
-                  {modalConfirmacao.descricao}
-                </AlertDialogDescription>
-              </div>
+                </div>
+              </AlertDialogHeader>
             </div>
-            <AlertDialogFooter className="mt-4 gap-2 sm:gap-0">
+            <div className="px-6 py-5">
+              <AlertDialogDescription className="text-sm text-foreground/80 leading-relaxed">
+                {modalConfirmacao.descricao}
+              </AlertDialogDescription>
+            </div>
+            <div className="bg-muted/10 px-6 py-4 flex items-center justify-end gap-3 border-t border-border/40">
               <AlertDialogCancel
-                className="text-xs h-9"
+                className="mt-0 h-10 px-4 text-sm font-medium transition-colors"
                 onClick={async () => {
                   if (modalConfirmacao.onCancel) {
                     await modalConfirmacao.onCancel();
@@ -1363,7 +1419,7 @@ export function Campanhas() {
                 {modalConfirmacao.cancelarLabel || "Cancelar"}
               </AlertDialogCancel>
               <AlertDialogAction
-                className="text-xs h-9 bg-amber-500 hover:bg-amber-600 text-white border-0 shadow-sm transition-colors"
+                className="mt-0 h-10 px-4 text-sm font-medium shadow-sm transition-all hover:bg-primary/90"
                 onClick={async () => {
                   await modalConfirmacao.onConfirm();
                   setModalConfirmacao((prev) => ({ ...prev, aberto: false }));
@@ -1371,7 +1427,7 @@ export function Campanhas() {
               >
                 {modalConfirmacao.confirmarLabel || "Confirmar"}
               </AlertDialogAction>
-            </AlertDialogFooter>
+            </div>
           </AlertDialogContent>
         </AlertDialog>
 

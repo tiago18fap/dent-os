@@ -1,0 +1,23 @@
+[
+  {
+    "id": "mq4c9ac282ulg",
+    "type": "nuvempay",
+    "status": "erro",
+    "queuedAt": "2026-06-07T22:13:24.243Z",
+    "logs": [
+      "[07/06/2026, 19:13:24] [INFO] Iniciando execução da integração: nuvempay",
+      "[07/06/2026, 19:13:24] [INFO] Carregando script de automação: ./jobs/nuvempay.mjs",
+      "[07/06/2026, 19:13:25] [INFO] Executando script do Playwright...",
+      "[07/06/2026, 19:13:25] [INFO] Iniciando navegador Chromium com perfil persistente em: C:\\Users\\tiago\\Documents\\DentOS\\integracoes\\data\\sessions\\nuvempay...",
+      "[07/06/2026, 19:13:26] [INFO] Acessando painel administrativo da Nuvemshop (Login)...",
+      "[07/06/2026, 19:14:11] [ERROR] Erro na automação do NuvemPay: page.goto: Timeout 45000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://admin.nuvemshop.com.br/login\", waiting until \"domcontentloaded\"\u001b[22m\n",
+      "[07/06/2026, 19:14:30] [INFO] Print do erro salvo para visualização em: error_mq4c9ac282ulg.png",
+      "[07/06/2026, 19:14:30] [INFO] Fechando navegador em 3 segundos...",
+      "[07/06/2026, 19:15:03] [ERROR] Erro durante a execução: page.goto: Timeout 45000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://admin.nuvemshop.com.br/login\", waiting until \"domcontentloaded\"\u001b[22m\n"
+    ],
+    "startedAt": "2026-06-07T22:13:24.246Z",
+    "finishedAt": "2026-06-07T22:15:03.575Z",
+    "error": "page.goto: Timeout 45000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://admin.nuvemshop.com.br/login\", waiting until \"domcontentloaded\"\u001b[22m\n",
+    "videoUrl": "videos/mq4c9ac282ulg.webm"
+  }
+]

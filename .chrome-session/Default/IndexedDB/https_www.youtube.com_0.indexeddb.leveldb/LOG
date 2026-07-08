@@ -1,0 +1,6 @@
+2026/06/07-09:47:05.828 fd4c Creating DB C:\Users\tiago\Documents\DentOS\.chrome-session\Default\IndexedDB\https_www.youtube.com_0.indexeddb.leveldb since it was missing.
+2026/06/07-09:47:05.837 fd4c Reusing MANIFEST C:\Users\tiago\Documents\DentOS\.chrome-session\Default\IndexedDB\https_www.youtube.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/06/07-13:05:52.748 fd4c Level-0 table #5: started
+2026/06/07-13:05:52.752 fd4c Level-0 table #5: 13349 bytes OK
+2026/06/07-13:05:52.754 fd4c Delete type=0 #3
+2026/06/07-13:05:52.755 fd4c Manual compaction at level-0 from (begin) .. (end); will stop at (end)

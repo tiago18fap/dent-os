@@ -1,0 +1,41 @@
+
+    Easypanelv2.31.0 BRDADEENESFAFRHIIDITJAKANLPLPTRORUTHTRVICNPainelAçõesMonitorarDomíniosConfiguraçõesDocumentaçãoDiscordDiscordFeedbackHistórico de AlteraçõesComprar LicençaBusca Rápida⌘ KCommand PaletteSearch for a command to run...64.227.94.83Modo EscuroSairdentosServiços[data-radix-scroll-area-viewport]{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;}[data-radix-scroll-area-viewport]::-webkit-scrollbar{display:none}easydental-workerintegracoesweb[data-radix-scroll-area-viewport]{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;}[data-radix-scroll-area-viewport]::-webkit-scrollbar{display:none}Visão GeralFonteImplantaçõesAmbienteDomíniosRedirecionamentosScriptsSegurançaRecursosManutençãoArmazenamentoAvançadoCPU0.0%0 cores — Carregar 
+.dark [data-chart=chart-r7f] {
+  --color-value: #f97316;
+}
+
+
+ [data-chart=chart-r7f] {
+  --color-value: #f97316;
+}
+Memória0.0%0 B / 0 B
+.dark [data-chart=chart-r7j] {
+  --color-value: #3b82f6;
+}
+
+
+ [data-chart=chart-r7j] {
+  --color-value: #3b82f6;
+}
+Disco0.0%0 GB / 0 GB
+.dark [data-chart=chart-r7n] {
+  --color-value: #22c55e;
+}
+
+
+ [data-chart=chart-r7n] {
+  --color-value: #22c55e;
+}
+Rede0 B/s
+.dark [data-chart=chart-r7r] {
+  --color-value: #0891b2;
+}
+
+
+ [data-chart=chart-r7r] {
+  --color-value: #0891b2;
+}
+Monitoramento avançado está disponível apenas se você tiver uma licença.Comprar LicençaServiçosEventos do DockerArmazenamentoProjeto / ServiçoCPU %MemóriaMemória %Entrada de RedeSaída de RedePausarLimparTipoAçãoTempoDetalhesProjetoServiçoTamanhoCaminhoevolutionevolution-api-db641,6 MB/etc/easypanel/projects/evolution/evolution-api-dbdentosintegracoes18,5 MB/etc/easypanel/projects/dentos/integracoesdentoseasydental-worker18 MB/etc/easypanel/projects/dentos/easydental-workerevolutionevolution-api-redis10,3 MB/etc/easypanel/projects/evolution/evolution-api-redisdentosweb10,2 MB/etc/easypanel/projects/dentos/webposvendaapi1,7 MB/etc/easypanel/projects/posvenda/apiposvendaworker1,7 MB/etc/easypanel/projects/posvenda/workerposvendaweb1,7 MB/etc/easypanel/projects/posvenda/webevolutionevolution-api36,9 kB/etc/easypanel/projects/evolution/evolution-apiposvendaredis8,2 kB/etc/easypanel/projects/posvenda/redis
+  
+
+dentosevolutionposvendaConfigurações do ProjetoCriar Projeto
