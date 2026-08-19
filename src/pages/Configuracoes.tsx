@@ -17,7 +17,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, EyeOff, Loader2, Wifi, WifiOff, Send, Settings2, Monitor, Lock, Users, Clipboard, Smartphone, Check } from "lucide-react";
+import { QrCode, CheckCircle2, Clock, RefreshCcw, LogOut, Edit, Trash2, Plus, Key, Eye, EyeOff, Loader2, Wifi, WifiOff, Send, Settings2, Monitor, Lock, Users, Clipboard, Smartphone, Check, Calendar, FileText, Search, Filter, BarChart3, Info, ChevronLeft, ChevronRight } from "lucide-react";
 import { createInstance, connectInstance, getConnectionState, disconnectAndDelete, fetchInstanceInfo, sendTextMessage, configureWebhook, getPairingCode, restartInstance, checkAndReconnect } from "@/services/evolutionApi";
 import { gravarLogAuditoria } from "@/utils/auditoria";
 
@@ -3672,6 +3672,11 @@ const Configuracoes = () => {
                   {easydentalUsuario && easydentalSenha && (
                     <SyncLogsSection clinicaId={whatsappStatus.data?.clinica_id} ultimaSync={whatsappStatus.data?.ultima_sync_sucesso} />
                   )}
+
+                  {/* ═══ AUDITORIA E VERIFICAÇÃO DE DADOS IMPORTADOS ═══ */}
+                  {easydentalUsuario && easydentalSenha && (
+                    <IntegrationAuditSection clinicaId={whatsappStatus.data?.clinica_id} />
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -4302,6 +4307,418 @@ function SyncLogsSection({ clinicaId, ultimaSync }: { clinicaId?: string; ultima
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// Componente — Auditoria & Verificação Diária de Dados Importados (Easy Dental)
+// ══════════════════════════════════════════════════════════════
+
+function IntegrationAuditSection({ clinicaId }: { clinicaId?: string }) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const [selectedDay, setSelectedDay] = useState<any | null>(null);
+  const [page, setPage] = useState(1);
+  const ITEMS_PER_PAGE = 15;
+
+  const { data: auditData, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['integration-audit', clinicaId],
+    enabled: !!clinicaId,
+    queryFn: async () => {
+      // 1. Total clientes
+      const { count: totalClientes } = await (supabase as any)
+        .from('clientes')
+        .select('*', { count: 'exact', head: true })
+        .eq('clinica_id', clinicaId);
+
+      // 2. Fetch procedimentos
+      const PAGE_SIZE = 1000;
+      let allProcs: any[] = [];
+      let offset = 0;
+      while (true) {
+        const { data, error } = await (supabase as any)
+          .from('procedimentos')
+          .select('data_finalizacao, procedimento, nome_paciente, regiao')
+          .eq('clinica_id', clinicaId)
+          .range(offset, offset + PAGE_SIZE - 1);
+        
+        if (error || !data || data.length === 0) break;
+        allProcs = allProcs.concat(data);
+        if (data.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+
+      // Group by data_finalizacao
+      const dateMap: Record<string, {
+        dataStr: string;
+        timestamp: number;
+        totalProc: number;
+        pacientesSet: Set<string>;
+        procedimentosMap: Record<string, number>;
+        listaDetalhada: any[];
+      }> = {};
+
+      allProcs.forEach(p => {
+        const rawDate = p.data_finalizacao || 'Sem Data';
+        if (!dateMap[rawDate]) {
+          let ts = 0;
+          if (rawDate !== 'Sem Data' && rawDate.includes('/')) {
+            const [d, m, y] = rawDate.split('/').map(Number);
+            ts = new Date(y, m - 1, d).getTime();
+          }
+          dateMap[rawDate] = {
+            dataStr: rawDate,
+            timestamp: ts,
+            totalProc: 0,
+            pacientesSet: new Set(),
+            procedimentosMap: {},
+            listaDetalhada: []
+          };
+        }
+
+        dateMap[rawDate].totalProc++;
+        if (p.nome_paciente) dateMap[rawDate].pacientesSet.add(p.nome_paciente);
+        if (p.procedimento) {
+          const procName = p.procedimento.trim();
+          dateMap[rawDate].procedimentosMap[procName] = (dateMap[rawDate].procedimentosMap[procName] || 0) + 1;
+        }
+        dateMap[rawDate].listaDetalhada.push(p);
+      });
+
+      // Sort dates descending (newest first)
+      const daysList = Object.values(dateMap).sort((a, b) => b.timestamp - a.timestamp);
+
+      // Extract unique months for filter (ex: "08/2026", "07/2026")
+      const monthSet = new Set<string>();
+      daysList.forEach(d => {
+        if (d.dataStr.includes('/')) {
+          const parts = d.dataStr.split('/');
+          if (parts.length === 3) {
+            monthSet.add(`${parts[1]}/${parts[2]}`);
+          }
+        }
+      });
+
+      const periodStart = daysList.length > 0 ? daysList[daysList.length - 1].dataStr : null;
+      const periodEnd = daysList.length > 0 ? daysList[0].dataStr : null;
+
+      return {
+        totalClientes: totalClientes || 0,
+        totalProcedimentos: allProcs.length,
+        totalDiasAtendimento: daysList.length,
+        periodStart,
+        periodEnd,
+        monthsList: Array.from(monthSet),
+        daysList
+      };
+    }
+  });
+
+  // Filter days list by search term & selected month
+  const filteredDays = useMemo(() => {
+    if (!auditData?.daysList) return [];
+    return auditData.daysList.filter(item => {
+      const matchesSearch = !searchTerm || 
+        item.dataStr.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        Array.from(item.pacientesSet).some(p => p.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        Object.keys(item.procedimentosMap).some(p => p.toLowerCase().includes(searchTerm.toLowerCase()));
+
+      const matchesMonth = selectedMonth === "all" || (item.dataStr.includes('/') && `${item.dataStr.split('/')[1]}/${item.dataStr.split('/')[2]}` === selectedMonth);
+
+      return matchesSearch && matchesMonth;
+    });
+  }, [auditData?.daysList, searchTerm, selectedMonth]);
+
+  const totalPages = Math.ceil((filteredDays.length || 0) / ITEMS_PER_PAGE);
+  const paginatedDays = filteredDays.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+
+  // Helper for day of week name
+  const getDayOfWeekName = (dateStr: string) => {
+    if (!dateStr || !dateStr.includes('/')) return '';
+    try {
+      const [d, m, y] = dateStr.split('/').map(Number);
+      const date = new Date(y, m - 1, d);
+      const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+      return days[date.getDay()];
+    } catch { return ''; }
+  };
+
+  return (
+    <div className="space-y-4 mt-6 pt-6 border-t border-border/60">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/40 p-4 rounded-xl border border-border/50">
+        <div>
+          <h3 className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <BarChart3 className="h-4 w-4 text-primary" />
+            Auditoria & Verificação dos Dados Importados
+          </h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Relatório detalhado para conferir se os procedimentos e clientes vieram completos sem pular nenhum dia.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => refetch()}
+          disabled={isLoading || isRefetching}
+          className="shrink-0 text-xs gap-1.5"
+        >
+          <RefreshCcw className={`h-3.5 w-3.5 ${isRefetching ? 'animate-spin' : ''}`} />
+          Atualizar Auditoria
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="p-8 text-center space-y-2 border border-border/50 rounded-xl bg-background">
+          <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" />
+          <p className="text-xs text-muted-foreground">Analisando histórico completo de procedimentos importados...</p>
+        </div>
+      ) : (
+        <>
+          {/* Cards de Resumo */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3 rounded-lg border border-border/50 bg-background space-y-1">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-[11px] font-medium">Dias com Atendimento</span>
+                <Calendar className="h-3.5 w-3.5 text-primary" />
+              </div>
+              <p className="text-xl font-bold text-foreground">{auditData?.totalDiasAtendimento || 0}</p>
+              <p className="text-[10px] text-muted-foreground truncate">
+                {auditData?.periodStart && auditData?.periodEnd ? `${auditData.periodStart} à ${auditData.periodEnd}` : 'Nenhum dado'}
+              </p>
+            </div>
+
+            <div className="p-3 rounded-lg border border-border/50 bg-background space-y-1">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-[11px] font-medium">Total Procedimentos</span>
+                <FileText className="h-3.5 w-3.5 text-sky-500" />
+              </div>
+              <p className="text-xl font-bold text-foreground">{auditData?.totalProcedimentos || 0}</p>
+              <p className="text-[10px] text-muted-foreground">Registros importados</p>
+            </div>
+
+            <div className="p-3 rounded-lg border border-border/50 bg-background space-y-1">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-[11px] font-medium">Pacientes / Clientes</span>
+                <Users className="h-3.5 w-3.5 text-emerald-500" />
+              </div>
+              <p className="text-xl font-bold text-foreground">{auditData?.totalClientes || 0}</p>
+              <p className="text-[10px] text-muted-foreground">Cadastros ativos no banco</p>
+            </div>
+
+            <div className="p-3 rounded-lg border border-border/50 bg-background space-y-1">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-[11px] font-medium">Atendimento Recente</span>
+                <Clock className="h-3.5 w-3.5 text-amber-500" />
+              </div>
+              <p className="text-lg font-bold text-foreground truncate">{auditData?.periodEnd || '—'}</p>
+              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Última data importada</p>
+            </div>
+          </div>
+
+          {/* Banner explicativo */}
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 flex items-start gap-2.5">
+            <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+            <div className="text-xs space-y-0.5">
+              <p className="font-semibold text-primary">Regra de Transparência de Auditoria</p>
+              <p className="text-muted-foreground leading-relaxed text-[11px]">
+                Apenas os dias em que a clínica realizou e finalizou procedimentos são listados abaixo. Dias de folga ou feriados sem tratamentos são omitidos automaticamente para você ter um relatório limpo e conferir a sequência sem pulos.
+              </p>
+            </div>
+          </div>
+
+          {/* Filtros e Busca */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por data, paciente ou procedimento..."
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
+                className="pl-8 text-xs h-8"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <span className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                <Filter className="h-3 w-3" /> Mês:
+              </span>
+              <select
+                value={selectedMonth}
+                onChange={(e) => { setSelectedMonth(e.target.value); setPage(1); }}
+                className="h-8 text-xs bg-background border border-input rounded-md px-2 py-1 text-foreground"
+              >
+                <option value="all">Todos os meses ({auditData?.daysList.length} dias)</option>
+                {auditData?.monthsList.map(m => (
+                  <option key={m} value={m}>Mês {m}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Tabela de Dias de Atendimento */}
+          <div className="rounded-xl border border-border/60 overflow-hidden bg-background shadow-xs">
+            <Table>
+              <TableHeader className="bg-muted/40">
+                <TableRow>
+                  <TableHead className="text-xs font-semibold w-[150px]">Data Atendimento</TableHead>
+                  <TableHead className="text-xs font-semibold w-[130px] text-center">Procedimentos</TableHead>
+                  <TableHead className="text-xs font-semibold w-[140px] text-center">Pacientes Únicos</TableHead>
+                  <TableHead className="text-xs font-semibold">Procedimentos Realizados (Resumo)</TableHead>
+                  <TableHead className="text-xs font-semibold text-right w-[100px]">Ação</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedDays.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8 text-xs text-muted-foreground">
+                      Nenhum dia de atendimento encontrado com os filtros selecionados.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedDays.map((dayItem) => {
+                    const dayName = getDayOfWeekName(dayItem.dataStr);
+                    const topProcs = Object.entries(dayItem.procedimentosMap)
+                      .slice(0, 2)
+                      .map(([name, count]) => `${name} (${count})`)
+                      .join(', ');
+                    const extraCount = Object.keys(dayItem.procedimentosMap).length - 2;
+
+                    return (
+                      <TableRow key={dayItem.dataStr} className="hover:bg-muted/30 transition-colors">
+                        <TableCell className="font-mono text-xs font-medium">
+                          <div className="flex items-center gap-1.5">
+                            <Badge variant="outline" className="text-[10px] font-sans px-1.5 py-0 bg-muted/50">
+                              {dayName}
+                            </Badge>
+                            <span>{dayItem.dataStr}</span>
+                          </div>
+                        </TableCell>
+
+                        <TableCell className="text-center">
+                          <Badge className="bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800 text-[11px] font-semibold">
+                            {dayItem.totalProc} {dayItem.totalProc === 1 ? 'procedimento' : 'procedimentos'}
+                          </Badge>
+                        </TableCell>
+
+                        <TableCell className="text-center">
+                          <Badge variant="secondary" className="text-[11px] font-normal">
+                            <Users className="h-3 w-3 mr-1 text-muted-foreground" />
+                            {dayItem.pacientesSet.size} {dayItem.pacientesSet.size === 1 ? 'paciente' : 'pacientes'}
+                          </Badge>
+                        </TableCell>
+
+                        <TableCell className="text-xs text-muted-foreground max-w-[280px] truncate" title={Object.keys(dayItem.procedimentosMap).join(', ')}>
+                          {topProcs} {extraCount > 0 ? ` +${extraCount} outros` : ''}
+                        </TableCell>
+
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setSelectedDay(dayItem)}
+                            className="h-7 text-xs gap-1 hover:bg-primary/10 hover:text-primary"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            <span>Ver tudo</span>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+
+            {/* Paginação */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/50 text-xs bg-muted/20">
+                <span className="text-muted-foreground text-[11px]">
+                  Mostrando {(page - 1) * ITEMS_PER_PAGE + 1} a {Math.min(page * ITEMS_PER_PAGE, filteredDays.length)} de {filteredDays.length} dias
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-7 w-7"
+                    disabled={page === 1}
+                    onClick={() => setPage(p => p - 1)}
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </Button>
+                  <span className="px-2 font-medium">
+                    {page} / {totalPages}
+                  </span>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-7 w-7"
+                    disabled={page === totalPages}
+                    onClick={() => setPage(p => p + 1)}
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Modal de Detalhes do Dia Selecionado */}
+      <Dialog open={!!selectedDay} onOpenChange={(open) => { if (!open) setSelectedDay(null); }}>
+        <DialogContent className="max-w-xl max-h-[85vh] flex flex-col overflow-hidden p-0 rounded-xl">
+          <DialogHeader className="p-4 border-b border-border bg-muted/30 space-y-1">
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-primary" />
+              <span>Atendimentos de {selectedDay?.dataStr}</span>
+              <Badge variant="outline" className="ml-auto text-xs">
+                {getDayOfWeekName(selectedDay?.dataStr || '')}
+              </Badge>
+            </DialogTitle>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground pt-1">
+              <span>Total: <strong>{selectedDay?.totalProc} procedimentos</strong></span>
+              <span>•</span>
+              <span>Pacientes: <strong>{selectedDay?.pacientesSet.size} pessoas</strong></span>
+            </div>
+          </DialogHeader>
+
+          <div className="p-4 overflow-y-auto space-y-3 flex-1">
+            <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5 text-primary" />
+              Lista de Procedimentos Importados nesta Data:
+            </p>
+
+            <div className="rounded-lg border border-border overflow-hidden">
+              <Table>
+                <TableHeader className="bg-muted/50">
+                  <TableRow>
+                    <TableHead className="text-xs font-semibold">Paciente</TableHead>
+                    <TableHead className="text-xs font-semibold">Procedimento</TableHead>
+                    <TableHead className="text-xs font-semibold w-[80px]">Região</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedDay?.listaDetalhada.map((item: any, idx: number) => (
+                    <TableRow key={idx} className="hover:bg-muted/20">
+                      <TableCell className="text-xs font-medium text-foreground">
+                        {item.nome_paciente || '—'}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {item.procedimento || '—'}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground font-mono">
+                        {item.regiao || '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
