@@ -27,8 +27,12 @@ function log(msg, level = 'INFO') {
 // Supabase helpers
 // ══════════════════════════════════════════════════════════════
 
+const DEFAULT_SUPABASE_URL = 'https://dzbeorfkualalocrvobe.supabase.co';
+const DEFAULT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6YmVvcmZrdWFsYWxvY3J2b2JlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NjYyMjIxNSwiZXhwIjoyMDgyMTk4MjE1fQ.EtxdNtddWDFNu_k2pvcmqn72UB8YWAyIKcvLNkcEHog';
+
 export async function getCredentials(clinicaId, opts = {}) {
-  const { supabaseUrl, supabaseKey } = opts;
+  const supabaseUrl = opts.supabaseUrl || process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const supabaseKey = opts.supabaseKey || process.env.SUPABASE_KEY || DEFAULT_SUPABASE_KEY;
   let url = `${supabaseUrl}/rest/v1/whatsapp_config?select=clinica_id,easydental_usuario,easydental_senha,redirecionar_numero,ultima_sync_sucesso,alerta_sync_enviado&easydental_usuario=not.is.null&easydental_senha=not.is.null`;
   
   if (clinicaId) {
@@ -44,7 +48,8 @@ export async function getCredentials(clinicaId, opts = {}) {
 }
 
 async function supabaseRequest(path, method = 'GET', body = null, opts = {}) {
-  const { supabaseUrl, supabaseKey } = opts;
+  const supabaseUrl = opts.supabaseUrl || process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const supabaseKey = opts.supabaseKey || process.env.SUPABASE_KEY || DEFAULT_SUPABASE_KEY;
   const requestOpts = {
     method,
     headers: {
@@ -65,7 +70,8 @@ async function supabaseRequest(path, method = 'GET', body = null, opts = {}) {
 }
 
 async function fetchAll(path, opts = {}) {
-  const { supabaseUrl, supabaseKey } = opts;
+  const supabaseUrl = opts.supabaseUrl || process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const supabaseKey = opts.supabaseKey || process.env.SUPABASE_KEY || DEFAULT_SUPABASE_KEY;
   const PAGE_SIZE = 1000;
   let allData = [];
   let offset = 0;
@@ -122,7 +128,8 @@ async function atualizarUltimaSyncSucesso(clinicaId, opts = {}) {
 }
 
 async function upsertBatch(table, batch, onConflict, opts = {}) {
-  const { supabaseUrl, supabaseKey } = opts;
+  const supabaseUrl = opts.supabaseUrl || process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const supabaseKey = opts.supabaseKey || process.env.SUPABASE_KEY || DEFAULT_SUPABASE_KEY;
   const url = onConflict
     ? `${supabaseUrl}/rest/v1/${table}?on_conflict=${onConflict}`
     : `${supabaseUrl}/rest/v1/${table}`;
