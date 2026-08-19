@@ -20,7 +20,7 @@ import { syncClinica, syncTodasClinicas, getCredentials } from './sync.mjs';
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const AUTH_TOKEN = process.env.AUTH_TOKEN || 'REMOVIDO_DO_GIT';
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://dzbeorfkualalocrvobe.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'REMOVIDO_DO_GIT';
 
 // Estado
 let lastSync = null;

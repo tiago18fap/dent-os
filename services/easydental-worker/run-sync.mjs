@@ -1,7 +1,7 @@
 import { syncTodasClinicas } from './sync.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://dzbeorfkualalocrvobe.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || '';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'REMOVIDO_DO_GIT';
 
 async function run() {
   console.log('[CRON] Iniciando sincronização diária de todas as clínicas...');
