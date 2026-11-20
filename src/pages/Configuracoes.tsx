@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, functionUrl, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
@@ -3869,12 +3869,12 @@ function GerarFilaSection() {
     try {
       const session = await supabase.auth.getSession();
       const res = await fetch(
-        'https://dzbeorfkualalocrvobe.supabase.co/functions/v1/gerar-fila-diaria',
+        functionUrl('gerar-fila-diaria'),
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.data.session?.access_token || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6YmVvcmZrdWFsYWxvY3J2b2JlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2MjIyMTUsImV4cCI6MjA4MjE5ODIxNX0.CbV28UokExWE0XtqJx-fwgdMN7qtd-x_-K77j2bBeqc'}`,
+            'Authorization': `Bearer ${session.data.session?.access_token || SUPABASE_PUBLISHABLE_KEY}`,
           },
           body: JSON.stringify({}),
         }
@@ -4005,7 +4005,7 @@ function SyncNowSection({ clinicaId, ultimaSync }: { clinicaId?: string; ultimaS
 
     try {
       const res = await fetch(
-        'https://dzbeorfkualalocrvobe.supabase.co/functions/v1/easydental-sync',
+        functionUrl('easydental-sync'),
         {
           method: 'POST',
           headers: {

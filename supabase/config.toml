@@ -17,3 +17,16 @@ verify_jwt = false
 
 [functions.easydental-sync]
 verify_jwt = false
+
+# Igual a producao (supabase functions list, 20/11/2026): estas tambem rodam sem JWT.
+[functions.mercadopago-checkout]
+verify_jwt = false
+
+[functions.mercadopago-webhook]
+verify_jwt = false
+
+[functions.diagnostico-envios]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false

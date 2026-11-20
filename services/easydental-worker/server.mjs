@@ -19,8 +19,10 @@ import { syncClinica, syncTodasClinicas, getCredentials } from './sync.mjs';
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const AUTH_TOKEN = process.env.AUTH_TOKEN || 'REMOVIDO_DO_GIT';
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://dzbeorfkualalocrvobe.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || 'REMOVIDO_DO_GIT';
+// Endereco da API do DentOS (compativel com Supabase) e chave service_role: so por variavel de ambiente.
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
+if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('Defina SUPABASE_URL e SUPABASE_KEY (service_role da API do DentOS).');
 
 // Estado
 let lastSync = null;

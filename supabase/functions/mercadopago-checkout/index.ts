@@ -75,7 +75,8 @@ serve(async (req) => {
     const price = planoId === "prata" ? 139.00 : 89.00;
     const planName = planoId === "prata" ? "Prata" : "Bronze";
     const origin = req.headers.get("origin") || "https://dentos.com.br";
-    const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/mercadopago-webhook`;
+    // PUBLIC_URL: endereco publico do site na API propria (o SUPABASE_URL la e interno).
+    const webhookUrl = `${Deno.env.get("PUBLIC_URL") ?? Deno.env.get("SUPABASE_URL")}/functions/v1/mercadopago-webhook`;
 
     // ═══ Criar Order via Orders API v1 ═══
     const idempotencyKey = crypto.randomUUID();

@@ -1,0 +1,42 @@
+import { createClient } from "@supabase/supabase-js";
+// Teste de ponta a ponta da API (login, RLS, refresh, funcoes). Cria a tabela public._smoke
+// antes (ver docs/MIGRACAO-SUPABASE.md) e apaga os usuarios *@teste.local depois.
+//   API_URL=http://127.0.0.1:18080 ANON_KEY=... node scripts/smoke-api.mjs
+const url = process.env.API_URL || "http://127.0.0.1:18080", key = process.env.ANON_KEY;
+const mk = () => createClient(url, key, { auth: { persistSession: false } });
+const log = (k, v) => console.log(k.padEnd(28), typeof v === "string" ? v : JSON.stringify(v));
+const a = mk(), b = mk();
+const ea = `smoke.a.${Date.now()}@teste.local`, eb = `smoke.b.${Date.now()}@teste.local`;
+let r = await a.auth.signUp({ email: ea, password: "senha123", options: { data: { full_name: "Teste A" } } });
+log("signUp A", r.error ? r.error.message : `ok session=${!!r.data.session} meta=${r.data.user.user_metadata.full_name}`);
+r = await b.auth.signUp({ email: eb, password: "senha123" });
+log("signUp B", r.error ? r.error.message : "ok");
+r = await a.auth.signUp({ email: ea, password: "senha123" });
+log("signUp A de novo", r.error ? r.error.message : "NAO deu erro (ruim)");
+r = await mk().auth.signInWithPassword({ email: ea, password: "errada" });
+log("login senha errada", r.error ? r.error.message : "entrou (ruim)");
+r = await a.auth.signInWithPassword({ email: ea, password: "senha123" });
+log("login A", r.error ? r.error.message : "ok");
+r = await a.from("_smoke").insert({ txt: "da A" }).select().single();
+log("insert A", r.error ? r.error.message : r.data.txt);
+r = await b.from("_smoke").insert({ txt: "da B" });
+log("insert B", r.error ? r.error.message : "ok");
+r = await a.from("_smoke").select("*", { count: "exact" });
+log("A ve (RLS)", r.error ? r.error.message : `${r.count} linha(s): ${r.data.map(x=>x.txt)}`);
+r = await mk().from("_smoke").select("*");
+log("anonimo ve", r.error ? r.error.message : `${r.data.length} linha(s)`);
+r = await a.auth.getUser();
+log("getUser A", r.error ? r.error.message : r.data.user.email === ea ? "ok" : "email errado");
+r = await a.auth.refreshSession();
+log("refresh A", r.error ? r.error.message : "ok novo token");
+r = await a.from("_smoke").select("txt").eq("txt", "da A").maybeSingle();
+log("consulta apos refresh", r.error ? r.error.message : r.data?.txt);
+r = await a.functions.invoke("check-email", { body: { email: ea } });
+log("functions check-email", r.error ? `erro: ${r.error.message}` : r.data);
+r = await a.auth.updateUser({ password: "novaSenha456" });
+log("trocar senha", r.error ? r.error.message : "ok");
+r = await mk().auth.signInWithPassword({ email: ea, password: "novaSenha456" });
+log("login senha nova", r.error ? r.error.message : "ok");
+await a.auth.signOut();
+r = await a.from("_smoke").select("*");
+log("A depois do logout", r.error ? r.error.message : `${r.data.length} linha(s)`);

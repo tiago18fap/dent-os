@@ -468,8 +468,8 @@ serve(async (req) => {
         // 6. Enviar resposta automática ao cliente
         const responseText = config.redirecionar_mensagem || 
           "Olá! Este número é utilizado apenas para envios automáticos e não recebe mensagens ou ligações. 🤖\n\nPara falar com o nosso atendimento, por favor clique no link abaixo:\n{numero_atendimento}";
-        
-        const cleanRedirectNumber = config.redirecionar_numero.replace(/\D/g, "");
+
+        // cleanRedirectNumber ja foi declarado no passo 3 (redeclarar era SyntaxError).
         const finalResponseText = responseText.replace(
           /{numero_atendimento}/g,
           `https://wa.me/${cleanRedirectNumber}`

@@ -1,0 +1,96 @@
+# Pilha propria do DentOS (substitui o Supabase). Mesmo desenho do EasyPanel:
+#   db   -> PostgreSQL 17 (dados, RLS, funcoes SQL, triggers)
+#   rest -> PostgREST (o motor de /rest/v1 do Supabase)
+#   api  -> Node: /auth/v1 (login), /functions/v1 (ex-Edge Functions), agendamentos
+#   web  -> nginx com o frontend; encaminha /rest, /auth, /functions e /api para a api
+#
+# Uso local (teste):
+#   node server/scripts/gerar-chaves.mjs > migracao-dados/stack.env
+#   docker compose --env-file migracao-dados/stack.env up -d --build
+#   abrir http://localhost:18080
+#
+# CRON_ENABLED fica false aqui: uma copia local NAO pode disparar WhatsApp real.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?gere com server/scripts/gerar-chaves.mjs}
+      TZ: UTC
+    volumes:
+      - dentos_pg:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:${DB_PASSWORD}@db:5432/postgres
+      JWT_SECRET: ${JWT_SECRET}
+      AUTHENTICATOR_PASSWORD: ${AUTHENTICATOR_PASSWORD}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:18080}
+      REST_INTERNAL_URL: http://rest:3000
+      CRON_ENABLED: "false"
+      APP_VERSION: local
+      # Segredos das antigas Edge Functions (vazios no teste local).
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      MERCADOPAGO_ACCESS_TOKEN: ${MERCADOPAGO_ACCESS_TOKEN:-}
+      MERCADOPAGO_PUBLIC_KEY: ${MERCADOPAGO_PUBLIC_KEY:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_placeholder}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_BRONZE: ${STRIPE_PRICE_BRONZE:-}
+      STRIPE_PRICE_PRATA: ${STRIPE_PRICE_PRATA:-}
+      EASYDENTAL_WORKER_URL: ${EASYDENTAL_WORKER_URL:-}
+      EASYDENTAL_WORKER_SECRET: ${EASYDENTAL_WORKER_SECRET:-}
+
+  rest:
+    image: postgrest/postgrest:v12.2.3
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${AUTHENTICATOR_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_DB_CHANNEL_ENABLED: "true"
+      # Mesmo teto do Supabase: no maximo 1000 linhas por consulta.
+      PGRST_DB_MAX_ROWS: "1000"
+      PGRST_DB_POOL: "15"
+      PGRST_OPENAPI_MODE: disabled
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ""
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${ANON_KEY}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      API_UPSTREAM: api:3001
+      INTEGRACOES_UPSTREAM: integracoes:3500
+      NGINX_RESOLVER: 127.0.0.11
+    ports:
+      - "127.0.0.1:18080:3000"
+
+volumes:
+  dentos_pg:

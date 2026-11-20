@@ -1,7 +1,9 @@
 import { syncTodasClinicas } from './sync.mjs';
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://dzbeorfkualalocrvobe.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || 'REMOVIDO_DO_GIT';
+// Endereco da API do DentOS (compativel com Supabase) e chave service_role: so por variavel de ambiente.
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
+if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('Defina SUPABASE_URL e SUPABASE_KEY (service_role da API do DentOS).');
 
 async function run() {
   console.log('[CRON] Iniciando sincronização diária de todas as clínicas...');

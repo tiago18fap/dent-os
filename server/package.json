@@ -1,0 +1,25 @@
+{
+  "name": "dentos-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "API do DentOS fora do Supabase: login compativel com supabase-js, funcoes (ex-Edge Functions) e agendamentos.",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "smoke": "node scripts/smoke-api.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.2",
+    "bcryptjs": "^2.4.3",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "jsonwebtoken": "^9.0.2",
+    "node-cron": "^3.0.3",
+    "pg": "^8.13.0",
+    "stripe": "^14.14.0"
+  }
+}

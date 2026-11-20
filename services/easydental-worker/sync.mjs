@@ -27,8 +27,9 @@ function log(msg, level = 'INFO') {
 // Supabase helpers
 // ══════════════════════════════════════════════════════════════
 
-const DEFAULT_SUPABASE_URL = 'https://dzbeorfkualalocrvobe.supabase.co';
-const DEFAULT_SUPABASE_KEY = 'REMOVIDO_DO_GIT';
+// Sem valores padrao: a chave service_role nunca fica no codigo.
+const DEFAULT_SUPABASE_URL = undefined;
+const DEFAULT_SUPABASE_KEY = undefined;
 
 export async function getCredentials(clinicaId, opts = {}) {
   const supabaseUrl = opts.supabaseUrl || process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;

@@ -6,6 +6,8 @@
  * Fluxo: criar instância → ler QR code → verificar conexão → desconectar/apagar.
  */
 
+import { functionUrl } from "@/integrations/supabase/client";
+
 const EVOLUTION_API_URL = "https://evolution-evolution-api.qfjowr.easypanel.host";
 const EVOLUTION_API_KEY = "REMOVIDO_DO_GIT";
 
@@ -242,7 +244,7 @@ export async function configureWebhook(
   enabled: boolean
 ): Promise<{ success: boolean; error?: string }> {
   const instanceName = getInstanceName(clinicaId);
-  const webhookUrl = "https://dzbeorfkualalocrvobe.supabase.co/functions/v1/whatsapp-webhook";
+  const webhookUrl = functionUrl("whatsapp-webhook");
 
   try {
     const res = await fetch(`${EVOLUTION_API_URL}/webhook/set/${instanceName}`, {
