@@ -37,3 +37,6 @@ migracao-dados/
 
 # Token da API do EasyPanel (local, nunca no git)
 .env.easypanel
+
+# Chave e segredo da Zernio (local, nunca no git)
+.env.zernio
