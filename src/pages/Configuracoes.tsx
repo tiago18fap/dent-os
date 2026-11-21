@@ -12,6 +12,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { useWhatsappStatus } from "@/hooks/use-whatsapp-status";
+import { WhatsappOficialZernio } from "@/components/configuracoes/WhatsappOficialZernio";
 import { useClinica } from "@/contexts/ClinicaContext";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -2575,6 +2576,9 @@ const Configuracoes = () => {
           </TabsContent>
 
           <TabsContent value="geral" className="mt-4 space-y-4">
+            {clinica?.id && <WhatsappOficialZernio clinicaId={clinica.id} />}
+            {/* Evolution (não oficial): conexão por QR code e redirecionamento automático. */}
+            {whatsappStatus.data?.provider !== "zernio" && (<>
             <Card id="whatsapp-config">
               <CardHeader className="flex items-center justify-between gap-2">
                 <div>
@@ -2783,6 +2787,7 @@ const Configuracoes = () => {
                 </form>
               </CardContent>
             </Card>
+            </>)}
 
             <Card className="border-primary/20 shadow-sm hover:shadow-md transition-shadow duration-300">
               <CardHeader>

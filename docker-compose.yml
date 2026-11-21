@@ -57,6 +57,11 @@ services:
       STRIPE_PRICE_PRATA: ${STRIPE_PRICE_PRATA:-}
       EASYDENTAL_WORKER_URL: ${EASYDENTAL_WORKER_URL:-}
       EASYDENTAL_WORKER_SECRET: ${EASYDENTAL_WORKER_SECRET:-}
+      # WhatsApp oficial via Zernio (vazio = desligado). Em teste local, aponte
+      # ZERNIO_API_URL para a Zernio falsa: node server/scripts/zernio-mock.mjs
+      ZERNIO_API_KEY: ${ZERNIO_API_KEY:-}
+      ZERNIO_API_URL: ${ZERNIO_API_URL:-https://zernio.com/api/v1}
+      ZERNIO_WEBHOOK_SECRET: ${ZERNIO_WEBHOOK_SECRET:-}
 
   rest:
     image: postgrest/postgrest:v12.2.3

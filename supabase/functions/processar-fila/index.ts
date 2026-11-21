@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { enviarModelo, zernioConfigurado, ZernioError } from "../_shared/zernio.ts";
+import { chaveDaMensagem, extrairVariaveis } from "../_shared/modelos.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -89,7 +91,7 @@ serve(async (req) => {
     // 1. Query all clinicas with conectado = true
     const { data: configs, error: configError } = await supabase
       .from("whatsapp_config")
-      .select("clinica_id, horario_inicio, horario_fim, dedup_dias")
+      .select("clinica_id, horario_inicio, horario_fim, dedup_dias, provider, zernio_account_id")
       .eq("conectado", true);
 
     if (configError) {
@@ -125,12 +127,24 @@ serve(async (req) => {
 
       console.log(`[processar-fila] Processando clínica ${clinicaId}`);
 
+      // Provedor de envio da clínica: Evolution (não oficial) ou Zernio (API oficial).
+      const provider: "evolution" | "zernio" = (config as any).provider === "zernio" ? "zernio" : "evolution";
+      const zernioAccountId: string | null = (config as any).zernio_account_id ?? null;
+      // Modelos aprovados da clínica (Zernio), carregados uma vez por clínica.
+      let modelosClinica: Map<string, any> | null = null;
+
       // ═══ Verificação de saúde da conexão antes de enviar ═══
-      // Valida se a instância realmente está conectada na Evolution API
+      // Evolution: valida se a instância realmente está conectada (e tenta reconectar).
+      // Zernio: a conexão é da Meta; basta ter conta escolhida e chave no servidor.
       const instanceName = `dentos_${clinicaId.replace(/-/g, "").slice(0, 12)}`;
       let connectionOk = false;
 
-      try {
+      if (provider === "zernio") {
+        connectionOk = !!zernioAccountId && zernioConfigurado();
+        if (!connectionOk) {
+          console.error(`[processar-fila] Clínica ${clinicaId}: Zernio sem conta escolhida ou sem ZERNIO_API_KEY no servidor.`);
+        }
+      } else try {
         const connCheckRes = await fetch(
           `${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`,
           {
@@ -277,6 +291,10 @@ serve(async (req) => {
       }
 
       // Se a conexão não está ativa, atualizar whatsapp_config e pular esta clínica
+      if (!connectionOk && provider === "zernio") {
+        summary.push({ clinica_id: clinicaId, status: "zernio_sem_configuracao", detail: "Escolha a conta da Zernio em Configurações e defina ZERNIO_API_KEY no servidor" });
+        continue;
+      }
       if (!connectionOk) {
         console.error(`[processar-fila] Clínica ${clinicaId}: CONEXÃO INDISPONÍVEL. Atualizando banco e pulando envios.`);
 
@@ -578,14 +596,62 @@ serve(async (req) => {
           continue;
         }
 
-        // 2e. Send message via Evolution API
-        const instanceName = `dentos_${clinicaId.replace(/-/g, "").slice(0, 12)}`;
+        // 2e. Enviar: Zernio (modelo aprovado da Meta) ou Evolution (texto livre)
+        let sendSuccess = false;
+        let sendErrorDetail = "";
+        let providerMessageId: string | null = null;
+
+        if (provider === "zernio") {
+          // Modelo aprovado da campanha desta mensagem
+          if (!modelosClinica) {
+            const { data: modelos } = await supabase
+              .from("whatsapp_modelos")
+              .select("chave, nome_modelo, idioma, status, texto_original, variaveis")
+              .eq("clinica_id", clinicaId);
+            modelosClinica = new Map((modelos ?? []).map((m: any) => [m.chave, m]));
+          }
+          const chave = chaveDaMensagem(msg as any);
+          const modelo = chave ? modelosClinica.get(chave) : null;
+
+          if (!modelo || modelo.status !== "APPROVED") {
+            // Sem modelo aprovado: a mensagem volta a esperar (não conta como falha nem gasta saldo).
+            const motivo = !modelo
+              ? `Campanha "${chave ?? "sem campanha"}" ainda não tem modelo enviado para a Meta`
+              : `Modelo da campanha ainda não aprovado pela Meta (status ${modelo.status})`;
+            await supabase
+              .from("fila_envios")
+              .update({ status: "pendente", erro_detalhe: motivo, updated_at: new Date().toISOString() })
+              .eq("id", msg.id);
+            summary.push({ clinica_id: clinicaId, status: "aguardando_modelo", detail: motivo });
+            continue;
+          }
+
+          const variaveis = extrairVariaveis(modelo.texto_original, msg.mensagem, modelo.variaveis ?? []);
+          if (!variaveis) {
+            sendErrorDetail = "O texto desta mensagem não corresponde ao modelo aprovado (a campanha foi editada depois que a mensagem entrou na fila?)";
+          } else {
+            try {
+              const r = await enviarModelo({
+                accountId: zernioAccountId!,
+                telefone: msg.telefone,
+                nomeModelo: modelo.nome_modelo,
+                idioma: modelo.idioma || "pt_BR",
+                variaveis,
+                idempotencyKey: `fila-${msg.id}`,
+              });
+              sendSuccess = true;
+              providerMessageId = r.messageId;
+              console.log(`[processar-fila] Mensagem ${msg.id} enviada via Zernio (${r.messageId ?? "sem id"})`);
+            } catch (zErr: any) {
+              const code = zErr instanceof ZernioError && zErr.code ? ` [${zErr.code}]` : "";
+              sendErrorDetail = `Zernio${code}: ${zErr?.message || String(zErr)}`;
+              console.error(`[processar-fila] Falha Zernio na mensagem ${msg.id}: ${sendErrorDetail}`);
+            }
+          }
+        } else {
         const sendUrl = `${EVOLUTION_API_URL}/message/sendText/${instanceName}`;
 
         console.log(`[processar-fila] Enviando para ${msg.telefone} via instância ${instanceName}`);
-
-        let sendSuccess = false;
-        let sendErrorDetail = "";
 
         try {
           const sendResponse = await fetch(sendUrl, {
@@ -612,13 +678,19 @@ serve(async (req) => {
           sendErrorDetail = `Fetch error: ${fetchError.message || String(fetchError)}`;
           console.error(`[processar-fila] Exceção ao enviar mensagem ${msg.id}:`, fetchError);
         }
+        } // fim do envio pela Evolution
 
         // 2f. Update message status
         if (sendSuccess) {
           // Atualizar status para 'enviado'
           const { error: updateError } = await supabase
             .from("fila_envios")
-            .update({ status: "enviado", updated_at: new Date().toISOString() })
+            .update({
+              status: "enviado",
+              updated_at: new Date().toISOString(),
+              erro_detalhe: null,
+              ...(providerMessageId ? { provider_message_id: providerMessageId } : {}),
+            })
             .eq("id", msg.id);
 
           if (updateError) {
@@ -667,6 +739,7 @@ serve(async (req) => {
             .update({
               status: "falha",
               updated_at: new Date().toISOString(),
+              erro_detalhe: sendErrorDetail.slice(0, 1000) || null,
             })
             .eq("id", msg.id);
 

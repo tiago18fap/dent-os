@@ -46,5 +46,10 @@ export async function bootstrapDatabase() {
   const db = pg.escapeIdentifier(rows[0].db);
   await pool.query(`ALTER DATABASE ${db} SET search_path TO "$user", public, extensions`);
   await pool.query(`ALTER ROLE authenticator WITH LOGIN PASSWORD ${pg.escapeLiteral(config.authenticatorPassword)}`);
+
+  // Colunas/tabelas novas do app (provedor por clinica, modelos da Meta...).
+  // Idempotente; nao faz nada enquanto o schema public ainda nao foi carregado.
+  const appSql = await readFile(new URL("../db/app-migrations.sql", import.meta.url), "utf8");
+  await pool.query(appSql);
   console.log("[db] bootstrap ok");
 }

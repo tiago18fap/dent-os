@@ -18,6 +18,8 @@ export interface WhatsappConfig {
   easydental_usuario?: string | null;
   easydental_senha?: string | null;
   ultima_sync_sucesso?: string | null;
+  provider?: "evolution" | "zernio";
+  zernio_numero?: string | null;
 }
 
 export const useWhatsappStatus = () => {
@@ -35,6 +37,7 @@ export const useWhatsappStatus = () => {
       horario_fim: string;
       needsReconnect: boolean;
       reconnectAttempted: boolean;
+      provider: "evolution" | "zernio";
     } | null> => {
       const { data: userData, error: userError } = await supabase.auth.getUser();
 
@@ -69,13 +72,39 @@ export const useWhatsappStatus = () => {
 
       const { data, error } = await (supabase as any)
         .from("whatsapp_config")
-        .select("id, clinica_id, numero, conectado, updated_at, redirecionar_ativo, redirecionar_numero, redirecionar_mensagem, dedup_dias, horario_inicio, horario_fim, easydental_url, easydental_usuario, easydental_senha, ultima_sync_sucesso")
+        .select("id, clinica_id, numero, conectado, updated_at, redirecionar_ativo, redirecionar_numero, redirecionar_mensagem, dedup_dias, horario_inicio, horario_fim, easydental_url, easydental_usuario, easydental_senha, ultima_sync_sucesso, provider, zernio_numero")
         .eq("clinica_id", targetClinicaId)
         .maybeSingle();
 
       if (error) {
         console.error("Erro ao carregar status do WhatsApp", error.message ?? error);
         return null;
+      }
+
+      const provider: "evolution" | "zernio" = (data as any)?.provider === "zernio" ? "zernio" : "evolution";
+
+      // WhatsApp oficial (Zernio): a conexão é da Meta; o banco é a fonte da verdade
+      // (o webhook da Zernio marca desconexão). Não consulta a Evolution.
+      if (provider === "zernio") {
+        const cfg = data as WhatsappConfig;
+        return {
+          conectado: !!cfg.conectado,
+          numero: cfg.zernio_numero ?? cfg.numero ?? null,
+          updated_at: cfg.updated_at,
+          redirecionar_ativo: (cfg as any).redirecionar_ativo ?? false,
+          redirecionar_numero: (cfg as any).redirecionar_numero ?? null,
+          redirecionar_mensagem: (cfg as any).redirecionar_mensagem ?? null,
+          dedup_dias: (cfg as any).dedup_dias ?? 30,
+          horario_inicio: (cfg as any).horario_inicio ?? "08:00",
+          horario_fim: (cfg as any).horario_fim ?? "20:00",
+          easydental_url: (cfg as any).easydental_url ?? null,
+          easydental_usuario: (cfg as any).easydental_usuario ?? null,
+          easydental_senha: (cfg as any).easydental_senha ?? null,
+          ultima_sync_sucesso: (cfg as any).ultima_sync_sucesso ?? null,
+          needsReconnect: false,
+          reconnectAttempted: false,
+          provider,
+        } as any;
       }
 
       // Verificar estado real na Evolution API
@@ -196,6 +225,7 @@ export const useWhatsappStatus = () => {
         ultima_sync_sucesso: data ? (data as any).ultima_sync_sucesso ?? null : null,
         needsReconnect,
         reconnectAttempted,
+        provider,
       };
     },
     // Verificar saúde da conexão a cada 60 segundos para detecção rápida de quedas

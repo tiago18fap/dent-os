@@ -30,3 +30,7 @@ verify_jwt = false
 
 [functions.stripe-webhook]
 verify_jwt = false
+
+# Webhook da Zernio: valida a propria assinatura (X-Zernio-Signature), nao usa JWT.
+[functions.zernio-webhook]
+verify_jwt = false
