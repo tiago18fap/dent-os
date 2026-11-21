@@ -1,8 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const EVOLUTION_API_URL = "https://evolution-evolution-api.qfjowr.easypanel.host";
-const EVOLUTION_API_KEY = "REMOVIDO_DO_GIT";
+const EVOLUTION_API_URL = (Deno.env.get("EVOLUTION_API_URL") || "").trim().replace(/\/$/, "");
+const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || ""; // segredo: so na variavel do servico api
 const INSTANCE = "dentos_79d7fdc6c713";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

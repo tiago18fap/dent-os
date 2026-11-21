@@ -895,13 +895,17 @@ const Configuracoes = () => {
     }, 5000); // Verificar a cada 5 segundos
   }, [clinica?.id, stopPolling, toast, queryClient, redirecionarAtivo]);
 
-  // Limpar polling ao desmontar componente ou fechar dialog
+  // Parar o polling ao fechar o dialog.
+  // (Antes o "return () => stopPolling()" ficava aqui e rodava toda vez que o dialog
+  // abria, matando o polling recém-iniciado: o dialog do QR nunca fechava sozinho.)
   useEffect(() => {
     if (!connectDialogOpen) {
       stopPolling();
     }
-    return () => stopPolling();
   }, [connectDialogOpen, stopPolling]);
+
+  // Parar o polling ao sair da página
+  useEffect(() => () => stopPolling(), [stopPolling]);
 
   const handleConnectClick = async () => {
     if (!clinica?.id) {

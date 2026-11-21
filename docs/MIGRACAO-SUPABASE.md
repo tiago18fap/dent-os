@@ -39,7 +39,7 @@ PUBLIC_URL=https://dentos.com.br
 REST_INTERNAL_URL=http://dentos_rest:3000
 CRON_ENABLED=true              # só em produção, depois da carga final
 APP_VERSION=<versão do package.json>
-EVOLUTION_API_URL / EVOLUTION_API_KEY
+EVOLUTION_API_URL / EVOLUTION_API_KEY   # obrigatórias: só o servidor fala com a Evolution
 MERCADOPAGO_ACCESS_TOKEN / MERCADOPAGO_PUBLIC_KEY
 STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET / STRIPE_PRICE_BRONZE / STRIPE_PRICE_PRATA
 EASYDENTAL_WORKER_URL / EASYDENTAL_WORKER_SECRET
@@ -97,7 +97,26 @@ duas conexões que faz.
       Mercado Pago (`mercadopago-webhook`), Stripe (`stripe-webhook`) e, em cada instância da
       Evolution, o webhook `whatsapp-webhook` (a tela de Configurações já usa o endereço novo
       ao reconfigurar).
-5. **Plano de volta**: o Supabase fica intacto por 30 dias. Para voltar, publique o commit
+5. **Trocar a chave da Evolution** (só com o ok do dono; fazer logo depois da virada):
+   a chave GLOBAL antiga ficou exposta no site (estava escrita em `src/services/evolutionApi.ts`
+   e ainda está no histórico do git). Agora o site fala com a Evolution só pela função
+   `evolution-whatsapp` do servidor, então a chave pode ser trocada sem mexer no frontend.
+   1. **Antes** de publicar esta versão da `api`, cadastrar no serviço `api` do EasyPanel:
+      `EVOLUTION_API_URL=https://evolution-evolution-api.qfjowr.easypanel.host` e
+      `EVOLUTION_API_KEY=<chave atual>`. Sem elas o WhatsApp para (as funções não têm mais
+      chave escrita no código: `evolution-whatsapp`, `processar-fila`, `whatsapp-webhook`,
+      `diagnostico-envios`).
+   2. Publicar `api` e frontend; conferir em Configurações que o status do WhatsApp aparece.
+   3. Conferir no site publicado que a chave sumiu: abrir o `.js` principal e procurar a chave
+      antiga (não pode aparecer).
+   4. No projeto `evolution` do EasyPanel, gerar uma chave nova e trocar
+      `AUTHENTICATION_API_KEY` no serviço da Evolution; reiniciar.
+   5. Colocar a chave nova em `EVOLUTION_API_KEY` do serviço `api` do DentOS e reiniciar.
+   6. **Outros projetos que usam a mesma Evolution** (o servidor é compartilhado) também usam
+      a chave global antiga: atualizar cada um no mesmo momento, senão eles param.
+   7. Testar: status em Configurações, "Enviar mensagem de teste" e uma resposta de paciente
+      chegando no `whatsapp-webhook`.
+6. **Plano de volta**: o Supabase fica intacto por 30 dias. Para voltar, publique o commit
    anterior do frontend e religue os crons no Supabase.
 
 ## Teste rápido da API
